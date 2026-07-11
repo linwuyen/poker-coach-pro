@@ -242,7 +242,7 @@ export const scenarios: Scenario[] = [
   {
     id: '24', title: '中底對 Turn 面對大注', category: ['控池', '邊緣牌'], difficulty: '中階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'BTN', holeCards: [C_('9'), C_('8')], preAction: '你 Open 3BB，BB Call', effectiveStack: '100BB',
     steps: [
-      { id: '1', street: 'Turn', communityCards: [D('K'), C_('9'), H('4'), S('2')], description: 'Flop K-9-4 虹面，BB check-call 2BB。Turn 掉 2，底池 10.5BB。BB 突然領打 (Donk) 8BB。', potSize: 18.5, options: ["Fold","Call","Raise"], feedbacks: {
+      { id: '1', street: 'Turn', communityCards: [D('K'), S('9'), H('4'), S('2')], description: 'Flop K-9-4 虹面，BB check-call 2BB。Turn 掉 2，底池 10.5BB。BB 突然領打 (Donk) 8BB。', potSize: 18.5, options: ["Fold","Call","Raise"], feedbacks: {
         'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: 'BB 的 Donk bet 通常代表強牌，9 的中對不足以抓雞。', conceptualError: '無', remember: '低級別 Donk bet 多半是真牌。', nextStepId: 'next_hand' },
         'Call': { judgment: '錯誤', score: 2, bestAction: 'Fold', why: '抓雞過度，只會輸更多。', conceptualError: '不願蓋牌。', remember: '中對抗壓力差。', nextStepId: 'next_hand' },
         'Raise': { judgment: '錯誤', score: 0, bestAction: 'Fold', why: '毫無邏輯的加注。', conceptualError: '亂玩。', remember: '落後時不要加注。', nextStepId: 'next_hand' }
@@ -275,7 +275,7 @@ export const scenarios: Scenario[] = [
   {
     id: '27', title: '超強牌 Slow play 陷阱', category: ['慢打/Slow Play', '強牌價值'], difficulty: '中階', type: 'Tournament', blinds: '100/200', ante: true, userStack: '10000', userBB: 50, position: 'UTG', holeCards: [S('A'), H('A')], preAction: '你 Open 2BB，BTN Call', effectiveStack: '50BB',
     steps: [
-      { id: '1', street: 'Flop', communityCards: [S('A'), C_('8'), D('2')], description: 'Flop 你中了頂 Set。底池 5.5BB。', potSize: 5.5, options: ["Check","Bet small","Bet big"], feedbacks: {
+      { id: '1', street: 'Flop', communityCards: [D('A'), C_('8'), H('2')], description: 'Flop 你中了頂 Set。底池 5.5BB。', potSize: 5.5, options: ["Check","Bet small","Bet big"], feedbacks: {
         'Check': { judgment: '正確', score: 10, bestAction: 'Check', why: '超級乾燥牌面，你阻擋了對手拿頂對的可能，過牌讓對手詐唬。', conceptualError: '無', remember: '乾燥且阻擋對手範圍時可以慢打。', nextStepId: 'next_hand' },
         'Bet small': { judgment: '可接受', score: 7, bestAction: 'Check', why: '下小注也可以，但對手容易蓋牌。', conceptualError: '無', remember: '考量牌面濕度決定是否慢打。', nextStepId: 'next_hand' },
         'Bet big': { judgment: '錯誤', score: 0, bestAction: 'Check', why: '趕走所有對手。', conceptualError: '不懂控制節奏。', remember: '死乾面不要打大。', nextStepId: 'next_hand' }
@@ -647,6 +647,211 @@ export const scenarios: Scenario[] = [
         'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: '身後還有八個人。ATo 這種容易被壓制的牌在 UTG 進池，遇到反抗時你面對的是 AJ/AQ/AK——中了頂對也常是付錢的那方。', conceptualError: '無', remember: '位置越前，範圍越緊：ATo 是 UTG 紀律的試金石。', nextStepId: 'next_hand' },
         'Raise': { judgment: '錯誤', score: 3, bestAction: 'Fold', why: '典型的「贏小輸大」：沒人反抗時贏個盲注，有人反抗時你已經落後。', conceptualError: '前位範圍過寬。', remember: '好牌不等於在所有位置都能玩的牌。', nextStepId: 'next_hand' },
         'Call': { judgment: '錯誤', score: 0, bestAction: 'Fold', why: 'Limp 是最糟選項：不搶池、不施壓、還把弱點寫在臉上。', conceptualError: '被動入池。', remember: '要嘛加注要嘛棄牌，limp 不在選單上。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '65', title: '99 set 慢打一街後轉攻', category: ['慢打/Slow Play', '強牌價值', 'Value Bet'], difficulty: '中階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'MP', holeCards: [S('9'), D('9')], preAction: '你 Open 3BB，BTN Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'Turn', communityCards: [H('9'), C_('4'), D('2'), S('J')], description: 'Flop (9♥ 4♣ 2♦) 你中頂 set 選擇過牌設陷阱，BTN 也過牌。Turn 掉 J♠。底池 7.5BB，你先行動。', potSize: 7.5, options: ['Check', 'Bet half pot', 'Bet big'], feedbacks: {
+        'Bet big': { judgment: '正確', score: 10, bestAction: 'Bet big', why: '慢打是有期限的：你已經送出一條免費街，J 又給了對手能跟注的頂對。現在不開始造池，這手 set 最後只會贏一個迷你池。', conceptualError: '無', remember: '慢打最多一條街——之後必須轉入價值模式追回進度。', nextStepId: 'next_hand' },
+        'Bet half pot': { judgment: '可接受', score: 7, bestAction: 'Bet big', why: '開始下注正確，但你已經落後一條街的建池進度，尺寸應該更大。', conceptualError: '造池進度落後。', remember: '慢打過的牌要用更大的尺寸補回底池。', nextStepId: 'next_hand' },
+        'Check': { judgment: '錯誤', score: 2, bestAction: 'Bet big', why: '慢打兩條街等於讓對手免費追牌，還把底池小到河牌收不了價值。', conceptualError: '陷阱設過頭。', remember: '過牌兩次的 set 常常只贏一個沒人要的池。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '66', title: 'AA 有位置平跟瘋子 3-bet', category: ['慢打/Slow Play', '3-Bet/4-Bet', 'Preflop'], villainProfile: 'Maniac (超激進瘋子)', difficulty: '進階', type: 'Cash Game', blinds: '2/5', ante: false, userStack: '500', userBB: 100, position: 'BTN', holeCards: [S('A'), H('A')], preAction: '你 Open 2.5BB，SB (瘋子) 3-bet 11BB', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'Preflop', communityCards: [], description: 'SB 是逢人就 3-bet、翻後三條街開火的瘋子。他 3-bet 到 11BB，你在 BTN 持 AA。', potSize: 14.5, options: ['Fold', 'Call', '4-bet (Raise)'], feedbacks: {
+        'Call': { judgment: '正確', score: 10, bestAction: 'Call', why: '對這種對手，他翻後的連續開火就是你最大的收入來源。有位置平跟把他的整個詐唬範圍留在池子裡，讓他替你打光他自己。', conceptualError: '無', remember: '慢打的前提是對手會替你下注——瘋子正是最佳人選。', nextStepId: 'next_hand' },
+        '4-bet (Raise)': { judgment: '可接受', score: 7, bestAction: 'Call', why: '標準打法，瘋子也可能跟注或 5-bet。但他的大量空氣牌會就此棄牌，你少賺了他翻後的三條街砲火。', conceptualError: '無', remember: '對會自己送錢的對手，別急著把價格標出來。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '錯誤', score: 0, bestAction: 'Call', why: '用 AA 對 3-bet 棄牌。', conceptualError: '不需要解釋的錯誤。', remember: 'AA 永遠不在棄牌名單上（翻牌前）。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '67', title: '堅果順讓他開完第三槍', category: ['慢打/Slow Play', '強牌價值'], difficulty: '中階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'BB', holeCards: [S('6'), S('5')], preAction: 'BTN Open 2.5BB，你 Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'River', communityCards: [D('7'), C_('4'), H('3'), S('K'), D('2')], description: 'Flop (7-4-3) 你中堅果順，過牌跟注 3BB。Turn (K♠) 過牌跟注 7BB。River 2♦，底池 25.5BB，你先行動。對手火力全開。', potSize: 25.5, options: ['Check', 'Bet small', 'Bet big'], feedbacks: {
+        'Check': { judgment: '正確', score: 10, bestAction: 'Check', why: '他已經連開兩槍，把河牌讓給他打完——你的過牌加注能收到他第三槍的全部；自己主動下注反而會嚇醒他的空氣牌。', conceptualError: '無', remember: '對手在替你下注時，你唯一的工作是不要打斷他。', nextStepId: 'next_hand' },
+        'Bet big': { judgment: '可接受', score: 6, bestAction: 'Check', why: '能從他的 Kx 收到一次跟注，但他所有的詐唬牌會就地棄牌。', conceptualError: '搶了對手的台詞。', remember: '面對連續開火的對手，讓他自己走進陷阱。', nextStepId: 'next_hand' },
+        'Bet small': { judgment: '錯誤', score: 3, bestAction: 'Check', why: '小注既收不到大價值，也誘不出詐唬，還提醒他你有牌。', conceptualError: '尺寸沒有目的。', remember: '每個下注尺寸都要回答「我要誰跟注」。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '68', title: 'AA 中頂葫蘆鎖死牌面', category: ['慢打/Slow Play', '強牌價值'], difficulty: '新手', type: 'Cash Game', blinds: '1/3', ante: false, userStack: '300', userBB: 100, position: 'MP', holeCards: [H('A'), D('A')], preAction: '你 Open 3BB，BB Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'Flop', communityCards: [C_('A'), S('6'), D('6')], description: '底池 6.5BB。Flop (A♣ 6♠ 6♦) 你中頂葫蘆。BB 過牌。', potSize: 6.5, options: ['Check', 'Bet small', 'Bet big'], feedbacks: {
+        'Check': { judgment: '正確', score: 10, bestAction: 'Check', why: '你把牌面鎖到對手幾乎沒有任何能跟注的牌（A 和 6 都在你和牌面上）。過牌讓他轉牌接上一點什麼，或起詐唬的念頭。', conceptualError: '無', remember: '慢打的標準面：牌面被你鎖死 + 對手範圍空到沒牌能跟。', nextStepId: 'next_hand' },
+        'Bet small': { judgment: '可接受', score: 7, bestAction: 'Check', why: '迷你注維持故事也可行，但這牌面他的棄牌率還是太高。', conceptualError: '無', remember: '下注前先問：他拿什麼跟我？', nextStepId: 'next_hand' },
+        'Bet big': { judgment: '錯誤', score: 0, bestAction: 'Check', why: '把對手僅存的一點好奇心也趕跑了。', conceptualError: '對空範圍重砲。', remember: '越強的牌越要溫柔（尤其你鎖死牌面時）。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '69', title: 'A♠ 阻擋堅果同花的詐唬', category: ['Blocker'], difficulty: '進階', type: 'Cash Game', blinds: '2/5', ante: false, userStack: '500', userBB: 100, position: 'BTN', holeCards: [S('A'), D('K')], preAction: '你 Open 2.5BB，BB Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'River', communityCards: [S('Q'), S('9'), S('3'), D('7'), H('2')], description: 'Flop (Q♠ 9♠ 3♠) 你 C-bet 2BB 被跟。Turn、River 雙方過牌到你。牌面三張黑桃，你持 A♠ 但沒有成花。底池 9.5BB，BB 過牌。', potSize: 9.5, options: ['Check', 'Bet small', 'Bet big'], feedbacks: {
+        'Bet big': { judgment: '正確', score: 10, bestAction: 'Bet big', why: '你手上的 A♠ 意味著對手不可能持有堅果同花，而他一路的被動也不像大花。大注講述的正是「我有同花」的故事，他的單對很難跟注。', conceptualError: '無', remember: '持有關鍵 blocker 時，你就是最有資格說這個謊的人。', nextStepId: 'next_hand' },
+        'Check': { judgment: '可接受', score: 5, bestAction: 'Bet big', why: 'A 高偶爾能贏攤牌，但這是一個可以直接奪走的底池。', conceptualError: '放棄可信的詐唬機會。', remember: 'Blocker 詐唬的本錢是「他不可能有你代表的牌」。', nextStepId: 'next_hand' },
+        'Bet small': { judgment: '錯誤', score: 3, bestAction: 'Bet big', why: '半吊子尺寸講不了同花的故事，反而會被隨便一對跟注。', conceptualError: '故事與尺寸不匹配。', remember: '要說謊就說完整——詐唬尺寸要符合你代表的牌力。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '70', title: 'A♥ 在手擋住他的詐唬', category: ['Blocker', '抓雞/Bluff Catch'], difficulty: '進階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'BTN', holeCards: [H('A'), D('K')], preAction: '你 Open 3BB，BB Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'River', communityCards: [H('K'), H('7'), S('2'), D('8'), C_('3')], description: 'Flop (K♥ 7♥ 2♠) 你 C-bet 3BB 被跟，Turn (8♦) 你下注 8BB 被跟。River 3♣ 紅心落空，BB 突然全下 35BB。底池 28.5BB。你持頂對頂踢，且拿著 A♥。', potSize: 28.5, options: ['Fold', 'Call'], feedbacks: {
+        'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: '他詐唬的主力是落空的紅心聽牌，但你手上的 A♥ 恰好砍掉其中最大宗的 A♥X♥ 組合。剩下的全下範圍偏向 78、33、慢打的兩對。同一手牌若你拿的是 A♣K♦，跟注反而正確。', conceptualError: '無', remember: '抓雞前檢查：你的牌是擋住他的「詐唬」還是他的「價值」——擋詐唬就蓋，擋價值就跟。', nextStepId: 'next_hand' },
+        'Call': { judgment: '偏鬆', score: 4, bestAction: 'Fold', why: '頂對頂踢看起來是標準抓雞牌，但組合學上你自己擋掉了他大半的空氣。', conceptualError: '忽視自己手牌對對手範圍的影響。', remember: '你的手牌不只是牌力，也是對手範圍的過濾器。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '71', title: 'TT 阻擋成順組合抓雞', category: ['Blocker', '抓雞/Bluff Catch'], difficulty: '進階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'BB', holeCards: [D('T'), C_('T')], preAction: 'CO Open 3BB，你 Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'River', communityCards: [C_('9'), D('8'), H('2'), S('7'), C_('2')], potOdds: '37%', description: 'Flop (9♣ 8♦ 2♥) 你過牌跟注 3BB，Turn (7♠) 過牌跟注 8BB。River 2♣，你過牌，CO 全下 40BB。底池 28.5BB。你的超對 TT 面對三條街火力。', potSize: 28.5, options: ['Fold', 'Call'], feedbacks: {
+        'Call': { judgment: '正確', score: 10, bestAction: 'Call', why: '他要代表的順子是 JT、T6、65——你的兩張 T 直接砍掉 JT 與 T6 的大半組合。加上這條線上無數談不攏的半詐唬，你的超對抓下他範圍裡過重的空氣。', conceptualError: '無', remember: '抓雞的組合學：拿著對手「成牌所需的牌」，他的故事就講不通。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '偏緊', score: 4, bestAction: 'Fold', why: '牌面確實危險，但你的 blocker 讓他的成順組合大幅縮水，37% 的門檻是可以達到的。', conceptualError: '只看牌面不看組合。', remember: '危險牌面 + 你持關鍵 blocker = 對手最愛詐唬的地方。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '72', title: 'AA 別讓多人池發生', category: ['多人底池', 'Preflop', '3-Bet/4-Bet'], difficulty: '新手', type: 'Cash Game', blinds: '1/3', ante: false, userStack: '300', userBB: 100, position: 'BTN', holeCards: [D('A'), C_('A')], preAction: 'UTG Open 3BB，MP 與 CO Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'Preflop', communityCards: [], description: 'UTG Open，兩人平跟，你在 BTN 持 AA。底池 10.5BB。', potSize: 10.5, options: ['Call', '3-bet', 'All-in'], feedbacks: {
+        '3-bet': { judgment: '正確', score: 10, bestAction: '3-bet', why: 'AA 單挑勝率 85%，四人池會掉到 55% 左右。大尺寸 3-bet（約 14BB）收割場上死錢，並把牌局擠回你最強的單挑戰場。', conceptualError: '無', remember: 'AA 的最大敵人不是某手牌，是人數——用 3-bet 控制人數。', nextStepId: 'next_hand' },
+        'Call': { judgment: '錯誤', score: 2, bestAction: '3-bet', why: '平跟邀請盲注加入，AA 打五人池是自毀：翻牌後你幾乎永遠只有一對。', conceptualError: '慢打不看人數。', remember: '多人池裡沒有牌叫做「只是一對的 AA」更可憐的了。', nextStepId: 'next_hand' },
+        'All-in': { judgment: '錯誤', score: 1, bestAction: '3-bet', why: '100BB 全下只有 KK/QQ 會跟，把 AA 的價值上限一刀砍掉。', conceptualError: '價值牌打成驅逐令。', remember: '3-bet 到能被較差的牌跟注的尺寸即可。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '73', title: 'JT 頂兩對濕面遭遇戰', category: ['多人底池', '強牌價值'], difficulty: '進階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'CO', holeCards: [H('J'), H('T')], preAction: '你 Open 3BB，BTN、SB、BB Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'Flop', communityCards: [S('J'), S('T'), D('6')], description: '四人底池 12BB。Flop (J♠ T♠ 6♦) 你中頂兩對，下注 8BB，BTN 加注到 24BB，SB 冷跟 24BB，BB 棄牌。輪到你，你還有 89BB。', potSize: 68, options: ['Fold', 'Call', 'All-in'], feedbacks: {
+        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: '加注+冷跟的範圍裡塞滿了同花聽牌、兩頭順與組合聽牌。你的頂兩對現在領先，但幾乎每張轉牌都是災難——把錢在你還領先的這條街全部放進去。', conceptualError: '無', remember: '濕牌面的脆弱強牌：要嘛現在全下，要嘛永遠不知道自己死在哪張牌。', nextStepId: 'next_hand' },
+        'Call': { judgment: '偏鬆', score: 4, bestAction: 'All-in', why: '跟注讓三人看轉牌，任何黑桃、K、Q、9、8 都會讓你進退兩難。', conceptualError: '拖延注定的對決。', remember: '對抗聽牌大軍，時間站在他們那邊。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '錯誤', score: 1, bestAction: 'All-in', why: '頂兩對面對以聽牌為主的動作範圍棄牌，過度悲觀。', conceptualError: '把聽牌動作讀成成牌。', remember: '濕牌面的加注常常是聽牌在搶勝率。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '74', title: '多人池 AK 沒中收槍', category: ['多人底池', '常規戰術'], difficulty: '新手', type: 'Cash Game', blinds: '1/3', ante: false, userStack: '300', userBB: 100, position: 'CO', holeCards: [S('A'), H('K')], preAction: '你 Open 3BB，BTN、SB、BB Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'Flop', communityCards: [D('9'), D('8'), C_('6')], description: '四人底池 12BB。Flop (9♦ 8♦ 6♣) 完全沒中你。前面都過牌，輪到你。', potSize: 12, options: ['Check', 'Bet small', 'Bet big'], feedbacks: {
+        'Check': { judgment: '正確', score: 10, bestAction: 'Check', why: '四個範圍疊在這種連張牌面上，總有人中了什麼。多人池的 C-bet 頻率要大砍，AK 高牌在這裡連一條街都撐不起。', conceptualError: '無', remember: '單挑可以用範圍開槍，多人池只能用牌開槍。', nextStepId: 'next_hand' },
+        'Bet small': { judgment: '錯誤', score: 3, bestAction: 'Check', why: '對三個人的小注幾乎必被跟注或加注，你在用錢買一個壞消息。', conceptualError: '把單挑習慣帶進多人池。', remember: '多人池的 C-bet 要有牌面與牌力雙重支撐。', nextStepId: 'next_hand' },
+        'Bet big': { judgment: '錯誤', score: 0, bestAction: 'Check', why: '對著三個範圍的重砲詐唬，這牌面誰都不會走。', conceptualError: '無視人數的詐唬。', remember: '詐唬的第一條件：對手棄得掉。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '75', title: '家庭池順子聽牌純賠率', category: ['多人底池', '聽牌打法'], difficulty: '新手', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'BB', holeCards: [C_('7'), C_('6')], preAction: 'UTG Open 2.5BB，MP、CO、BTN Call，你 Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'Flop', communityCards: [D('8'), H('5'), C_('K')], potOdds: '12%', description: '五人底池 13BB。Flop (8♦ 5♥ K♣) 你有兩頭順聽牌。你過牌，UTG 下注 3BB，MP 跟注，BTN 跟注。輪到你，只需再補 3BB。', potSize: 22, options: ['Fold', 'Call', 'Raise'], feedbacks: {
+        'Call': { judgment: '正確', score: 10, bestAction: 'Call', why: '3BB 進 22BB 的池，只需 12% 勝率——你的兩頭順有 17% 直接命中率加上巨大的隱含賠率（中了順子有三個人付你錢）。', conceptualError: '無', remember: '多人池是聽牌的天堂：便宜的價格 + 成倍的隱含賠率。', nextStepId: 'next_hand' },
+        'Raise': { judgment: '錯誤', score: 2, bestAction: 'Call', why: '三個對手在場，fold equity 趨近於零，半詐唬失去了一半的意義。', conceptualError: '對人群半詐唬。', remember: '半詐唬要在有人會棄牌時才成立。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '錯誤', score: 1, bestAction: 'Call', why: '7 倍賠率的跟注送上門還丟掉。', conceptualError: '看不見賠率。', remember: '先算價格再做決定——這是送分題。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '76', title: 'A8o 讓一手等升級', category: ['ICM 壓力', '錦標賽', '短碼策略'], difficulty: '進階', type: 'Tournament', blinds: '5000/10000', ante: true, tourneyInfo: '決賽桌剩 5 人，桌上另有一位 3BB 即將被盲光的玩家，獎金跳升極大', userStack: '80000', userBB: 8, position: 'UTG', holeCards: [S('A'), D('8')], preAction: '輪到你首位行動', effectiveStack: '8BB',
+    steps: [
+      { id: '1', street: 'Preflop', communityCards: [], description: '你 8BB 持 A8o 在 UTG。桌上有位 3BB 的玩家下一輪就會被盲注吃光。', potSize: 2.5, options: ['Fold', 'Call', 'All-in'], feedbacks: {
+        'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: '純籌碼 EV 這是推，但那位 3BB 玩家幾乎確定先出局——多熬一圈就升一級獎金。A8o 全下被跟注的風險，換不回這個近在眼前的 $EV 階梯。', conceptualError: '無', remember: 'ICM 的黃金法則：有人快出局時，你的推牌範圍要跟著他的倒數計時收緊。', nextStepId: 'next_hand' },
+        'All-in': { judgment: '偏鬆', score: 4, bestAction: 'Fold', why: '平時 8BB 的 A8o 是標準推，但現在多等一手可能就是一級獎金的差距。', conceptualError: '用 cEV 表打 $EV 局。', remember: '推牌表是基準，ICM 是修正——決賽桌永遠先看後者。', nextStepId: 'next_hand' },
+        'Call': { judgment: '錯誤', score: 0, bestAction: 'Fold', why: '8BB limp 進池，翻後沒中只能棄，等於白丟一顆大盲。', conceptualError: '短碼被動入池。', remember: '8BB 的世界只有推或棄。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '77', title: '衛星賽短碼要反著打', category: ['ICM 壓力', '錦標賽', '短碼策略'], difficulty: '進階', type: 'Tournament', blinds: '4000/8000', ante: true, tourneyInfo: '衛星賽：12 人剩 11 個名額，但你只剩 4BB，盲注一圈就會吃光你', userStack: '32000', userBB: 4, position: 'CO', holeCards: [C_('A'), D('7')], preAction: '前位皆棄牌', effectiveStack: '4BB',
+    steps: [
+      { id: '1', street: 'Preflop', communityCards: [], description: '衛星賽泡沫，但你是全場最短的 4BB。你在 CO 持 A7o。', potSize: 2.5, options: ['Fold', 'Call', 'All-in'], feedbacks: {
+        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: '和籌碼安全時的衛星策略完全相反：你的 4BB 熬不到名額，盲注正在倒數。A7o 已是你等得到的最好牌之一，趁還有 fold equity 搶先全下翻倍。', conceptualError: '無', remember: '衛星賽兩張臉：碼夠的人連 AA 都能蓋，碼不夠的人拿 A 高就要衝。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '錯誤', score: 2, bestAction: 'All-in', why: '棄到死是這個籌碼量最確定的出局方式——你在替別人保住名額。', conceptualError: '把安全玩家的策略抄過來用。', remember: '先算自己能不能熬到名額，再決定要不要縮。', nextStepId: 'next_hand' },
+        'Call': { judgment: '錯誤', score: 0, bestAction: 'All-in', why: '4BB limp 沒有任何戰略意義。', conceptualError: '無計畫入池。', remember: '4BB 就是一顆全下按鈕。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '78', title: '泡沫期挑短碼打', category: ['ICM 壓力', '錦標賽', '短碼策略'], difficulty: '中階', type: 'Tournament', blinds: '2000/4000', ante: true, tourneyInfo: '泡沫期，盲注位分別剩 10BB 與 9BB，你 12BB', userStack: '48000', userBB: 12, position: 'BTN', holeCards: [D('A'), D('4')], preAction: '前位皆棄牌', effectiveStack: '12BB',
+    steps: [
+      { id: '1', street: 'Preflop', communityCards: [], description: '泡沫期，你在 BTN 持 A4s (12BB)，身後盲注位分別是 10BB 和 9BB。', potSize: 2.5, options: ['Fold', 'Raise', 'All-in'], feedbacks: {
+        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: '泡沫期打架要挑比你短的：他們每一次跟注都賭上整個賽事，你輸了卻還活著。ICM 把你的 fold equity 放大到平時的兩倍，A4s 綽綽有餘。', conceptualError: '無', remember: '泡沫期的籌碼階級：壓比你短的，躲比你長的。', nextStepId: 'next_hand' },
+        'Raise': { judgment: '錯誤', score: 2, bestAction: 'All-in', why: '12BB 小加注等於給他們免費的 re-shove 機會，你反而變成被壓的那方。', conceptualError: '留了不該留的空間。', remember: '12BB 沒有 raise/fold 這個選項。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '偏緊', score: 4, bestAction: 'All-in', why: '放掉了 ICM 加持下最有利可圖的全下位置。', conceptualError: '泡沫期只想守。', remember: '泡沫期不只是生存賽，也是收租季。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '79', title: '頂對面對河牌小注', category: ['抓雞/Bluff Catch', '控池'], difficulty: '中階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'HJ', holeCards: [S('A'), D('J')], preAction: '你 Open 3BB，BB Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'River', communityCards: [H('J'), C_('8'), D('4'), S('Q'), H('3')], potOdds: '18%', description: 'Flop 你 C-bet 2BB 被跟。Turn (Q♠) 雙方過牌。River 3♥，BB 領打小注 3BB。底池 13.5BB。', potSize: 13.5, options: ['Fold', 'Call', 'Raise'], feedbacks: {
+        'Call': { judgment: '正確', score: 10, bestAction: 'Call', why: '四分之一池的小注只需要 18% 勝率就打平。這種尺寸多半是薄價值或阻擋性下注，你的頂對 J 對抗它的範圍還有大把勝率。', conceptualError: '無', remember: '對小注棄牌要非常吝嗇——那是全桌最便宜的攤牌票。', nextStepId: 'next_hand' },
+        'Raise': { judgment: '偏鬆', score: 4, bestAction: 'Call', why: '把他的弱價值變詐唬理論上存在，但他小注後願意跟大注的範圍不會比你的 Jx 差。', conceptualError: '不必要的複雜化。', remember: '有攤牌價值時，簡單的跟注常是最高 EV。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '錯誤', score: 2, bestAction: 'Call', why: '對 18% 的價格棄掉頂對，會被任何會用小注試探的對手長期收割。', conceptualError: '對任何下注都給予同等尊重。', remember: '尊重要看尺寸——小注只值小尊重。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '80', title: '被動玩家河牌突然加注', category: ['抓雞/Bluff Catch'], villainProfile: 'Loose Passive (休閒跟注型)', difficulty: '新手', type: 'Cash Game', blinds: '1/3', ante: false, userStack: '300', userBB: 100, position: 'MP', holeCards: [S('K'), C_('K')], preAction: '你 Open 3BB，BB Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'River', communityCards: [D('Q'), S('7'), H('4'), D('5'), C_('2')], description: 'Flop 你下注 3BB、Turn 下注 8BB 都被跟。River 2♣ 你下注 14BB，BB 突然加注全下 60BB。底池 42.5BB。', potSize: 42.5, options: ['Fold', 'Call'], feedbacks: {
+        'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: '整手被動跟注的休閒玩家，河牌的突然加注不是詐唬——是 67、44、Q7 這些你想不到的兩對三條。KK 在這裡付錢純屬自願捐款。', conceptualError: '無', remember: '被動玩家的加注是全撲克最誠實的訊號，尤其在河牌。', nextStepId: 'next_hand' },
+        'Call': { judgment: '錯誤', score: 2, bestAction: 'Fold', why: '「他怎麼可能有牌」是對休閒玩家最貴的誤解——他們跟三條街的理由你永遠猜不到。', conceptualError: '用常規範圍讀休閒玩家。', remember: '對休閒玩家：多下價值注，但他反擊時立刻相信他。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '81', title: '雙過牌後的河牌超額下注', category: ['抓雞/Bluff Catch'], difficulty: '進階', type: 'Cash Game', blinds: '2/5', ante: false, userStack: '500', userBB: 100, position: 'BB', holeCards: [S('9'), C_('9')], preAction: 'BTN Open 2.5BB，你 Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'River', communityCards: [D('K'), S('7'), H('4'), C_('2'), H('6')], potOdds: '38%', description: 'Flop (K♦ 7♠ 4♥) 與 Turn (2♣) 雙方都過牌。River 6♥ 你過牌，BTN 突然超額下注 15BB。底池 9.5BB。', potSize: 9.5, options: ['Fold', 'Call'], feedbacks: {
+        'Call': { judgment: '正確', score: 10, bestAction: 'Call', why: '兩條街的過牌已經把他的範圍鎖在弱牌區——真正的 Kx 很少連過兩街。河牌突然的超額下注與他自己講的故事自相矛盾，這種線的詐唬濃度極高。', conceptualError: '無', remember: '抓雞看故事的連貫性：前後矛盾的大注，多半是空氣在虛張聲勢。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '偏緊', score: 4, bestAction: 'Call', why: '38% 的門檻面對一條几乎不含價值牌的下注線，你的 99 綽綽有餘。', conceptualError: '被尺寸嚇到忘了讀範圍。', remember: '下注大小是嚇人用的，範圍組成才是真相。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '82', title: '同花聽牌面對全下的純數學', category: ['同花聽牌', '聽牌打法'], difficulty: '中階', type: 'Tournament', blinds: '600/1200', ante: true, tourneyInfo: '中期', userStack: '30000', userBB: 25, position: 'BB', holeCards: [H('K'), H('Q')], preAction: 'BTN Open 2.2BB，你 Call', effectiveStack: '15BB (對 BTN)',
+    steps: [
+      { id: '1', street: 'Flop', communityCards: [H('9'), H('6'), S('2')], potOdds: '42%', description: '底池 6BB。Flop (9♥ 6♥ 2♠) 你有 K 高同花聽牌加兩張超牌。BTN 直接全下 15BB。', potSize: 21, options: ['Fold', 'Call'], feedbacks: {
+        'Call': { judgment: '正確', score: 10, bestAction: 'Call', why: '需要 42% 勝率：9 張同花 outs 約 35%，加上 K/Q 超牌對抗他的中小對全下範圍，實際勝率約 45%。看起來像英雄跟注，其實是純數學。', conceptualError: '無', remember: '面對全下沒有後續決策，只剩一道算術題——算完就照答案做。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '偏緊', score: 4, bestAction: 'Fold', why: '直覺上「沒成牌就蓋」，但這裡的組合勝率已經超過價格。', conceptualError: '把聽牌當空氣。', remember: '大聽牌對抗全下常常是領先或五五開，別憑感覺蓋。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '83', title: '非堅果同花對上岩石的加注', category: ['同花聽牌', '抓雞/Bluff Catch'], villainProfile: 'Tight Passive (岩石)', difficulty: '進階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'BTN', holeCards: [S('9'), S('8')], preAction: 'CO Open 3BB，你 Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'Turn', communityCards: [S('A'), S('6'), H('2'), S('Q')], description: 'Flop (A♠ 6♠ 2♥) CO C-bet 4BB 你跟注。Turn Q♠ 完成你的同花，CO 過牌，你下注 10BB，CO 突然 check-raise 到 32BB。底池 57.5BB。', potSize: 57.5, options: ['Fold', 'Call', 'All-in'], feedbacks: {
+        'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: '岩石的 check-raise 就是堅果區：K♠J♠、J♠T♠ 的更大同花，或者準備在配對河牌反超的 set。你的 9 高花對他而言只是抓雞牌，而岩石不詐唬。', conceptualError: '無', remember: '同花分大小，對手分類型——非堅果花碰上岩石的加注，先想想誰會這樣打。', nextStepId: 'next_hand' },
+        'Call': { judgment: '偏鬆', score: 4, bestAction: 'Fold', why: '跟注後河牌面對第二槍，你的處境只會更糟。', conceptualError: '捨不得成牌。', remember: '成牌不是終點，相對牌力才是。', nextStepId: 'next_hand' },
+        'All-in': { judgment: '錯誤', score: 0, bestAction: 'Fold', why: '對岩石的加注全下 9 高花，只有更大的花會跟你。', conceptualError: '無視對手類型的自信。', remember: '對岩石升級對抗是資金自殺。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '84', title: '對手全落空:過牌勝過薄價值', category: ['Value Bet', '抓雞/Bluff Catch'], villainProfile: 'Aggressive Reg (會開槍的常客)', difficulty: '進階', type: 'Cash Game', blinds: '2/5', ante: false, userStack: '500', userBB: 100, position: 'MP', holeCards: [S('K'), C_('Q')], preAction: '你 Open 3BB，BTN Call', effectiveStack: '100BB',
+    steps: [
+      { id: '1', street: 'River', communityCards: [D('K'), D('9'), S('4'), C_('7'), H('2')], description: 'Flop (K♦ 9♦ 4♠) 你 C-bet 3BB 被跟，Turn (7♣) 下注 9BB 被跟。River 2♥ 方塊全落空。底池 31.5BB，你先行動。', potSize: 31.5, options: ['Check', 'Bet half pot', 'Bet big'], feedbacks: {
+        'Check': { judgment: '正確', score: 10, bestAction: 'Check', why: '兩條街下注已把他的範圍過濾成大量方塊聽牌加少數 9x/Kx。落空的聽牌不會跟你第三槍，但只要你過牌，它們就可能變成詐唬——過牌-跟注的期望超過薄價值。', conceptualError: '無', remember: '河牌下注前先問：他跟得起的牌多，還是他會拿來詐唬的牌多？', nextStepId: 'next_hand' },
+        'Bet half pot': { judgment: '可接受', score: 6, bestAction: 'Check', why: '能收到一點 9x 的跟注，但同時放走了他所有的落空詐唬——這是對這種對手的淨損失。', conceptualError: '對錯的對手做對的事。', remember: '同一手牌對跟注站下注、對會開槍的人過牌。', nextStepId: 'next_hand' },
+        'Bet big': { judgment: '錯誤', score: 2, bestAction: 'Check', why: '大注只會被壓制你的牌跟注，把自己變成半個詐唬。', conceptualError: '尺寸與目標完全脫節。', remember: '沒有明確目標範圍的下注就不該存在。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '85', title: 'SPR 中段的耐心 check-call', category: ['SPR', '控池', '邊緣牌'], difficulty: '中階', type: 'Tournament', blinds: '500/1000', ante: true, tourneyInfo: '中期', userStack: '40000', userBB: 40, position: 'BB', holeCards: [S('A'), S('J')], preAction: 'BTN Open 2.5BB，你 Call', effectiveStack: '40BB',
+    steps: [
+      { id: '1', street: 'Turn', communityCards: [D('J'), C_('8'), H('3'), D('6')], spr: 2.9, description: 'Flop (J♦ 8♣ 3♥) 你過牌跟注 3BB。Turn 6♦，你過牌，BTN 再下注 8BB。底池 20BB (SPR ≈ 3)。', potSize: 20, options: ['Fold', 'Call', 'Raise'], feedbacks: {
+        'Call': { judgment: '正確', score: 10, bestAction: 'Call', why: 'SPR 中段是最需要耐心的區間：頂對好踢跟得起兩條街，但主動加注只會被更強的範圍套住。維持 check-call，河牌再依他的第三槍與牌面做結。', conceptualError: '無', remember: 'SPR 低就套池、SPR 高就控池、SPR 中間就耐心——不搶戲、不棄守。', nextStepId: 'next_hand' },
+        'Raise': { judgment: '錯誤', score: 2, bestAction: 'Call', why: '加注後你只會被兩對以上繼續，等於自己宣判頂對出局。', conceptualError: '中等牌力搶主動權。', remember: '加注要嘛為價值要嘛為詐唬，頂對在這裡兩者都不是。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '偏緊', score: 3, bestAction: 'Call', why: '兩槍就放棄頂對頂踢太早，BTN 的下注範圍還很寬。', conceptualError: '對持續下注過度反應。', remember: '位置差就用 check-call 撐住,別把防守變投降。', nextStepId: 'next_hand' }
       }}
     ]
   }
