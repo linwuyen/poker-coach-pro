@@ -1,0 +1,6 @@
+{
+  "name": "德撲互動教練 (Poker Coach Pro)",
+  "description": "德州撲克互動訓練教練，透過模擬情境與即時回饋學習正確觀念與打法。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
