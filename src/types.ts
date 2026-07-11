@@ -49,3 +49,11 @@ export interface Scenario {
   effectiveStack: string;
   steps: ScenarioStep[];
 }
+
+export interface HistoryItem {
+  scenarioId: string;
+  category: string[];
+  score: number;
+  judgment: string;
+  timestamp: number;
+}
