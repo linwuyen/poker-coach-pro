@@ -16,7 +16,7 @@ import { getApiUrl } from './utils/api';
 import { playPokerSound } from './utils/sound';
 import { SUIT_SYMBOLS, parseCards } from './utils/cards';
 import { shuffleArray, reskinScenario, matchesSearch, getOptionBBLabel } from './utils/scenario';
-import { GTO_RANKS, isComboInGtoRange } from './utils/gto';
+import { GTO_RANKS, isComboInGtoRange, getComboMeta, calculateRangeStats, ComboMeta } from './utils/gto';
 import { isPositionMatch, parseSeatAction, isFolded, SIX_MAX_SEATS, NINE_MAX_SEATS } from './utils/table';
 import { MiniCard } from './components/MiniCard';
 import { clearHistory, createAttemptId, exportTrainingData, getReviewSchedule, importTrainingData, loadHistory, saveHistory } from './utils/history';
@@ -92,6 +92,8 @@ export default function App() {
   const [rightTab, setRightTab] = useState<'stats' | 'gto'>('stats');
   const [gtoPosition, setGtoPosition] = useState<string>('utg');
   const [hoveredGtoCombo, setHoveredGtoCombo] = useState<string | null>(null);
+  const [selectedGtoCombo, setSelectedGtoCombo] = useState<string | null>(null);
+  const [gtoCategoryFilter, setGtoCategoryFilter] = useState<'all' | 'pair' | 'suited' | 'offsuit'>('all');
 
   // GTO Preflop Quiz Game states
   const [gtoSubTab, setGtoSubTab] = useState<'view' | 'quiz'>('view');
@@ -1690,49 +1692,109 @@ export default function App() {
                 
                  {/* Position selector tabs - only show in view mode */}
                  {gtoSubTab === 'view' && (
-                   <div className="grid grid-cols-4 gap-1.5">
-                     {(tableSize === '9max' ? [
-                       { key: 'utg', label: 'UTG 槍口', pct: '10%' },
-                       { key: 'utg1', label: 'UTG+1', pct: '12%' },
-                       { key: 'utg2', label: 'UTG+2', pct: '14%' },
-                       { key: 'mp', label: 'MP 中位', pct: '16%' },
-                       { key: 'hj', label: 'HJ 劫持', pct: '19%' },
-                       { key: 'co', label: 'CO 關位', pct: '26%' },
-                       { key: 'btn', label: 'BTN 莊家', pct: '45%' },
-                       { key: 'sb', label: 'SB 小盲', pct: '48%' }
-                     ] : [
-                       { key: 'utg', label: 'UTG 槍口', pct: '15%' },
-                       { key: 'co', label: 'CO 關位', pct: '26%' },
-                       { key: 'btn', label: 'BTN 莊家', pct: '45%' },
-                       { key: 'sb', label: 'SB 小盲', pct: '52%' }
-                     ]).map(pos => (
-                       <button
-                         key={pos.key}
-                         onClick={() => {
-                           playPokerSound('click', isMuted);
-                           setGtoPosition(pos.key);
-                         }}
-                         className={`py-1 rounded-lg text-[9px] sm:text-[10px] font-bold transition-all border leading-tight ${
-                           gtoPosition === pos.key
-                             ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400 font-extrabold shadow-sm shadow-emerald-500/5'
-                             : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-slate-200'
-                         }`}
-                       >
-                         <div>{pos.label}</div>
-                         <div className="text-[7.5px] sm:text-[8px] font-normal opacity-70">範圍 {pos.pct}</div>
-                       </button>
-                     ))}
+                   <div className="space-y-2">
+                     <div className="grid grid-cols-4 gap-1.5">
+                       {(tableSize === '9max' ? [
+                         { key: 'utg', label: 'UTG 槍口' },
+                         { key: 'utg1', label: 'UTG+1' },
+                         { key: 'utg2', label: 'UTG+2' },
+                         { key: 'mp', label: 'MP 中位' },
+                         { key: 'hj', label: 'HJ 劫持' },
+                         { key: 'co', label: 'CO 關位' },
+                         { key: 'btn', label: 'BTN 莊家' },
+                         { key: 'sb', label: 'SB 小盲' }
+                       ] : [
+                         { key: 'utg', label: 'UTG 槍口' },
+                         { key: 'co', label: 'CO 關位' },
+                         { key: 'btn', label: 'BTN 莊家' },
+                         { key: 'sb', label: 'SB 小盲' }
+                       ]).map(pos => {
+                         const stats = calculateRangeStats(pos.key, tableSize);
+                         return (
+                           <button
+                             key={pos.key}
+                             onClick={() => {
+                               playPokerSound('click', isMuted);
+                               setGtoPosition(pos.key);
+                             }}
+                             className={`py-1.5 px-1 rounded-lg text-[9px] sm:text-[10px] font-bold transition-all border leading-tight ${
+                               gtoPosition === pos.key
+                                 ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400 font-extrabold shadow-sm shadow-emerald-500/5 ring-1 ring-emerald-500/20'
+                                 : 'bg-slate-950 border-slate-850 text-slate-400 hover:text-slate-200'
+                             }`}
+                           >
+                             <div>{pos.label}</div>
+                             <div className="text-[7.5px] sm:text-[8px] font-mono font-normal opacity-80 text-emerald-400/90">{stats.percentage} ({stats.totalCombos}c)</div>
+                           </button>
+                         );
+                       })}
+                     </div>
+
+                     {/* Category Filter Controls */}
+                     <div className="flex items-center justify-between gap-1 p-1 bg-slate-950/80 rounded-lg border border-slate-850 text-[9px]">
+                       <span className="text-slate-400 font-bold px-1.5">種類篩選:</span>
+                       <div className="flex items-center gap-1">
+                         {[
+                           { key: 'all', label: '全部' },
+                           { key: 'pair', label: '對子 🟢' },
+                           { key: 'suited', label: '同花 🔷' },
+                           { key: 'offsuit', label: '非同花 🔹' }
+                         ].map(filter => (
+                           <button
+                             key={filter.key}
+                             onClick={() => setGtoCategoryFilter(filter.key as any)}
+                             className={`px-2 py-0.5 rounded transition-all font-medium ${
+                               gtoCategoryFilter === filter.key
+                                 ? 'bg-slate-800 text-white font-bold border border-slate-700 shadow-sm'
+                                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                             }`}
+                           >
+                             {filter.label}
+                           </button>
+                         ))}
+                       </div>
+                     </div>
                    </div>
                  )}
+
+                {/* Range Stats Bar */}
+                {(() => {
+                  const stats = calculateRangeStats(gtoSubTab === 'quiz' ? quizPosition : gtoPosition, tableSize);
+                  return (
+                    <div className="w-full max-w-[340px] mx-auto p-2 bg-slate-950/90 rounded-xl border border-slate-850 text-[9.5px] space-y-1.5">
+                      <div className="flex items-center justify-between font-mono">
+                        <span className="text-slate-300 font-bold">
+                          {gtoSubTab === 'quiz' ? quizPosition.toUpperCase() : gtoPosition.toUpperCase()} 開牌 VPIP:
+                          <span className="text-emerald-400 ml-1 text-xs font-black">{stats.percentage}</span>
+                        </span>
+                        <span className="text-slate-400">
+                          {stats.totalCombos} / 1326 組合
+                        </span>
+                      </div>
+
+                      {/* Stacked Proportional Bar */}
+                      <div className="h-2.5 w-full bg-slate-900 rounded-full overflow-hidden flex border border-slate-800">
+                        <div style={{ width: stats.pairPct }} className="bg-emerald-500 transition-all duration-300" title={`對子 Pair: ${stats.pairCombos} 組合 (${stats.pairPct})`} />
+                        <div style={{ width: stats.suitedPct }} className="bg-teal-400 transition-all duration-300" title={`同花 Suited: ${stats.suitedCombos} 組合 (${stats.suitedPct})`} />
+                        <div style={{ width: stats.offsuitPct }} className="bg-cyan-500 transition-all duration-300" title={`非同花 Offsuit: ${stats.offsuitCombos} 組合 (${stats.offsuitPct})`} />
+                      </div>
+
+                      <div className="flex items-center justify-between text-[8px] font-mono text-slate-400 pt-0.5">
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />對子: {stats.pairCombos}c ({stats.pairPct})</span>
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-400" />同花: {stats.suitedCombos}c ({stats.suitedPct})</span>
+                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />非同花: {stats.offsuitCombos}c ({stats.offsuitPct})</span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* The 13x13 interactive matrix */}
                 <div className="flex flex-col items-center">
                   <div className="grid grid-cols-13 gap-[2px] w-full max-w-[340px] aspect-square">
                     {GTO_RANKS.map((r1, rowIdx) => (
                       GTO_RANKS.map((r2, colIdx) => {
-                        // Determine combo name
                         let combo = '';
-                        let type = 'pair'; // 'pair', 'suited', 'offsuit'
+                        let type: 'pair' | 'suited' | 'offsuit' = 'pair';
                         if (rowIdx === colIdx) {
                           combo = `${r1}${r2}`;
                           type = 'pair';
@@ -1745,14 +1807,14 @@ export default function App() {
                         }
 
                         const active = isComboInGtoRange(combo, gtoPosition, tableSize);
-                        
+                        const isMatchedCategory = gtoCategoryFilter === 'all' || gtoCategoryFilter === type;
+                        const isTargetHand = combo === quizCombo;
+
                         let bgStyle = 'bg-slate-950 text-slate-700 hover:bg-slate-850';
                         let borderStyle = '';
-                        const isTargetHand = combo === quizCombo;
 
                         if (gtoSubTab === 'quiz') {
                           if (!quizSelectedAction) {
-                            // Closed-book mode: hide colors
                             if (isTargetHand) {
                               bgStyle = 'bg-slate-900 text-white font-bold';
                               borderStyle = 'border-2 border-amber-400 animate-pulse scale-105 z-10';
@@ -1760,7 +1822,6 @@ export default function App() {
                               bgStyle = 'bg-slate-950/40 text-slate-800 opacity-20';
                             }
                           } else {
-                            // Answered mode: reveal colors and highlight target
                             if (active) {
                               bgStyle = type === 'pair'
                                 ? 'bg-emerald-500 text-emerald-950 font-bold border border-emerald-400/30'
@@ -1775,7 +1836,6 @@ export default function App() {
                             }
                           }
                         } else {
-                          // Normal View Mode: show range colors
                           if (active) {
                             bgStyle = type === 'pair'
                               ? 'bg-emerald-500 text-emerald-950 border border-emerald-400/30 font-bold'
@@ -1787,12 +1847,22 @@ export default function App() {
                           }
                         }
 
+                        if (!isMatchedCategory && gtoSubTab === 'view') {
+                          bgStyle += ' opacity-25 filter grayscale';
+                        }
+
                         return (
                           <div
                             key={combo}
                             onMouseEnter={() => setHoveredGtoCombo(combo)}
                             onMouseLeave={() => setHoveredGtoCombo(null)}
-                            className={`aspect-square rounded-[2px] flex items-center justify-center text-[8px] font-mono font-medium transition-all cursor-crosshair select-none relative group ${bgStyle} ${borderStyle}`}
+                            onClick={() => {
+                              playPokerSound('click', isMuted);
+                              setSelectedGtoCombo(selectedGtoCombo === combo ? null : combo);
+                            }}
+                            className={`aspect-square rounded-[2px] flex items-center justify-center text-[8px] font-mono font-medium transition-all cursor-pointer select-none relative group ${bgStyle} ${borderStyle} ${
+                              selectedGtoCombo === combo ? 'ring-2 ring-amber-400 scale-110 z-20 shadow-lg' : ''
+                            }`}
                             title={`${combo}: ${active ? '推薦 RFI 加注開牌' : '推薦棄牌'}`}
                           >
                             <span className="scale-[0.85] sm:scale-100">{combo}</span>
@@ -1802,7 +1872,7 @@ export default function App() {
                     ))}
                   </div>
 
-                  {/* Range Info Footer */}
+                  {/* Range Info & Hover Detail Footer */}
                   <div className="w-full max-w-[340px] mt-3 p-2.5 bg-slate-950/80 border border-slate-850 rounded-xl text-[10px] leading-normal flex items-center justify-between text-slate-400 font-mono">
                     <div>
                       <span className="font-bold text-slate-300">目前選定: </span>
@@ -1830,11 +1900,65 @@ export default function App() {
                           })
                         </div>
                       ) : (
-                        <span className="text-slate-500">指針懸停儲存格看建議</span>
+                        <span className="text-slate-500">點擊或懸停格子看詳細分析</span>
                       )}
                     </div>
                   </div>
                 </div>
+
+                {/* Selected Combo Modal / Detail Card */}
+                {selectedGtoCombo && (
+                  <div className="w-full max-w-[340px] mx-auto p-3.5 bg-slate-900 border border-amber-400/40 rounded-xl text-slate-200 text-[10px] space-y-2 relative shadow-xl shadow-amber-500/5 animate-in fade-in zoom-in-95">
+                    {(() => {
+                      const meta = getComboMeta(selectedGtoCombo);
+                      const inRange = isComboInGtoRange(selectedGtoCombo, gtoPosition, tableSize);
+                      return (
+                        <>
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg font-black font-mono text-amber-400">{meta.combo}</span>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                                {meta.category}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setSelectedGtoCombo(null)}
+                              className="text-slate-400 hover:text-white p-1"
+                            >
+                              ✕
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-[9.5px]">
+                            <div className="p-2 bg-slate-950/70 rounded-lg border border-slate-800">
+                              <div className="text-slate-400 text-[8.5px]">位置建議 ({gtoPosition.toUpperCase()})</div>
+                              <div className={`font-bold mt-0.5 ${inRange ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {inRange ? '✅ 加注 2.0-2.5 BB (RFI)' : '❌ 直接棄牌 FOLD'}
+                              </div>
+                            </div>
+                            <div className="p-2 bg-slate-950/70 rounded-lg border border-slate-800">
+                              <div className="text-slate-400 text-[8.5px]">組合數與型別</div>
+                              <div className="font-bold text-white mt-0.5 font-mono">
+                                {meta.combosCount} 組合 ({meta.type.toUpperCase()})
+                              </div>
+                            </div>
+                          </div>
+
+                          <p className="text-slate-300 leading-relaxed bg-slate-950/40 p-2 rounded-lg border border-slate-850 font-mono">
+                            {meta.description}
+                          </p>
+
+                          {meta.blockerNotes && (
+                            <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-[9px] flex items-center gap-1.5">
+                              <Zap className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                              <span>{meta.blockerNotes}</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 <div className="p-3 bg-slate-950/40 rounded-xl border border-slate-850 text-[10px] text-slate-400 leading-relaxed space-y-1.5">
                   <p className="font-bold text-slate-300 flex items-center gap-1">
@@ -1844,7 +1968,7 @@ export default function App() {
                   <ul className="list-disc pl-4 space-y-0.5 text-[9.5px]">
                     <li>在上游位置 (如 UTG) 應保持緊湊開牌；在下游位置 (如 BTN) 則可大幅拓寬搶奪盲注。</li>
                     <li><span className="text-emerald-400 font-bold">綠色</span>代表口袋對子 (Pairs)；<span className="text-teal-400 font-bold">青色</span>代表同花組合 (Suited)；<span className="text-cyan-400 font-bold">藍色</span>代表不同花組合 (Offsuit)。</li>
-                    <li>本表適用於 100BB 籌碼深度的經典 GTO 六人桌開局指引。</li>
+                    <li>點擊任何手牌格子即可開啟「手牌組合數 (Combos) 與 Blocker 阻擋牌效益卡片」。</li>
                   </ul>
                 </div>
               </div>
