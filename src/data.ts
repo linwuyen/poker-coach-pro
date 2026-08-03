@@ -854,5 +854,107 @@ export const scenarios: Scenario[] = [
         'Fold': { judgment: '偏緊', score: 3, bestAction: 'Call', why: '兩槍就放棄頂對頂踢太早，BTN 的下注範圍還很寬。', conceptualError: '對持續下注過度反應。', remember: '位置差就用 check-call 撐住,別把防守變投降。', nextStepId: 'next_hand' }
       }}
     ]
+  },
+  {
+    id: '86', title: '多街：BTN KQ 頂對控池與河牌薄價值', category: ['控池', 'Value Bet', 'SPR'], difficulty: '中階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'BTN', holeCards: [S('K'), D('Q')], preAction: 'CO 棄牌，你在 BTN Open 2.5BB，BB Call', effectiveStack: '100BB',
+    steps: [
+      { id: 'flop', street: 'Flop', communityCards: [H('K'), C_('8'), D('3')], potSize: 5.5, description: 'BB 過牌。你持頂對好踢腳，乾燥牌面要如何建立第一街策略？', options: ['Check', 'Bet small', 'Bet big'], assumptions: ['6-max 現金桌', '對手為一般常規玩家', '不考慮抽水差異'], strategySource: '教學用範圍策略；非求解器唯一頻率', handState: { tableSize: '6max', potSizeBB: 5.5, heroStackBB: 97.5, actions: [
+        { street: 'Preflop', seat: 'BTN', action: 'raise', amountBB: 2.5, label: 'Open' },
+        { street: 'Preflop', seat: 'BB', action: 'call', amountBB: 2.5 },
+        { street: 'Flop', seat: 'BB', action: 'check' }
+      ] }, feedbacks: {
+        'Bet small': { judgment: '正確', score: 10, bestAction: 'Bet small', why: '乾燥 K-high 牌面適合用小尺寸讓 8x、口袋對與 A-high 繼續。', conceptualError: '無', remember: '乾面範圍優勢配小注，保留較差牌。', nextStepId: 'turn' },
+        'Check': { judgment: '可接受', score: 7, bestAction: 'Bet small', why: '過牌能保護過牌範圍，但會少拿一街價值。', conceptualError: '價值下注頻率略低。', remember: '頂對好踢腳通常可先拿小注價值。', nextStepId: 'turn' },
+        'Bet big': { judgment: '偏鬆', score: 3, bestAction: 'Bet small', why: '大注會讓許多較差牌直接棄牌，並把對手範圍收得太強。', conceptualError: '尺寸與目標範圍不匹配。', remember: '乾面不必一開始就把底池打大。', nextStepId: 'next_hand' }
+      }},
+      { id: 'turn', street: 'Turn', communityCards: [H('K'), C_('8'), D('3'), S('J')], potSize: 8.5, description: '你在 Flop 小注後被跟。Turn J♠，BB 過牌；這張牌讓部分聽牌與兩對出現。', options: ['Check', 'Bet half pot', 'Bet big'], handState: { tableSize: '6max', potSizeBB: 8.5, heroStackBB: 96, actions: [
+        { street: 'Preflop', seat: 'BTN', action: 'raise', amountBB: 2.5, label: 'Open' },
+        { street: 'Preflop', seat: 'BB', action: 'call', amountBB: 2.5 },
+        { street: 'Flop', seat: 'BB', action: 'check' },
+        { street: 'Flop', seat: 'BTN', action: 'bet', amountBB: 1.5 },
+        { street: 'Flop', seat: 'BB', action: 'call', amountBB: 1.5 },
+        { street: 'Turn', seat: 'BB', action: 'check' }
+      ] }, feedbacks: {
+        'Check': { judgment: '正確', score: 10, bestAction: 'Check', why: 'Q 踢腳頂對仍有攤牌價值，但 J 提升了 BB 的兩對與聽牌密度；過牌控制底池並誘發河牌詐唬。', conceptualError: '無', remember: '中等強度牌不必強求三街價值。', nextStepId: 'river' },
+        'Bet half pot': { judgment: '可接受', score: 6, bestAction: 'Check', why: '仍能被 Kx 弱踢或聽牌跟注，但被加注時很難處理。', conceptualError: '第二街價值略薄。', remember: '下注前先想好面對加注怎麼做。', nextStepId: 'river' },
+        'Bet big': { judgment: '錯誤', score: 2, bestAction: 'Check', why: '大注把較差一對趕走，留下兩對、暗三條與強聽牌。', conceptualError: '把一對打成套池牌。', remember: '牌面變動時要重新評估範圍。', nextStepId: 'next_hand' }
+      }},
+      { id: 'river', street: 'River', communityCards: [H('K'), C_('8'), D('3'), S('J'), C_('2')], potSize: 8.5, description: 'Turn 雙方過牌。River 2♣，BB 再次過牌。現在是否補上一街薄價值？', options: ['Check', 'Bet half pot', 'Bet big'], handState: { tableSize: '6max', potSizeBB: 8.5, heroStackBB: 96, actions: [
+        { street: 'Preflop', seat: 'BTN', action: 'raise', amountBB: 2.5, label: 'Open' },
+        { street: 'Preflop', seat: 'BB', action: 'call', amountBB: 2.5 },
+        { street: 'Flop', seat: 'BTN', action: 'bet', amountBB: 1.5 },
+        { street: 'Flop', seat: 'BB', action: 'call', amountBB: 1.5 },
+        { street: 'Turn', seat: 'BB', action: 'check' },
+        { street: 'Turn', seat: 'BTN', action: 'check' },
+        { street: 'River', seat: 'BB', action: 'check' }
+      ] }, feedbacks: {
+        'Bet half pot': { judgment: '正確', score: 10, bestAction: 'Bet half pot', why: '空白河牌後，Kx 弱踢、Jx 與部分 8x 仍可能支付中小尺寸。', conceptualError: '無', remember: '控池不是放棄價值，而是把價值移到更安全的街道。', nextStepId: 'next_hand' },
+        'Check': { judgment: '偏緊', score: 5, bestAction: 'Bet half pot', why: '攤牌幾乎總能贏，但錯過較差一對的支付。', conceptualError: '薄價值不足。', remember: '河牌沒有下一街，安全時要補價值。', nextStepId: 'next_hand' },
+        'Bet big': { judgment: '偏鬆', score: 3, bestAction: 'Bet half pot', why: '過大尺寸會讓想獲取價值的 Jx、8x 大量棄牌。', conceptualError: '價值尺寸過大。', remember: '薄價值要讓較差牌跟得起。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '87', title: '多街：同花聽牌半詐唬到河牌', category: ['同花聽牌', '聽牌打法', 'Blocker'], difficulty: '進階', type: 'Cash Game', blinds: '2/5', ante: false, userStack: '500', userBB: 100, position: 'CO', holeCards: [H('A'), H('5')], preAction: '你在 CO Open 2.5BB，BTN Call', effectiveStack: '100BB',
+    steps: [
+      { id: 'flop', street: 'Flop', communityCards: [H('K'), H('8'), C_('2')], potSize: 6.5, description: '你有堅果同花聽牌與後門順子可能，BTN 在你過牌後下注 2BB。', options: ['Fold', 'Call', 'Raise'], assumptions: ['100BB 無前注現金桌', 'BTN 為能棄牌的常規玩家'], strategySource: '教學用半詐唬線', handState: { tableSize: '6max', potSizeBB: 8.5, actions: [
+        { street: 'Preflop', seat: 'CO', action: 'raise', amountBB: 2.5, label: 'Open' },
+        { street: 'Preflop', seat: 'BTN', action: 'call', amountBB: 2.5 },
+        { street: 'Flop', seat: 'CO', action: 'check' },
+        { street: 'Flop', seat: 'BTN', action: 'bet', amountBB: 2 }
+      ] }, feedbacks: {
+        'Raise': { judgment: '正確', score: 10, bestAction: 'Raise', why: 'A♥5♥ 有高勝率、阻擋堅果同花與足夠 fold equity，適合成為 check-raise 半詐唬。', conceptualError: '無', remember: '最強聽牌可以同時靠勝率與棄牌率獲利。', nextStepId: 'turn' },
+        'Call': { judgment: '可接受', score: 7, bestAction: 'Raise', why: '跟注保留全部勝率，但沒有利用 A♥ 阻擋牌施壓。', conceptualError: '略偏被動。', remember: '有些聽牌不只值得跟，也值得加注。', nextStepId: 'turn' },
+        'Fold': { judgment: '錯誤', score: 0, bestAction: 'Raise', why: '面對小注棄掉堅果同花聽牌，放棄過多勝率。', conceptualError: '過度棄牌。', remember: '先比較 pot odds 與成牌機率。', nextStepId: 'next_hand' }
+      }},
+      { id: 'turn', street: 'Turn', communityCards: [H('K'), H('8'), C_('2'), D('Q')], potSize: 24, description: 'Flop check-raise 被跟。Turn Q♦ 未成花，你保有 A-high 與堅果同花聽牌。', options: ['Check', 'Bet half pot', 'Bet big'], handState: { tableSize: '6max', potSizeBB: 24, actions: [
+        { street: 'Preflop', seat: 'CO', action: 'raise', amountBB: 2.5, label: 'Open' },
+        { street: 'Preflop', seat: 'BTN', action: 'call', amountBB: 2.5 },
+        { street: 'Flop', seat: 'CO', action: 'raise', amountBB: 8, label: 'Check-Raise' },
+        { street: 'Flop', seat: 'BTN', action: 'call', amountBB: 6 },
+        { street: 'Turn', seat: 'CO', action: 'check' }
+      ] }, feedbacks: {
+        'Bet big': { judgment: '正確', score: 10, bestAction: 'Bet big', why: 'Q 改善你的 KQ、QQ 與強牌範圍；大尺寸可對 8x、弱 Kx 和中口袋對施壓。', conceptualError: '無', remember: '選擇有範圍優勢的牌繼續第二槍。', nextStepId: 'river' },
+        'Check': { judgment: '可接受', score: 6, bestAction: 'Bet big', why: '可以實現勝率，但放棄延續前一街故事的 fold equity。', conceptualError: '進攻線不連貫。', remember: '半詐唬要規劃哪些轉牌繼續。', nextStepId: 'river' },
+        'Bet half pot': { judgment: '偏鬆', score: 5, bestAction: 'Bet big', why: '方向正確，但小尺寸給對手太好的價格繼續所有成對牌。', conceptualError: '極化尺寸不足。', remember: '極化範圍通常需要較大尺寸。', nextStepId: 'river' }
+      }},
+      { id: 'river', street: 'River', communityCards: [H('K'), H('8'), C_('2'), D('Q'), S('4')], potSize: 60, description: 'River 4♠，同花沒有完成。對手在 Turn 跟注後 River 過牌到你。', options: ['Check', 'Bet big', 'All-in'], handState: { tableSize: '6max', potSizeBB: 60, heroStackBB: 70, actions: [
+        { street: 'Flop', seat: 'CO', action: 'raise', amountBB: 8, label: 'Check-Raise' },
+        { street: 'Flop', seat: 'BTN', action: 'call', amountBB: 6 },
+        { street: 'Turn', seat: 'CO', action: 'bet', amountBB: 18 },
+        { street: 'Turn', seat: 'BTN', action: 'call', amountBB: 18 },
+        { street: 'River', seat: 'CO', action: 'check' }
+      ] }, feedbacks: {
+        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: 'A♥ 阻擋對手最自然的堅果同花聽牌；你的線能代表 set、KQ 與兩對，適合作為河牌詐唬候選。', conceptualError: '無', remember: '錯過聽牌不代表自動放棄；先看阻擋牌與價值範圍。', nextStepId: 'next_hand' },
+        'Check': { judgment: '可接受', score: 6, bestAction: 'All-in', why: '放棄可避免高變異，但 A-high 很少能攤牌獲勝。', conceptualError: '詐唬不足。', remember: '選最好的 blocker 組合完成三街故事。', nextStepId: 'next_hand' },
+        'Bet big': { judgment: '偏鬆', score: 5, bestAction: 'All-in', why: '大注有壓力，但留下的籌碼讓極化故事不如全下完整。', conceptualError: '河牌尺寸與範圍不一致。', remember: '低 SPR 河牌極化通常使用全下。', nextStepId: 'next_hand' }
+      }}
+    ]
+  },
+  {
+    id: '88', title: '多街：18BB 錦標賽 3-bet pot', category: ['短碼策略', '錦標賽', 'SPR'], difficulty: '進階', type: 'Tournament', blinds: '1000/2000', ante: true, tourneyInfo: '中期，尚未接近錢圈', userStack: '36000', userBB: 18, position: 'BTN', holeCards: [S('A'), S('Q')], preAction: 'HJ Open 2.2BB，你在 BTN 3-bet All-in 前需決策', effectiveStack: '18BB',
+    steps: [
+      { id: 'preflop', street: 'Preflop', communityCards: [], potSize: 5.9, description: 'HJ 以一般範圍 Open 2.2BB。18BB、無顯著 ICM 壓力時如何處理 AQs？', options: ['Fold', 'Call', 'All-in'], assumptions: ['無顯著 ICM 壓力', 'HJ 為一般常規開池範圍'], strategySource: '教學用短碼策略', handState: { tableSize: '9max', potSizeBB: 5.9, heroStackBB: 18, actions: [
+        { street: 'Preflop', seat: 'HJ', action: 'raise', amountBB: 2.2, label: 'Open' }
+      ] }, feedbacks: {
+        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: 'AQs 對一般 HJ 開池範圍有足夠勝率，18BB 全下可取得 fold equity 並避免翻後低 SPR 困境。', conceptualError: '無', remember: '短碼強牌優先用全下實現全部勝率。', nextStepId: 'showdown' },
+        'Call': { judgment: '偏鬆', score: 4, bestAction: 'All-in', why: '平跟會邀請盲位入池，且剩餘 SPR 很低。', conceptualError: '短碼過度平跟。', remember: '18BB 要優先考慮可直接盈利的再加注全下。', nextStepId: 'flop' },
+        'Fold': { judgment: '錯誤', score: 0, bestAction: 'All-in', why: '無 ICM 壓力時棄掉 AQs 過緊。', conceptualError: '錯估強起手牌價值。', remember: '先區分 cEV 與 ICM 情境。', nextStepId: 'next_hand' }
+      }},
+      { id: 'flop', street: 'Flop', communityCards: [D('Q'), H('7'), C_('4')], potSize: 8.4, spr: 1.9, description: '你選擇平跟，盲位棄牌。Flop 頂對頂踢，HJ 下注 2.5BB。低 SPR 下如何回應？', options: ['Fold', 'Call', 'All-in'], handState: { tableSize: '9max', potSizeBB: 10.9, heroStackBB: 15.8, actions: [
+        { street: 'Preflop', seat: 'HJ', action: 'raise', amountBB: 2.2, label: 'Open' },
+        { street: 'Preflop', seat: 'BTN', action: 'call', amountBB: 2.2 },
+        { street: 'Flop', seat: 'HJ', action: 'bet', amountBB: 2.5 }
+      ] }, feedbacks: {
+        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: 'SPR 低於 2 且持頂對頂踢，直接全下可從 Qx、口袋對與聽牌取得價值。', conceptualError: '無', remember: '低 SPR 的強頂對通常已是套池牌。', nextStepId: 'showdown' },
+        'Call': { judgment: '可接受', score: 7, bestAction: 'All-in', why: '跟注能保留詐唬，但剩餘籌碼幾乎必然在後街投入。', conceptualError: '價值取得稍慢。', remember: '若跟注，要提前接受後街套池。', nextStepId: 'showdown' },
+        'Fold': { judgment: '錯誤', score: 0, bestAction: 'All-in', why: '低 SPR 頂對頂踢不能對小注棄牌。', conceptualError: '嚴重過度棄牌。', remember: 'SPR 決定一對牌願意投入多少。', nextStepId: 'next_hand' }
+      }},
+      { id: 'showdown', street: 'River', communityCards: [D('Q'), H('7'), C_('4'), S('2'), D('9')], potSize: 38, description: '教學回顧：牌面安全跑完。請選出這手牌最重要的原則。', options: ['Fold', 'Call', 'All-in'], feedbacks: {
+        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: '核心不是結果，而是 18BB AQs 翻前有足夠 cEV 全下；若平跟後中頂對，低 SPR 也應套池。', conceptualError: '無', remember: '先規劃整手牌，而不是每街重新臨時決定。', nextStepId: 'next_hand' },
+        'Call': { judgment: '可接受', score: 6, bestAction: 'All-in', why: '理解了牌力，但沒有把 fold equity 與低 SPR 納入完整規劃。', conceptualError: '缺乏整手牌計畫。', remember: '短碼決策從翻前就要規劃到攤牌。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '錯誤', score: 0, bestAction: 'All-in', why: '這條線中持續棄牌會錯失明顯的正期望值機會。', conceptualError: '結果導向與過度保守。', remember: '評估決策品質，不以單次輸贏判斷。', nextStepId: 'next_hand' }
+      }}
+    ]
   }
 ];

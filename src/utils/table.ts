@@ -1,3 +1,37 @@
+import { HandAction } from '../types';
+
+const actionAliases: Array<{ pattern: RegExp; label: string }> = [
+  { pattern: /all[- ]?in|shove|全下/i, label: 'All-In' },
+  { pattern: /4[- ]?bet/i, label: '4-Bet' },
+  { pattern: /3[- ]?bet/i, label: '3-Bet' },
+  { pattern: /check[- ]?raise|過牌加注/i, label: 'Check-Raise' },
+  { pattern: /open|steal|開牌/i, label: 'Open' },
+  { pattern: /raise|加注/i, label: 'Raise' },
+  { pattern: /donk|領打/i, label: 'Donk' },
+  { pattern: /bet|下注/i, label: 'Bet' },
+  { pattern: /call|跟注/i, label: 'Call' },
+  { pattern: /check|過牌/i, label: 'Check' },
+  { pattern: /fold|棄牌/i, label: 'Fold' },
+];
+
+function parseLegacySeatAction(seatKey: string, text: string, tableSize: '6max' | '9max') {
+  const aliases = seatKey === 'btn' ? ['btn', 'button', '莊家']
+    : seatKey === 'sb' ? ['sb', '小盲']
+    : seatKey === 'bb' ? ['bb', '大盲']
+    : seatKey === 'hj' && tableSize === '6max' ? ['hj', 'mp']
+    : [seatKey];
+  for (const alias of aliases) {
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const segment = text.match(new RegExp(`${escaped}[^，。；;]{0,48}`, 'i'))?.[0];
+    if (!segment) continue;
+    const action = actionAliases.find(item => item.pattern.test(segment));
+    if (!action) continue;
+    const amount = segment.match(/(\d+(?:\.\d+)?)\s*bb/i)?.[1];
+    return { actionText: action.label, betText: amount ? `${amount} BB` : '' };
+  }
+  return null;
+}
+
 export const isPositionMatch = (posA: string, posB: string, tableSize: '6max' | '9max' = '9max'): boolean => {
   const a = posA.toLowerCase().trim();
   const b = posB.toLowerCase().trim();
@@ -13,8 +47,20 @@ export const parseSeatAction = (
   preAction: string,
   description: string,
   position: string,
-  tableSize: '6max' | '9max' = '9max'
+  tableSize: '6max' | '9max' = '9max',
+  actions?: HandAction[]
 ) => {
+  if (actions?.length) {
+    const action = [...actions].reverse().find(item => isPositionMatch(item.seat, seatKey, tableSize));
+    if (action) {
+      const actionText = action.label || action.action.replace(/(^|[-_ ])\w/g, value => value.toUpperCase()).replace(/[-_]/g, ' ');
+      const betText = typeof action.amountBB === 'number' ? `${action.amountBB} BB` : '';
+      return { actionText, betText };
+    }
+    return { actionText: '', betText: '' };
+  }
+  const genericAction = parseLegacySeatAction(seatKey, `${preAction} ${description}`, tableSize);
+  if (genericAction) return genericAction;
   const text = (preAction + " " + description).toLowerCase();
   const sKey = seatKey.toLowerCase();
   const isH = isPositionMatch(seatKey, position, tableSize);
@@ -94,10 +140,19 @@ export const isFolded = (
   description: string,
   position: string,
   street: string,
-  tableSize: '6max' | '9max' = '9max'
+  tableSize: '6max' | '9max' = '9max',
+  actions?: HandAction[]
 ) => {
   const isH = isPositionMatch(seatKey, position, tableSize);
   if (isH) return false;
+
+  if (actions?.length) {
+    const seatActions = actions.filter(item => isPositionMatch(item.seat, seatKey, tableSize));
+    return seatActions.some(item => item.action.toLowerCase() === 'fold');
+  }
+
+  const genericAction = parseLegacySeatAction(seatKey, `${preAction} ${description}`, tableSize);
+  if (genericAction?.actionText === 'Fold') return true;
   
   const text = (preAction + " " + description).toLowerCase();
   const sKey = seatKey.toLowerCase();

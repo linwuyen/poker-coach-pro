@@ -1,0 +1,13 @@
+{
+  "name": "Poker Coach Pro",
+  "short_name": "Poker Coach",
+  "description": "德州撲克決策訓練、錯題複習與弱點分析",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "/poker-chip.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

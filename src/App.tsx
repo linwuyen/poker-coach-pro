@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { scenarios } from './data';
 import { CardUI } from './components/CardUI';
 import { Feedback, ActionType, Scenario, Card, HistoryItem } from './types';
@@ -8,7 +8,7 @@ import {
   Volume2, VolumeX, Star, Keyboard, Sparkles, Brain, MessageSquare,
   Search, Users
 } from 'lucide-react';
-import Markdown from 'react-markdown';
+const Markdown = React.lazy(() => import('./components/MarkdownRenderer'));
 import { generateOfflineAnalysis, generateOfflineFollowUp } from './utils/offlineAnalysis';
 import { CONCEPT_DISPLAY_NAMES, getScenarioCategories } from './utils/concepts';
 import { analyzeHandMath, evaluateHandStrength } from './utils/handMath';
@@ -19,6 +19,8 @@ import { shuffleArray, reskinScenario, matchesSearch, getOptionBBLabel } from '.
 import { GTO_RANKS, isComboInGtoRange } from './utils/gto';
 import { isPositionMatch, parseSeatAction, isFolded, SIX_MAX_SEATS, NINE_MAX_SEATS } from './utils/table';
 import { MiniCard } from './components/MiniCard';
+import { clearHistory, createAttemptId, exportTrainingData, getReviewSchedule, importTrainingData, loadHistory, saveHistory } from './utils/history';
+import { getWeakScenarioIds, summarizeBy } from './utils/analytics';
 
 export default function App() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
@@ -31,6 +33,8 @@ export default function App() {
   const [selectedAction, setSelectedAction] = useState<ActionType | null>(null);
   const [totalScore, setTotalScore] = useState(0);
   const [handsPlayed, setHandsPlayed] = useState(0);
+  const actionStartedAt = useRef(Date.now());
+  const scheduledReviewIds = useRef(new Set<string>());
 
   // Question Pool customizer settings (Shuffle & Deduplication)
   const [shuffleEnabled, setShuffleEnabled] = useState(() => {
@@ -78,6 +82,10 @@ export default function App() {
     } catch {
       return '9max';
     }
+  });
+  const [sessionSize, setSessionSize] = useState<10 | 20 | 'all'>(() => {
+    const saved = localStorage.getItem('poker_session_size');
+    return saved === '10' ? 10 : saved === 'all' ? 'all' : 20;
   });
 
   // GTO Preflop Matrix Visualizer states
@@ -191,14 +199,15 @@ export default function App() {
   });
 
   // Load / Save persistent training history
-  const [history, setHistory] = useState<HistoryItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('poker_training_history_v2');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
+
+  const recordHistory = (item: HistoryItem) => {
+    setHistory(previous => {
+      const updated = [...previous, item];
+      try { saveHistory(updated); } catch (error) { console.error(error); }
+      return updated;
+    });
+  };
 
   const toggleMute = () => {
     setIsMuted(prev => {
@@ -284,6 +293,25 @@ export default function App() {
     const isRecommended = isComboInGtoRange(quizCombo, quizPosition, tableSize);
     const correctAnswer = isRecommended ? 'raise' : 'fold';
     const isCorrect = action === correctAnswer;
+
+    recordHistory({
+      schemaVersion: 3,
+      attemptId: createAttemptId(),
+      trainingType: 'gto',
+      scenarioId: `gto-${tableSize}-${quizPosition}-${quizCombo}`,
+      stepId: 'preflop-rfi',
+      category: ['Preflop', 'GTO Range'],
+      score: isCorrect ? 10 : 0,
+      judgment: isCorrect ? '正確' : '錯誤',
+      timestamp: Date.now(),
+      selectedAction: action,
+      bestAction: correctAnswer,
+      street: 'Preflop',
+      position: quizPosition.toUpperCase(),
+      durationMs: Date.now() - actionStartedAt.current,
+      questionLabel: `${quizCombo} / ${quizPosition.toUpperCase()}`,
+      ...getReviewSchedule(isCorrect ? 10 : 0),
+    });
     
     // Update basic score
     setQuizScore(prev => ({
@@ -387,6 +415,7 @@ export default function App() {
     setAnalysisError(null);
     setAiChatHistory([]);
     setCustomQuestion("");
+    actionStartedAt.current = Date.now();
   }, [scenarioIndex, stepIndex]);
 
   // Rotate loading phrases when analyzing
@@ -513,6 +542,7 @@ export default function App() {
 
   const startGame = (difficulty: string) => {
     playPokerSound('click', isMuted);
+    scheduledReviewIds.current.clear();
     let filtered = scenarios;
 
     if (difficulty !== 'All') {
@@ -532,6 +562,7 @@ export default function App() {
     if (shuffleEnabled) {
       filtered = shuffleArray(filtered);
     }
+    if (sessionSize !== 'all') filtered = filtered.slice(0, sessionSize);
 
     setFilteredScenarios(filtered);
     setSelectedDifficulty(difficulty);
@@ -545,6 +576,7 @@ export default function App() {
 
   const startConceptTraining = (concept: string) => {
     playPokerSound('click', isMuted);
+    scheduledReviewIds.current.clear();
     let filtered = scenarios.filter(s => {
       const cats = getScenarioCategories(s);
       return cats.includes(concept);
@@ -559,6 +591,7 @@ export default function App() {
     if (shuffleEnabled) {
       filtered = shuffleArray(filtered);
     }
+    if (sessionSize !== 'all') filtered = filtered.slice(0, sessionSize);
 
     setFilteredScenarios(filtered);
     setSelectedDifficulty(`專項：${concept}`);
@@ -572,6 +605,7 @@ export default function App() {
 
   const startStarredTraining = () => {
     playPokerSound('click', isMuted);
+    scheduledReviewIds.current.clear();
     let filtered = scenarios.filter(s => starredIds.includes(s.id));
     if (filtered.length === 0) return;
 
@@ -588,6 +622,7 @@ export default function App() {
     if (shuffleEnabled) {
       filtered = shuffleArray(filtered);
     }
+    if (sessionSize !== 'all') filtered = filtered.slice(0, sessionSize);
 
     setFilteredScenarios(filtered);
     setSelectedDifficulty('我的星標收藏');
@@ -599,8 +634,28 @@ export default function App() {
     setHandsPlayed(0);
   };
 
+  const startWeaknessTraining = () => {
+    playPokerSound('click', isMuted);
+    scheduledReviewIds.current.clear();
+    const weakIds = getWeakScenarioIds(history, scenarios);
+    if (weakIds.length === 0) return;
+    let filtered = scenarios
+      .filter(s => weakIds.includes(s.id))
+      .map(s => reskinScenario({ ...s, title: s.title.replace(/\s*#\d+$/, ''), reviewSourceId: s.id }));
+    if (shuffleEnabled) filtered = shuffleArray(filtered);
+    setFilteredScenarios(filtered);
+    setSelectedDifficulty('弱點與錯題重練');
+    setScenarioIndex(0);
+    setStepIndex(0);
+    setFeedback(null);
+    setSelectedAction(null);
+    setTotalScore(0);
+    setHandsPlayed(0);
+  };
+
   const startSingleScenario = (scen: Scenario) => {
     playPokerSound('click', isMuted);
+    scheduledReviewIds.current.clear();
     const reskinned = reskinScenario({
       ...scen,
       title: scen.title.replace(/\s*#\d+$/, '')
@@ -618,8 +673,20 @@ export default function App() {
   const resetAllStats = () => {
     playPokerSound('click', isMuted);
     if (window.confirm('確定要清除所有生涯統計數據與答題歷史紀錄嗎？')) {
-      localStorage.removeItem('poker_training_history_v2');
+      clearHistory();
       setHistory([]);
+    }
+  };
+
+  const handleTrainingImport = async (file?: File) => {
+    if (!file) return;
+    try {
+      const imported = await importTrainingData(file);
+      setHistory(imported.history);
+      setStarredIds(imported.starredIds);
+      window.alert(`已匯入 ${imported.history.length} 筆訓練紀錄。`);
+    } catch (error: any) {
+      window.alert(error?.message || '匯入失敗。');
     }
   };
 
@@ -631,25 +698,12 @@ export default function App() {
     playPokerSound('click', isMuted);
 
     try {
-      const parsedHoleCards = customPocketCards.split(/[\s,]+/).filter(Boolean).map(cardStr => {
-        const rank = (cardStr[0]?.toUpperCase() || 'A') as any;
-        const suitChar = cardStr[1]?.toLowerCase() || 's';
-        let suit: any = 'spades';
-        if (suitChar === 'h' || suitChar === '♥') suit = 'hearts';
-        else if (suitChar === 'd' || suitChar === '♦') suit = 'diamonds';
-        else if (suitChar === 'c' || suitChar === '♣') suit = 'clubs';
-        return { rank, suit };
-      });
-
-      const parsedCommunityCards = customCommunityCards.split(/[\s,]+/).filter(Boolean).map(cardStr => {
-        const rank = (cardStr[0]?.toUpperCase() || '2') as any;
-        const suitChar = cardStr[1]?.toLowerCase() || 's';
-        let suit: any = 'spades';
-        if (suitChar === 'h' || suitChar === '♥') suit = 'hearts';
-        else if (suitChar === 'd' || suitChar === '♦') suit = 'diamonds';
-        else if (suitChar === 'c' || suitChar === '♣') suit = 'clubs';
-        return { rank, suit };
-      });
+      const parsedHoleCards = parseCards(customPocketCards);
+      const parsedCommunityCards = parseCards(customCommunityCards);
+      if (parsedHoleCards.length !== 2) throw new Error('請輸入剛好兩張有效手牌。');
+      if (![0, 3, 4, 5].includes(parsedCommunityCards.length)) throw new Error('公共牌必須是 0、3、4 或 5 張。');
+      const physicalCards = [...parsedHoleCards, ...parsedCommunityCards].map(card => `${card.rank}-${card.suit}`);
+      if (new Set(physicalCards).size !== physicalCards.length) throw new Error('手牌與公共牌不可出現重複實體牌。');
 
       const payload = {
         scenario: {
@@ -682,6 +736,21 @@ export default function App() {
       }
 
       setCustomAnalysisResult(data.analysis);
+      recordHistory({
+        schemaVersion: 3,
+        attemptId: createAttemptId(),
+        trainingType: 'custom',
+        scenarioId: `custom-${Date.now()}`,
+        stepId: 'analysis',
+        category: ['自訂牌局'],
+        score: 0,
+        judgment: '已分析',
+        timestamp: Date.now(),
+        street: payload.currentStep.street as any,
+        questionLabel: `${customPocketCards} / ${customCommunityCards || 'Preflop'}`,
+        notes: customActionDescription,
+        aiAnalysis: data.analysis,
+      });
     } catch (err: any) {
       console.error(err);
       setCustomAnalysisError(err.message || "診斷連線異常，請確認 API 金鑰或網路狀態。");
@@ -692,14 +761,15 @@ export default function App() {
 
   // Career Statistics Compilation
   const stats = useMemo(() => {
-    const total = history.length;
-    const totalScoreGained = history.reduce((sum, h) => sum + h.score, 0);
+    const scoredHistory = history.filter(item => item.trainingType !== 'custom');
+    const total = scoredHistory.length;
+    const totalScoreGained = scoredHistory.reduce((sum, h) => sum + h.score, 0);
     const avgScore = total > 0 ? (totalScoreGained / total).toFixed(1) : '0';
-    const accuracy = total > 0 ? ((history.filter(h => h.score >= 8).length / total) * 100).toFixed(0) : '0';
+    const accuracy = total > 0 ? ((scoredHistory.filter(h => h.score >= 8).length / total) * 100).toFixed(0) : '0';
     
     // Group stats by concept categories
     const conceptMap: Record<string, { total: number; score: number }> = {};
-    history.forEach(item => {
+    scoredHistory.forEach(item => {
       const cats = item.category || [];
       cats.forEach(c => {
         if (!conceptMap[c]) {
@@ -768,7 +838,22 @@ export default function App() {
       leakAdvice = '做得太棒了！您各項戰術觀念的精準度均維持在 80% 以上的高水準，GTO 模型極其穩健，並無明顯漏洞。請繼續迎接全部難度的混合挑戰！';
     }
 
-    return { total, avgScore, accuracy, conceptStats, title, titleColor, worstConcept, leakAdvice };
+    const streetStats = summarizeBy(scoredHistory, item => item.street);
+    const positionStats = summarizeBy(scoredHistory, item => item.position);
+    const recent = scoredHistory.slice(-20);
+    const recentAccuracy = recent.length ? Math.round(recent.filter(item => item.score >= 8).length / recent.length * 100) : 0;
+    const dueReviews = getWeakScenarioIds(scoredHistory, scenarios).length;
+    const dateKeys = new Set(scoredHistory.map(item => new Date(item.timestamp).toLocaleDateString('en-CA')));
+    const todayKey = new Date().toLocaleDateString('en-CA');
+    const todayCount = scoredHistory.filter(item => new Date(item.timestamp).toLocaleDateString('en-CA') === todayKey).length;
+    let dayStreak = 0;
+    const cursor = new Date();
+    while (dateKeys.has(cursor.toLocaleDateString('en-CA'))) {
+      dayStreak += 1;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+
+    return { total, avgScore, accuracy, conceptStats, title, titleColor, worstConcept, leakAdvice, streetStats, positionStats, recentAccuracy, dueReviews, todayCount, dayStreak };
   }, [history]);
 
   // Keyboard shortcut listener hook
@@ -1032,20 +1117,41 @@ export default function App() {
 
             {/* Quick Difficulty Start Cards */}
             <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2">
+                <span className="text-[10px] text-slate-500 uppercase tracking-widest">每次訓練長度</span>
+                <div className="flex gap-1">
+                  {([10, 20, 'all'] as const).map(size => (
+                    <button key={size} onClick={() => { setSessionSize(size); localStorage.setItem('poker_session_size', String(size)); }} className={`px-2 py-1 rounded text-[10px] font-bold ${sessionSize === size ? 'bg-emerald-500 text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800'}`}>
+                      {size === 'all' ? '全部' : `${size} 題`}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex justify-between items-center">
                 <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                   <Zap className="w-4 h-4 text-emerald-400" />
                   依難度快速開始
                 </h2>
-                {starredIds.length > 0 && (
-                  <button 
-                    onClick={startStarredTraining}
-                    className="text-[10px] text-amber-400 hover:text-amber-300 font-bold uppercase tracking-widest flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 border border-amber-500/25 rounded-full transition-all hover:scale-[1.02]"
-                  >
-                    <Star className="w-3.5 h-3.5 fill-current" />
-                    已星標收藏 ({starredIds.length} 手)
-                  </button>
-                )}
+                <div className="flex flex-wrap justify-end gap-2">
+                  {stats.dueReviews > 0 && (
+                    <button
+                      onClick={startWeaknessTraining}
+                      className="text-[10px] text-rose-300 font-bold flex items-center gap-1.5 px-2.5 py-1 bg-rose-500/10 border border-rose-500/25 rounded-full transition-all hover:scale-[1.02]"
+                    >
+                      <Target className="w-3.5 h-3.5" />
+                      弱點重練 ({stats.dueReviews})
+                    </button>
+                  )}
+                  {starredIds.length > 0 && (
+                    <button
+                      onClick={startStarredTraining}
+                      className="text-[10px] text-amber-400 hover:text-amber-300 font-bold uppercase tracking-widest flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 border border-amber-500/25 rounded-full transition-all hover:scale-[1.02]"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-current" />
+                      已星標收藏 ({starredIds.length} 手)
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {[
@@ -1197,6 +1303,27 @@ export default function App() {
                   </div>
                 </div>
 
+                {stats.total > 0 && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                      <div className="text-[9px] text-slate-500 uppercase font-mono">最近 20 題</div>
+                      <div className="text-lg font-bold text-cyan-400 font-mono">{stats.recentAccuracy}%</div>
+                    </div>
+                    <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                      <div className="text-[9px] text-slate-500 uppercase font-mono">待複習情境</div>
+                      <div className="text-lg font-bold text-rose-400 font-mono">{stats.dueReviews}</div>
+                    </div>
+                    <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                      <div className="text-[9px] text-slate-500 uppercase font-mono">今日目標</div>
+                      <div className="text-lg font-bold text-emerald-400 font-mono">{stats.todayCount}/10</div>
+                    </div>
+                    <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                      <div className="text-[9px] text-slate-500 uppercase font-mono">連續訓練</div>
+                      <div className="text-lg font-bold text-orange-400 font-mono">{stats.dayStreak} 天</div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Diagnostic Report Analysis */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -1256,6 +1383,30 @@ export default function App() {
                     <p className="text-xs text-slate-300 leading-relaxed font-normal">
                       {stats.leakAdvice}
                     </p>
+                  </div>
+                )}
+
+                {stats.streetStats.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {stats.streetStats.map(item => (
+                      <div key={item.key} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-[10px]">
+                        <span className="text-slate-400">{item.key}</span>
+                        <span className={item.accuracy >= 80 ? 'text-emerald-400 font-mono' : 'text-amber-400 font-mono'}>{item.accuracy}% · {item.total}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {stats.positionStats.length > 0 && (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-3">
+                    <div className="text-[9px] text-slate-500 uppercase tracking-widest mb-2">位置表現（樣本數一併顯示）</div>
+                    <div className="flex flex-wrap gap-2">
+                      {stats.positionStats.slice(0, 8).map(item => (
+                        <span key={item.key} className="rounded-full bg-slate-900 border border-slate-800 px-2 py-1 text-[10px] text-slate-400">
+                          {item.key}: <b className={item.accuracy >= 80 ? 'text-emerald-400' : 'text-amber-400'}>{item.accuracy}%</b> ({item.total})
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </>
@@ -2027,6 +2178,19 @@ export default function App() {
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => exportTrainingData(history, starredIds)}
+                className="py-2 text-[10px] text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                匯出訓練備份
+              </button>
+              <label className="py-2 text-[10px] text-center text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
+                匯入訓練備份
+                <input type="file" accept="application/json" className="hidden" onChange={event => handleTrainingImport(event.target.files?.[0])} />
+              </label>
+            </div>
+
             {/* Reset stats button */}
             {history.length > 0 && (
               <button 
@@ -2079,20 +2243,37 @@ export default function App() {
         playPokerSound('incorrect', isMuted);
       }
 
-      // Save to history list
+      const previousAttempt = [...history].reverse().find(item => item.scenarioId === scenario.id && item.stepId === step.id);
       const newHistoryItem: HistoryItem = {
+        schemaVersion: 3,
+        attemptId: createAttemptId(),
+        trainingType: 'scenario',
         scenarioId: scenario.id,
+        stepId: step.id,
         category: getScenarioCategories(scenario),
         score: fb.score,
         judgment: fb.judgment,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        selectedAction: action,
+        bestAction: fb.bestAction,
+        street: step.street,
+        position: scenario.position,
+        durationMs: Date.now() - actionStartedAt.current,
+        isReview: Boolean(scenario.reviewSourceId),
+        questionLabel: scenario.title,
+        ...getReviewSchedule(fb.score, previousAttempt),
       };
-      const updatedHistory = [...history, newHistoryItem];
-      setHistory(updatedHistory);
-      try {
-        localStorage.setItem('poker_training_history_v2', JSON.stringify(updatedHistory));
-      } catch (e) {
-        console.error(e);
+
+      recordHistory(newHistoryItem);
+
+      // Repeat a missed scenario after three more hands, once per session copy.
+      if (fb.score < 8 && !scenario.reviewSourceId && !scheduledReviewIds.current.has(scenario.id)) {
+        scheduledReviewIds.current.add(scenario.id);
+        setFilteredScenarios(previous => {
+          const insertAt = Math.min(scenarioIndex + 4, previous.length);
+          const reviewCopy = reskinScenario({ ...scenario, reviewSourceId: scenario.id });
+          return [...previous.slice(0, insertAt), reviewCopy, ...previous.slice(insertAt)];
+        });
       }
     } else {
       playPokerSound('incorrect', isMuted);
@@ -2780,6 +2961,30 @@ export default function App() {
             </div>
           </div>
 
+          {(step.handState?.actions?.length || step.assumptions?.length) && (
+            <div className="grid md:grid-cols-2 gap-3 shrink-0">
+              {step.handState?.actions?.length ? (
+                <div className="rounded-xl border border-slate-800 bg-slate-900/35 p-3">
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 mb-2">完整行動紀錄</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {step.handState.actions.map((action, index) => (
+                      <span key={`${action.street}-${action.seat}-${index}`} className="text-[10px] rounded-md border border-slate-700 bg-slate-950/70 px-2 py-1 text-slate-300">
+                        <b className="text-emerald-400">{action.street}</b> · {action.seat.toUpperCase()} {action.label || action.action}{typeof action.amountBB === 'number' ? ` ${action.amountBB}BB` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : <div />}
+              {step.assumptions?.length ? (
+                <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-3 text-[10px] text-slate-400">
+                  <div className="font-bold uppercase tracking-widest text-amber-400 mb-1">策略假設與來源</div>
+                  <p>{step.assumptions.join('；')}</p>
+                  {step.strategySource && <p className="mt-1 text-slate-500">{step.strategySource}</p>}
+                </div>
+              ) : <div />}
+            </div>
+          )}
+
           <div className="flex-1 min-h-[460px] py-6 sm:py-8 bg-slate-950 border border-slate-900 rounded-3xl relative flex flex-col items-center justify-center overflow-hidden shrink-0 shadow-2xl">
             {/* 3D Felt Bumper Ring */}
             <div className="absolute w-[92%] h-[82%] rounded-[110px] bg-gradient-to-b from-slate-800 to-slate-950 border-[10px] border-slate-900 shadow-[0_15px_35px_rgba(0,0,0,0.8)] flex items-center justify-center">
@@ -2834,18 +3039,19 @@ export default function App() {
             {/* Dynamic Seats around the Felt (Supports 6-Max / 9-Max) */}
             {(tableSize === '9max' ? NINE_MAX_SEATS : SIX_MAX_SEATS).map(seat => {
               const isH = isPositionMatch(seat.key, scenario.position, tableSize);
-              const isFoldedState = isFolded(seat.key, scenario.preAction, step.description, scenario.position, step.street, tableSize);
-              const actionInfo = parseSeatAction(seat.key, scenario.preAction, step.description, scenario.position, tableSize);
+              const isFoldedState = isFolded(seat.key, scenario.preAction, step.description, scenario.position, step.street, tableSize, step.handState?.actions);
+              const actionInfo = parseSeatAction(seat.key, scenario.preAction, step.description, scenario.position, tableSize, step.handState?.actions);
               
               // Is this seat the active opponent?
               const text = (scenario.preAction + " " + step.description).toLowerCase();
-              const isOpponent = !isH && !isFoldedState && (
+              const isStructuredOpponent = step.handState?.actions.some(action => isPositionMatch(action.seat, seat.key, tableSize));
+              const isOpponent = !isH && !isFoldedState && (isStructuredOpponent || (
                 text.includes(seat.key) || 
                 (seat.key === 'hj' && text.includes('mp')) ||
                 (seat.key === 'bb' && (text.includes('bb') || text.includes('大盲'))) ||
                 (seat.key === 'sb' && (text.includes('sb') || text.includes('小盲'))) ||
                 (seat.key === 'btn' && (text.includes('btn') || text.includes('莊家') || text.includes('button')))
-              );
+              ));
 
               // Border style and coloring
               let borderStyle = "border-slate-800 hover:border-slate-700";
@@ -3300,4 +3506,3 @@ export default function App() {
     </div>
   );
 }
-

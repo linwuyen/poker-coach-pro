@@ -6,6 +6,24 @@ export interface Card {
   suit: Suit;
 }
 
+export type Street = 'Preflop' | 'Flop' | 'Turn' | 'River';
+
+export interface HandAction {
+  street: Street;
+  seat: string;
+  action: string;
+  amountBB?: number;
+  label?: string;
+}
+
+export interface HandState {
+  tableSize?: '6max' | '9max';
+  potSizeBB: number;
+  heroStackBB?: number;
+  villainStackBB?: number;
+  actions: HandAction[];
+}
+
 export type ActionType = 'Fold' | 'Call' | 'Raise' | '3-bet' | '4-bet (Raise)' | 'All-in' | 'Check' | 'Bet small' | 'Bet half pot' | 'Bet big';
 
 export interface Feedback {
@@ -20,7 +38,7 @@ export interface Feedback {
 
 export interface ScenarioStep {
   id: string;
-  street: 'Preflop' | 'Flop' | 'Turn' | 'River';
+  street: Street;
   communityCards: Card[];
   description: string;
   potSize: number;
@@ -28,6 +46,9 @@ export interface ScenarioStep {
   potOdds?: string;
   options: ActionType[];
   feedbacks: Partial<Record<ActionType, Feedback>>;
+  handState?: HandState;
+  assumptions?: string[];
+  strategySource?: string;
 }
 
 export interface Scenario {
@@ -48,12 +69,28 @@ export interface Scenario {
   preAction: string;
   effectiveStack: string;
   steps: ScenarioStep[];
+  reviewSourceId?: string;
 }
 
 export interface HistoryItem {
+  schemaVersion?: 3;
+  attemptId?: string;
+  trainingType?: 'scenario' | 'gto' | 'custom';
   scenarioId: string;
+  stepId?: string;
   category: string[];
   score: number;
   judgment: string;
   timestamp: number;
+  selectedAction?: string;
+  bestAction?: string;
+  street?: Street;
+  position?: string;
+  durationMs?: number;
+  isReview?: boolean;
+  nextReviewAt?: number;
+  reviewIntervalDays?: number;
+  questionLabel?: string;
+  notes?: string;
+  aiAnalysis?: string;
 }
