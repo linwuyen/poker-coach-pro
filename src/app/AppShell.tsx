@@ -24,9 +24,9 @@ export function AppShell({ page, onPageChange, children, onOpenLegacy }: AppShel
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-800/80 bg-slate-950/95 px-4 py-5 backdrop-blur lg:flex lg:flex-col">
         <button type="button" onClick={() => onPageChange('today')} className="flex items-center gap-3 rounded-2xl px-2 py-2 text-left">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500 text-lg font-black text-emerald-950">P</div>
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500 text-lg font-black text-emerald-950">高</div>
           <div>
-            <div className="font-semibold tracking-tight">Poker Coach Pro</div>
+            <div className="font-semibold tracking-tight">想高龍了 德撲訓練機</div>
             <div className="text-xs text-slate-500">System UI · Strategy v2</div>
           </div>
         </button>
