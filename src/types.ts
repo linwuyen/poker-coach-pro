@@ -96,7 +96,7 @@ export interface Scenario {
 export interface HistoryItem {
   schemaVersion?: 3 | 4;
   attemptId?: string;
-  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark';
+  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range';
   scenarioId: string;
   stepId?: string;
   masteryKey?: string;
