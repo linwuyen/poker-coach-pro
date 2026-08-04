@@ -55,13 +55,14 @@ export function scoreRangeConstruction(
   selections: WeightedRangeSelection[],
 ): number {
   const frequencyByHand = new Map(selections.map(item => [item.hand, clamp01(item.frequency)]));
-  const totalComboWeight = question.options.reduce((sum, option) => sum + option.combos, 0);
-  if (!totalComboWeight) return 0;
-  const error = question.options.reduce((sum, option) => {
+  let intersection = 0;
+  let union = 0;
+  question.options.forEach(option => {
     const selected = frequencyByHand.get(option.hand) || 0;
-    return sum + option.combos * Math.abs(selected - option.baselineFrequency);
-  }, 0);
-  return Math.max(0, Math.round((1 - error / totalComboWeight) * 100));
+    intersection += option.combos * Math.min(selected, option.baselineFrequency);
+    union += option.combos * Math.max(selected, option.baselineFrequency);
+  });
+  return union > 0 ? Math.round(intersection / union * 100) : 0;
 }
 
 export function equityBandFor(equity: number): EquityBand {
