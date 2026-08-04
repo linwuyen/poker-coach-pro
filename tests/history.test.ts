@@ -1,15 +1,31 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getReviewSchedule } from '../src/utils/history';
+import { isDue } from '../src/learning-engine';
+import { HistoryItem } from '../src/types';
 
-test('missed answers return after a short delay', () => {
-  const before = Date.now();
-  const schedule = getReviewSchedule(4);
-  assert.equal(schedule.reviewIntervalDays, 0);
-  assert.ok((schedule.nextReviewAt || 0) >= before + 4 * 60 * 1000);
+const now = 1_800_000_000_000;
+
+function previous(score: number, reviewIntervalDays = 0): HistoryItem {
+  return { scenarioId: 'x', stepId: 's1', category: [], score, judgment: score >= 8 ? '正確' : '錯誤', timestamp: now - 1000, reviewIntervalDays };
+}
+
+test('missed answers wait before becoming due', () => {
+  const schedule = getReviewSchedule(4, 2, undefined, now);
+  assert.equal(schedule.nextReviewAt, now + 10 * 60 * 1000);
+  assert.equal(isDue({ ...previous(4), ...schedule }, now), false);
 });
 
-test('successful reviews expand from one to three days', () => {
-  assert.equal(getReviewSchedule(10).reviewIntervalDays, 1);
-  assert.equal(getReviewSchedule(10, { scenarioId: 'x', category: [], score: 10, judgment: '正確', timestamp: 0, reviewIntervalDays: 1 }).reviewIntervalDays, 3);
+test('repeated misses use a longer correction interval', () => {
+  const schedule = getReviewSchedule(2, 4, previous(2), now);
+  assert.equal(schedule.nextReviewAt, now + 60 * 60 * 1000);
+});
+
+test('low confidence correct answers return earlier than confident reviews', () => {
+  assert.equal(getReviewSchedule(10, 1, undefined, now).reviewIntervalDays, 1);
+  assert.equal(getReviewSchedule(10, 4, previous(10, 3), now).reviewIntervalDays, 9);
+});
+
+test('legacy second-argument previous history remains supported', () => {
+  assert.equal(getReviewSchedule(10, previous(10, 1), undefined, now).reviewIntervalDays, 3);
 });
