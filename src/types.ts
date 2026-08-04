@@ -25,6 +25,22 @@ export interface HandState {
 }
 
 export type ActionType = 'Fold' | 'Call' | 'Raise' | '3-bet' | '4-bet (Raise)' | 'All-in' | 'Check' | 'Bet small' | 'Bet half pot' | 'Bet big';
+export type ConfidenceLevel = 1 | 2 | 3 | 4;
+export type FeedbackQuality = 'best' | 'acceptable' | 'suboptimal' | 'major-error';
+export type MasteryStatus = 'new' | 'learning' | 'review' | 'mastered';
+
+export interface FeedbackEvidence {
+  objective?: string;
+  heroRange?: string;
+  villainRange?: string;
+  continues?: string;
+  blockers?: string;
+  reversals?: string[];
+  actionEvBB?: number;
+  bestEvBB?: number;
+  evLossBB?: number;
+  sourceConfidence?: 'verified-solver' | 'expert-baseline' | 'heuristic-estimate';
+}
 
 export interface Feedback {
   judgment: '正確' | '可接受' | '偏鬆' | '偏緊' | '錯誤';
@@ -34,6 +50,9 @@ export interface Feedback {
   conceptualError: string;
   remember: string;
   nextStepId: string | 'next_hand';
+  quality?: FeedbackQuality;
+  acceptableActions?: ActionType[];
+  evidence?: FeedbackEvidence;
 }
 
 export interface ScenarioStep {
@@ -49,6 +68,7 @@ export interface ScenarioStep {
   handState?: HandState;
   assumptions?: string[];
   strategySource?: string;
+  conceptIds?: string[];
 }
 
 export interface Scenario {
@@ -70,14 +90,16 @@ export interface Scenario {
   effectiveStack: string;
   steps: ScenarioStep[];
   reviewSourceId?: string;
+  tableSize?: '6max' | '9max';
 }
 
 export interface HistoryItem {
-  schemaVersion?: 3;
+  schemaVersion?: 3 | 4;
   attemptId?: string;
-  trainingType?: 'scenario' | 'gto' | 'custom';
+  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark';
   scenarioId: string;
   stepId?: string;
+  masteryKey?: string;
   category: string[];
   score: number;
   judgment: string;
@@ -87,10 +109,34 @@ export interface HistoryItem {
   street?: Street;
   position?: string;
   durationMs?: number;
+  confidence?: ConfidenceLevel;
+  correct?: boolean;
+  feedbackQuality?: FeedbackQuality;
+  evLossBB?: number;
+  difficultyWeight?: number;
   isReview?: boolean;
+  isDelayedReview?: boolean;
+  isUnseen?: boolean;
   nextReviewAt?: number;
   reviewIntervalDays?: number;
   questionLabel?: string;
   notes?: string;
   aiAnalysis?: string;
+  playerProfileVersion?: number;
+}
+
+export type PlayerExperience = 'beginner' | 'intermediate' | 'advanced';
+export type StackBand = '10-20' | '20-40' | '40-100' | '100+';
+export type FocusArea = 'preflop' | 'postflop' | 'short-stack' | 'math' | 'bluff-catching' | 'mixed';
+
+export interface PlayerProfile {
+  schemaVersion: 1;
+  formats: Array<'cash' | 'tournament'>;
+  tableSizes: Array<'6max' | '9max'>;
+  stackBands: StackBand[];
+  experience: PlayerExperience;
+  focusAreas: FocusArea[];
+  dailyQuestions: 8 | 12 | 20;
+  onboardingComplete: boolean;
+  updatedAt: number;
 }
