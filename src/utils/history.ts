@@ -57,7 +57,7 @@ export function getReviewSchedule(
   if (confidence && confidence <= 2) return { nextReviewAt: now + 86400000, reviewIntervalDays: 1 };
   const previousDays = previous?.reviewIntervalDays || 0;
   const baseDays = previousDays < 1 ? 1 : previousDays < 3 ? 3 : previousDays < 7 ? 7 : Math.min(60, Math.round(previousDays * 1.8));
-  const multiplier = confidence === 4 ? 1.35 : confidence === 3 ? 1 : 0.75;
+  const multiplier = confidence === 4 ? 1.35 : 1;
   const days = Math.max(1, Math.min(60, Math.round(baseDays * multiplier)));
   return { nextReviewAt: now + days * 86400000, reviewIntervalDays: days };
 }
