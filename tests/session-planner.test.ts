@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildDailyTrainingPlan, getDueScenarioIds } from '../src/features/training/sessionPlanner';
 import { DEFAULT_PLAYER_PROFILE } from '../src/domain/playerProfile';
-import { HistoryItem, Scenario } from '../src/types';
+import { HistoryItem, PlayerProfile, Scenario } from '../src/types';
 
 function scenario(id: string, category: string, type: Scenario['type'] = 'Cash Game', userBB = 100): Scenario {
   return {
@@ -36,7 +36,7 @@ test('wrong answers with a future nextReviewAt are not due', () => {
 
 test('player profile prioritizes relevant format and stack band', () => {
   const all = [scenario('cash', 'Cash', 'Cash Game', 100), scenario('mtt', 'ICM', 'Tournament', 20), ...Array.from({ length: 12 }, (_, index) => scenario(`m${index}`, 'MTT', 'Tournament', 25))];
-  const profile = { ...DEFAULT_PLAYER_PROFILE, onboardingComplete: true, formats: ['tournament'] as const, tableSizes: ['9max'] as const, stackBands: ['10-20', '20-40'] as const };
+  const profile: PlayerProfile = { ...DEFAULT_PLAYER_PROFILE, onboardingComplete: true, formats: ['tournament'], tableSizes: ['9max'], stackBands: ['10-20', '20-40'] };
   const plan = buildDailyTrainingPlan(all, [], 8, now, profile);
   assert.ok(plan.items.some(item => item.scenario.id === 'mtt'));
   assert.ok(plan.items.filter(item => item.scenario.type === 'Tournament').length >= 7);
