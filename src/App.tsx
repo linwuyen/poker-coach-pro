@@ -21,6 +21,16 @@ import { isPositionMatch, parseSeatAction, isFolded, SIX_MAX_SEATS, NINE_MAX_SEA
 import { MiniCard } from './components/MiniCard';
 import { clearHistory, createAttemptId, exportTrainingData, getReviewSchedule, importTrainingData, loadHistory, saveHistory } from './utils/history';
 import { getWeakScenarioIds, summarizeBy } from './utils/analytics';
+import {
+  aiModeCodec,
+  booleanCodec,
+  sessionSizeCodec,
+  stringArrayCodec,
+  tableSizeCodec,
+  usePersistentState,
+  volumeCodec,
+  type SessionSize,
+} from './features/settings/persistence';
 
 export default function App() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
@@ -37,13 +47,11 @@ export default function App() {
   const scheduledReviewIds = useRef(new Set<string>());
 
   // Question Pool customizer settings (Shuffle & Deduplication)
-  const [shuffleEnabled, setShuffleEnabled] = useState(() => {
-    try {
-      return localStorage.getItem('poker_shuffle_enabled') !== 'false'; // default to true
-    } catch {
-      return true;
-    }
-  });
+  const [shuffleEnabled, setShuffleEnabled] = usePersistentState(
+    'poker_shuffle_enabled',
+    true,
+    booleanCodec,
+  );
   const searchedScenarios = useMemo(() => {
     if (!searchQuery.trim()) return [];
     return scenarios.filter(s => matchesSearch(s, searchQuery));
@@ -51,13 +59,11 @@ export default function App() {
 
   // Gemini AI Opponent Mindset states
   const [sidebarTab, setSidebarTab] = useState<'coach' | 'hud' | 'ai'>('coach');
-  const [aiMode, setAiMode] = useState<'online' | 'offline'>(() => {
-    try {
-      return (localStorage.getItem('poker_ai_mode') as 'online' | 'offline') || 'offline'; // default to offline for fast loading as requested!
-    } catch {
-      return 'offline';
-    }
-  });
+  const [aiMode, setAiMode] = usePersistentState(
+    'poker_ai_mode',
+    'offline',
+    aiModeCodec,
+  );
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -76,17 +82,16 @@ export default function App() {
   const [pickerMode, setPickerMode] = useState<'pocket' | 'community' | null>(null);
 
   // Table size state (defaulting to 9max based on user preferences)
-  const [tableSize, setTableSize] = useState<'6max' | '9max'>(() => {
-    try {
-      return (localStorage.getItem('poker_table_size') as '6max' | '9max') || '9max';
-    } catch {
-      return '9max';
-    }
-  });
-  const [sessionSize, setSessionSize] = useState<10 | 20 | 'all'>(() => {
-    const saved = localStorage.getItem('poker_session_size');
-    return saved === '10' ? 10 : saved === 'all' ? 'all' : 20;
-  });
+  const [tableSize, setTableSize] = usePersistentState(
+    'poker_table_size',
+    '9max',
+    tableSizeCodec,
+  );
+  const [sessionSize, setSessionSize] = usePersistentState<SessionSize>(
+    'poker_session_size',
+    20,
+    sessionSizeCodec,
+  );
 
   // GTO Preflop Matrix Visualizer states
   const [rightTab, setRightTab] = useState<'stats' | 'gto'>('stats');
@@ -164,41 +169,28 @@ export default function App() {
   };
 
   // Sound Muted state persistence
-  const [isMuted, setIsMuted] = useState(() => {
-    try {
-      return localStorage.getItem('poker_training_muted') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [isMuted, setIsMuted] = usePersistentState(
+    'poker_training_muted',
+    false,
+    booleanCodec,
+  );
 
-  const [pokerVolume, setPokerVolume] = useState(() => {
-    try {
-      const vol = localStorage.getItem('poker_training_volume');
-      return vol ? Number(vol) : 0.5;
-    } catch {
-      return 0.5;
-    }
-  });
+  const [pokerVolume, setPokerVolume] = usePersistentState(
+    'poker_training_volume',
+    0.5,
+    volumeCodec,
+  );
 
-  const handleVolumeChange = (v: number) => {
-    setPokerVolume(v);
-    try {
-      localStorage.setItem('poker_training_volume', String(v));
-    } catch (e) {
-      console.error(e);
-    }
+  const handleVolumeChange = (value: number) => {
+    setPokerVolume(value);
   };
 
   // Starred Bookmarks scenario IDs persistence
-  const [starredIds, setStarredIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('poker_starred_ids');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [starredIds, setStarredIds] = usePersistentState(
+    'poker_starred_ids',
+    [] as string[],
+    stringArrayCodec,
+  );
 
   // Load / Save persistent training history
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
@@ -212,17 +204,12 @@ export default function App() {
   };
 
   const toggleMute = () => {
-    setIsMuted(prev => {
-      const newVal = !prev;
-      localStorage.setItem('poker_training_muted', String(newVal));
-      return newVal;
-    });
+    setIsMuted(previous => !previous);
   };
 
   const toggleStar = (id: string) => {
     setStarredIds(prev => {
       const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-      localStorage.setItem('poker_starred_ids', JSON.stringify(next));
       playPokerSound('click', isMuted);
       return next;
     });
