@@ -16,6 +16,7 @@ import {
 test('boolean persistence is deterministic', () => {
   assert.equal(booleanCodec.parse('true'), true);
   assert.equal(booleanCodec.parse('false'), false);
+  assert.throws(() => booleanCodec.parse('invalid'));
   assert.equal(booleanCodec.serialize(true), 'true');
 });
 
