@@ -58,7 +58,11 @@ export function usePersistentState<T>(
 }
 
 export const booleanCodec: StorageCodec<boolean> = {
-  parse: raw => raw === 'true',
+  parse(raw) {
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    throw new Error(`invalid boolean storage value: ${raw}`);
+  },
   serialize: value => String(value),
 };
 
