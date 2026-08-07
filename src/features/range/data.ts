@@ -108,7 +108,7 @@ export const RANGE_QUESTIONS: RangeQuestion[] = [
     difficulty: '進階',
     options: [
       O('AJ', 'monster', 6, 7, 1), O('77', 'monster', 3, 9, 1), O('22', 'monster', 3, 9, 1),
-      O('A7s', 'monster', 2, 7, 1), O('AT', 'strong', 8, 86, 0), O('88', 'medium', 6, 95, 0),
+      O('A7s', 'monster', 1, 7, 1), O('AT', 'strong', 8, 86, 0), O('88', 'medium', 6, 95, 0),
       O('K♣Q♣', 'draw', 1, 28, 0.35), O('Q♣T♣', 'draw', 1, 30, 0.35), O('6♣5♣', 'draw', 1, 32, 0.35),
       O('65s 無梅花', 'air', 3, 12, 0),
     ],
@@ -139,7 +139,7 @@ export const RANGE_QUESTIONS: RangeQuestion[] = [
       O('99', 'medium', 6, 100, 0),
     ],
     explanation: 'River 已沒有未來牌，Hero Equity 就是 Villain 詐唬的加權比例。選入或移除一個詐唬 Combo，都可能直接跨過 37.5% 的門檻。',
-    blockerNote: 'KJ 同時可能阻擋 KQ 價值與 J♥T♥ 詐唬；阻擋價值有利 Call，阻擋詐唬則不利 Call。',
+    blockerNote: 'Hero 的 K♠ 會阻擋部分 KQ 價值組合；J♦ 不會阻擋 J♥T♥，只有 J♥ 才會刪除該精確紅心詐唬 Combo。',
     assumptions: ['River Equity 以贏或輸二元結果估算', '不計 rake'],
     source: SOURCE,
   },
@@ -160,7 +160,7 @@ export const RANGE_QUESTIONS: RangeQuestion[] = [
     difficulty: '進階',
     options: [
       O('88', 'monster', 3, 9, 0.7), O('77', 'monster', 3, 9, 0.7), O('44', 'monster', 3, 9, 0.7),
-      O('65s', 'monster', 4, 25, 0.8), O('87s', 'monster', 2, 20, 0.8), O('A8', 'strong', 6, 80, 0.6),
+      O('65s', 'monster', 4, 25, 0.8), O('87s', 'monster', 3, 20, 0.8), O('A8', 'strong', 6, 80, 0.6),
       O('9♣6♣', 'draw', 1, 55, 1), O('A♣5♣', 'draw', 1, 60, 1), O('T♣9♣', 'draw', 1, 58, 1),
       O('55', 'medium', 6, 90, 0.2), O('KQ', 'air', 16, 95, 0),
     ],
