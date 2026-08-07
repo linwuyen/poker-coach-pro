@@ -10,11 +10,23 @@ export const EQUITY_BANDS: Array<{ id: EquityBand; label: string; min: number; m
   { id: '60-plus', label: '≥ 60%', min: 60, max: 100 },
 ];
 
+const REACHABLE_RANGE_FREQUENCIES = [0, 0.5, 1] as const;
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 const round = (value: number, digits = 2): number => {
   const multiplier = 10 ** digits;
   return Math.round(value * multiplier) / multiplier;
 };
+
+function nearestReachableFrequency(value: number): number {
+  const clamped = clamp01(value);
+  return REACHABLE_RANGE_FREQUENCIES.reduce((best, candidate) => {
+    const bestDistance = Math.abs(best - clamped);
+    const candidateDistance = Math.abs(candidate - clamped);
+    if (candidateDistance < bestDistance) return candidate;
+    if (candidateDistance === bestDistance && candidate > best) return candidate;
+    return best;
+  });
+}
 
 export function baselineSelections(question: RangeQuestion): WeightedRangeSelection[] {
   return question.options.map(option => ({ hand: option.hand, frequency: option.baselineFrequency }));
@@ -59,10 +71,16 @@ export function scoreRangeConstruction(
   let union = 0;
   question.options.forEach(option => {
     const selected = frequencyByHand.get(option.hand) || 0;
-    intersection += option.combos * Math.min(selected, option.baselineFrequency);
-    union += option.combos * Math.max(selected, option.baselineFrequency);
+    const reachableBaseline = nearestReachableFrequency(option.baselineFrequency);
+    intersection += option.combos * Math.min(selected, reachableBaseline);
+    union += option.combos * Math.max(selected, reachableBaseline);
   });
   return union > 0 ? Math.round(intersection / union * 100) : 0;
+}
+
+export function scoreToHistoryScale(score: number): number {
+  const bounded = Math.min(100, Math.max(0, score));
+  return Math.floor(bounded / 10);
 }
 
 export function equityBandFor(equity: number): EquityBand {
