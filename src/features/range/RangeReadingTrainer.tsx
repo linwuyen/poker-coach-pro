@@ -16,6 +16,7 @@ import {
   scoreEquityBand,
   scorePotOddsEstimate,
   scoreRangeConstruction,
+  scoreToHistoryScale,
 } from './rangeEngine';
 import {
   EquityBand, HeroAction, RangeBucket, RangeFrequency, WeightedRangeSelection,
@@ -99,7 +100,7 @@ export function RangeReadingTrainer({ onExit }: { onExit: () => void }) {
       const previous = history
         .filter(item => item.masteryKey === masteryKey)
         .sort((a, b) => b.timestamp - a.timestamp)[0];
-      const score10 = Math.round(dimension.score / 10);
+      const score10 = scoreToHistoryScale(dimension.score);
       return {
         schemaVersion: 4,
         attemptId: createAttemptId(),
