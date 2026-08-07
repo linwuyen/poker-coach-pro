@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "validate": "tsx scripts/validate-scenarios.ts",
+    "validate": "tsx scripts/validate-scenarios.ts && tsx scripts/validate-range-questions.ts",
     "test": "tsx --test tests/*.test.ts",
     "check": "npm run lint && npm run validate && npm test",
     "build:web": "npm run validate && vite build",
