@@ -30,7 +30,9 @@ export function estimateSpotFrequencyPer100Hands(scenario: Scenario): number {
   if (/BB.*防守|大盲|盲注戰/i.test(text)) return 8;
   if (/RFI|開池|open/i.test(text) && scenario.steps.some(step => step.street === 'Preflop')) return 7;
   if (/Push|Fold|短碼|shove|全下/i.test(text) && scenario.type === 'Tournament') return 1.2;
-  if (/ICM|泡沫|決賽桌|衛星/i.test(text)) return 0.25;
+  // Tournament pressure spots are event-frequency priors rather than literal cash-game hand frequencies.
+  // Keep them below common blind/RFI nodes without making ICM disappear from an MTT learner's curriculum.
+  if (/ICM|泡沫|決賽桌|衛星/i.test(text)) return 0.9;
   if (/overbet|超額下注|150%|125%/i.test(text)) return 0.18;
   if (/多人|multiway/i.test(text)) return 0.7;
   if (scenario.steps.some(step => step.street === 'River')) return 0.9;
