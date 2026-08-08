@@ -15,9 +15,15 @@ export function buildDailyTrainingPlan(scenarios: Scenario[], history: HistoryIt
   const ranked = rankByExpectedLearningValue(pool, history, now, profile);
   const counts = { ...EMPTY_COUNTS };
   const weakCategories = getWeaknessInsights(history, now).filter(item => item.total >= 3 && item.mastery < 80).slice(0, 4).map(item => item.key);
+  let benchmarkAssigned = false;
   const items = ranked.slice(0, Math.min(size, ranked.length)).map(({ scenario, value }) => {
-    counts[value.reason] += 1;
-    return { scenario, reason: value.reason, learningValue: Math.round(value.total * 100) / 100 };
+    let reason = value.reason;
+    if (reason === 'benchmark') {
+      if (benchmarkAssigned) reason = 'new';
+      else benchmarkAssigned = true;
+    }
+    counts[reason] += 1;
+    return { scenario, reason, learningValue: Math.round(value.total * 100) / 100 };
   });
   return { items, counts, weakCategories };
 }
