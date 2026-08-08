@@ -25,10 +25,18 @@ export interface HandState {
 }
 
 export type ActionType = 'Fold' | 'Call' | 'Raise' | '3-bet' | '4-bet (Raise)' | 'All-in' | 'Check' | 'Bet small' | 'Bet half pot' | 'Bet big';
+export type DecisionActionKind = 'fold' | 'check' | 'call' | 'bet' | 'raise' | 'all-in';
+export interface PokerDecisionAction {
+  type: DecisionActionKind;
+  sizeBB?: number;
+  sizePot?: number;
+}
+
 export type ConfidenceLevel = 1 | 2 | 3 | 4;
 export type FeedbackQuality = 'best' | 'acceptable' | 'suboptimal' | 'major-error';
 export type MasteryStatus = 'new' | 'learning' | 'review' | 'mastered';
-export type TruthTier = 'verified-solver' | 'expert-baseline' | 'heuristic-estimate';
+export type TruthTier = 'verified-solver' | 'exact-math' | 'population-exploit' | 'expert-baseline' | 'derived-interpolation' | 'heuristic-estimate';
+export type StrategyMode = 'theory' | 'exploit';
 
 export interface FeedbackEvidence {
   objective?: string;
@@ -41,6 +49,10 @@ export interface FeedbackEvidence {
   bestEvBB?: number;
   evLossBB?: number;
   sourceConfidence?: TruthTier;
+  actionSizeBB?: number;
+  actionSizePot?: number;
+  bestActionSizeBB?: number;
+  bestActionSizePot?: number;
 }
 
 export interface Feedback {
@@ -92,6 +104,9 @@ export interface Scenario {
   steps: ScenarioStep[];
   reviewSourceId?: string;
   tableSize?: '6max' | '9max';
+  benchmarkRole?: 'training' | 'holdout';
+  spotFrequencyPer100Hands?: number;
+  situationIds?: string[];
 }
 
 export interface HistoryItem {
@@ -102,6 +117,7 @@ export interface HistoryItem {
   stepId?: string;
   masteryKey?: string;
   skillIds?: string[];
+  situationIds?: string[];
   transferGroupId?: string;
   category: string[];
   score: number;
@@ -109,6 +125,8 @@ export interface HistoryItem {
   timestamp: number;
   selectedAction?: string;
   bestAction?: string;
+  selectedDecision?: PokerDecisionAction;
+  bestDecision?: PokerDecisionAction;
   street?: Street;
   position?: string;
   durationMs?: number;
@@ -119,6 +137,8 @@ export interface HistoryItem {
   bestEvBB?: number;
   evLossBB?: number;
   truthTier?: TruthTier;
+  strategyMode?: StrategyMode;
+  spotFrequencyPer100Hands?: number;
   difficultyWeight?: number;
   isReview?: boolean;
   isDelayedReview?: boolean;
