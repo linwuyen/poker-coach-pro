@@ -28,6 +28,7 @@ export type ActionType = 'Fold' | 'Call' | 'Raise' | '3-bet' | '4-bet (Raise)' |
 export type ConfidenceLevel = 1 | 2 | 3 | 4;
 export type FeedbackQuality = 'best' | 'acceptable' | 'suboptimal' | 'major-error';
 export type MasteryStatus = 'new' | 'learning' | 'review' | 'mastered';
+export type TruthTier = 'verified-solver' | 'expert-baseline' | 'heuristic-estimate';
 
 export interface FeedbackEvidence {
   objective?: string;
@@ -39,7 +40,7 @@ export interface FeedbackEvidence {
   actionEvBB?: number;
   bestEvBB?: number;
   evLossBB?: number;
-  sourceConfidence?: 'verified-solver' | 'expert-baseline' | 'heuristic-estimate';
+  sourceConfidence?: TruthTier;
 }
 
 export interface Feedback {
@@ -96,10 +97,12 @@ export interface Scenario {
 export interface HistoryItem {
   schemaVersion?: 3 | 4;
   attemptId?: string;
-  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range';
+  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range' | 'counterfactual' | 'transfer' | 'real-hand';
   scenarioId: string;
   stepId?: string;
   masteryKey?: string;
+  skillIds?: string[];
+  transferGroupId?: string;
   category: string[];
   score: number;
   judgment: string;
@@ -112,11 +115,15 @@ export interface HistoryItem {
   confidence?: ConfidenceLevel;
   correct?: boolean;
   feedbackQuality?: FeedbackQuality;
+  chosenEvBB?: number;
+  bestEvBB?: number;
   evLossBB?: number;
+  truthTier?: TruthTier;
   difficultyWeight?: number;
   isReview?: boolean;
   isDelayedReview?: boolean;
   isUnseen?: boolean;
+  isTransferTest?: boolean;
   nextReviewAt?: number;
   reviewIntervalDays?: number;
   questionLabel?: string;
