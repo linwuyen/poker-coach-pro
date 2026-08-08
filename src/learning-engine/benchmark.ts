@@ -1,5 +1,4 @@
 import { PlayerProfile, Scenario } from '../types';
-import { scenarioProfileScore } from '../domain/playerProfile';
 
 export interface BenchmarkSplit {
   training: Scenario[];
@@ -30,12 +29,8 @@ export function splitBenchmarkScenarios(scenarios: Scenario[]): BenchmarkSplit {
   return { training: fallback.slice(1), holdout: fallback.slice(0, 1) };
 }
 
-export function getHiddenBenchmarkScenarios(scenarios: Scenario[], profile?: PlayerProfile): Scenario[] {
-  const { holdout } = splitBenchmarkScenarios(scenarios);
-  const ranked = profile
-    ? holdout.map(scenario => ({ scenario, score: scenarioProfileScore(scenario, profile) })).sort((a, b) => b.score - a.score).map(item => item.scenario)
-    : holdout;
-  return ranked;
+export function getHiddenBenchmarkScenarios(scenarios: Scenario[], _profile?: PlayerProfile): Scenario[] {
+  return splitBenchmarkScenarios(scenarios).holdout;
 }
 
 export function getTrainingScenarios(scenarios: Scenario[]): Scenario[] {
