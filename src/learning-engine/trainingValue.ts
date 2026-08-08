@@ -58,10 +58,10 @@ export function expectedLearningValue(
 
   let reason: LearningValueBreakdown['reason'] = 'mixed';
   if (due) reason = 'due-review';
-  else if (recentMistake && weakness >= 0.45) reason = 'recent-mistake';
-  else if (weakness >= 0.45) reason = 'weak-area';
+  else if (recentMistake) reason = 'recent-mistake';
   else if (unseen && relatedSkillSeenElsewhere) reason = 'benchmark';
   else if (unseen) reason = 'new';
+  else if (weakness >= 0.45) reason = 'weak-area';
 
   return { total, weakness, forgettingRisk, uncertainty, transferValue, evImportance, profileRelevance, timeCost, due, recentMistake, unseen, reason };
 }
