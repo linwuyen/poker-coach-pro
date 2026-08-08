@@ -2,6 +2,8 @@ import { StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import AppV2 from './app/AppV2';
 import { RangeReadingTrainer } from './features/range/RangeReadingTrainer';
+import { CounterfactualTrainer } from './features/training/CounterfactualTrainer';
+import { IcmWorkbench } from './features/tournament/IcmWorkbench';
 import './index.css';
 
 function RootRouter() {
@@ -13,10 +15,10 @@ function RootRouter() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  if (route === '#range-reading') {
-    return <RangeReadingTrainer onExit={() => { window.location.hash = ''; }} />;
-  }
-
+  const exitLab = () => { window.location.hash = ''; };
+  if (route === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
+  if (route === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
+  if (route === '#icm-workbench') return <IcmWorkbench onExit={exitLab} />;
   return <AppV2 />;
 }
 
