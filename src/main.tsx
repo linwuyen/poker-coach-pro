@@ -1,6 +1,7 @@
 import { StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import AppV2 from './app/AppV2';
+import { SkillGraphDashboard } from './features/analysis/SkillGraphDashboard';
 import { RangeReadingTrainer } from './features/range/RangeReadingTrainer';
 import { CounterfactualTrainer } from './features/training/CounterfactualTrainer';
 import { IcmWorkbench } from './features/tournament/IcmWorkbench';
@@ -19,6 +20,7 @@ function RootRouter() {
   if (route === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
   if (route === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
   if (route === '#icm-workbench') return <IcmWorkbench onExit={exitLab} />;
+  if (route === '#skill-graph') return <SkillGraphDashboard onExit={exitLab} />;
   return <AppV2 />;
 }
 
