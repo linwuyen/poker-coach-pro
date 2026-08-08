@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, Calculator, Dices, ShieldCheck, Sparkles } from 'lucide-react';
-import { calculateEquity, parseCardsText, WeightedRangeHand } from '../../poker/equityEngine';
+import { calculateEquity, EquityResult, parseCardsText, WeightedRangeHand } from '../../poker/equityEngine';
 
 function parseRange(text: string): WeightedRangeHand[] {
   return text.split(/\n|,/).map(line => line.trim()).filter(Boolean).map(line => {
@@ -11,32 +11,32 @@ function parseRange(text: string): WeightedRangeHand[] {
   });
 }
 
+function run(hero: string, board: string, rangeText: string, iterations: string): EquityResult {
+  return calculateEquity({
+    hero: parseCardsText(hero),
+    board: board.trim() ? parseCardsText(board) : [],
+    villainRange: parseRange(rangeText),
+    iterations: Math.max(1000, Number(iterations) || 25000),
+  });
+}
+
 export function EquityWorkbench({ onExit }: { onExit: () => void }) {
   const [hero, setHero] = useState('As Ks');
   const [board, setBoard] = useState('Qs Js 2c');
   const [rangeText, setRangeText] = useState('QQ 1\nJJ 1\nAKo 0.5\nAQs 0.5');
   const [iterations, setIterations] = useState('25000');
-  const [nonce, setNonce] = useState(0);
+  const [result, setResult] = useState<EquityResult | null>(() => run('As Ks', 'Qs Js 2c', 'QQ 1\nJJ 1\nAKo 0.5\nAQs 0.5', '25000'));
   const [error, setError] = useState('');
 
-  const result = useMemo(() => {
+  const recalc = () => {
     try {
+      setResult(run(hero, board, rangeText, iterations));
       setError('');
-      return calculateEquity({
-        hero: parseCardsText(hero),
-        board: board.trim() ? parseCardsText(board) : [],
-        villainRange: parseRange(rangeText),
-        iterations: Math.max(1000, Number(iterations) || 25000),
-      });
     } catch (caught) {
+      setResult(null);
       setError(caught instanceof Error ? caught.message : '計算失敗');
-      return null;
     }
-  // nonce is an explicit recalc trigger for textarea/input workflows.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nonce]);
-
-  const recalc = () => setNonce(value => value + 1);
+  };
   return <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8">
     <div className="mx-auto max-w-5xl">
       <button type="button" onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4" />返回主訓練機</button>
