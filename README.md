@@ -1,10 +1,10 @@
 # ♠️ 想高龍了 德撲訓練機
 
-**v3 Decision Learning Engine · Strategy Engine v2.1**
+**v4 Truth & Transfer Engine · Strategy Engine v2.1**
 
-繁體中文德州撲克決策學習系統。核心不是單純刷題，而是把每次決策轉成可追蹤的能力與 EV 成本：
+繁體中文德州撲克決策學習系統。核心目標不是刷題數，而是用最少訓練時間降低未來實戰決策的 EV loss：
 
-> 牌局／訓練 → 決策 → EV Regret → Skill Graph → 延遲提取／Transfer → Expected Learning Value → 下一個最值得練的題目
+> Strategy Truth → 決策 → EV Regret × Spot Frequency → Skill / Situation Graph → 延遲提取／Transfer → 下一個最高價值訓練
 
 ## 🌐 線上版本
 
@@ -12,22 +12,64 @@ GitHub Pages：**https://linwuyen.github.io/poker-coach-pro/**
 
 支援 PWA，可從瀏覽器安裝到桌面或手機。GitHub Pages 為靜態版本，因此不提供 `/api` 後端；需要伺服器端 Gemini 分析時請使用本地 server 模式。
 
-## 🧠 v3 核心能力
+## 🧠 v4 核心能力
 
-- **Expected Learning Value Scheduler**：依弱點、遺忘風險、不確定性、transfer value、EV importance、玩家設定與時間成本排序每日訓練。
-- **EV Regret**：以最佳行動 EV 與實際選擇 EV 的差值衡量錯誤成本，而不是只看答對／答錯。
-- **Poker Skill Graph**：跨題追蹤 Preflop、Range、Math、Postflop、Tournament、Decision Boundary 等能力。
-- **Transfer Mastery**：Mastered 需要穩定表現、延遲提取，以及 sibling／counterfactual transfer 證據。
-- **Counterfactual Decision Boundary**：固定 range/equity，只改下注尺寸，找出 Call/Fold 決策反轉點。
-- **Weighted Range Versus Hand**：建立加權 Villain range，再計算 Hero equity、Pot Odds、Call EV 與最佳動作。
-- **ICM / $EV Workbench**：以 Independent Chip Model 計算 Fold $EV、Call $EV、break-even equity 與 risk premium。
-- **Real-hand Feedback Loop**：真實牌局可標記為漏點並寫回個人 Skill Model，讓後續 Scheduler 優先安排相關 sibling drills。
-- **EV Leak Graph**：依 EV loss 與 mastery 找真正最燒 BB 的能力缺口。
-- **Strategy Engine v2.1**：策略 Profile 包含節點、位置、籌碼、Ante、Rake、下注樹、頻率、EV 與來源可信度。
+- **Exact / Monte Carlo Equity Engine**：支援 weighted range、blocker、5-of-7 Hold'em hand evaluator；小型狀態空間完整枚舉，大型狀態空間使用 deterministic seeded Monte Carlo。
+- **EV × Spot Frequency Scheduler**：Expected Learning Value 不只看弱點，也把每次 EV regret 與該類 spot 的實戰出現頻率納入優先級。
+- **Hidden Holdout Benchmark**：正式 holdout 題與 daily、一般 review、專項訓練隔離，降低「背過題目卻以為學會」的假象。
+- **Counterfactual Decision Boundary v2**：一次只改下注尺寸或 Villain range composition，觀察 Equity、Pot Odds 與 Call/Fold 反轉點。
+- **Bet Size as Action**：Check、25%、33%、50%、66%、80%、125% 等尺寸可以是不同 action，分別記錄 chosen EV、best EV 與 regret。
+- **Theory ↔ Exploit Workbench**：理論 baseline 與對 Nit/TAG/LAG/Calling Station 的 exploit overlay 分開呈現；沒有 population sample 時 exploit 永遠不冒充實證真值。
+- **Truth Hierarchy**：`verified-solver > exact-math > population-exploit > expert-baseline > derived-interpolation > heuristic-estimate`。
+- **Skill + Situation Graph**：除了能力，也追蹤 Position、Stack、Pot Type、Street、Bet Size 與 Board Texture，找出真正燒 BB 的局面。
+- **Prescription Analytics**：從描述型 Dashboard 升級成 7 天 repair → delayed recall → transfer → hidden holdout 處方。
+- **North Star**：追蹤近 30 天 frequency-weighted EV leak、前一周期比較與 Hidden Benchmark 表現，而不是只看總正確率。
+- **Tournament $EV Workbench**：ICM、PKO bounty EV、Satellite 等值席位分開計算；FGS 需要未來 game tree，系統明確不假裝已支援。
+- **Weighted Range Versus Hand**：建立加權 Villain range，再計算 Hero Equity、Pot Odds、Call EV 與最佳動作。
+- **Strategy Engine v2.1**：Profile 保存節點、位置、籌碼、Ante、Rake、下注樹、頻率、EV、來源與 immutable version。
+
+## ✨ v4 視覺系統
+
+介面加入低干擾動態效果：
+
+- ambient gradient glow + subtle grid depth
+- card hover lift / state transition
+- primary CTA 低頻 shimmer
+- Hero panel soft pulse
+- 頁面進場 transition
+
+所有動畫都遵守 `prefers-reduced-motion`；目的在增加層次與回饋感，不做賭場式持續閃爍。
 
 ## 🎯 策略資料可信度
 
-策略資料會標示來源層級，例如 `verified-solver`、`expert-baseline`、`heuristic-estimate`。內建教學範圍是可審核的 baseline，不宣稱為特定 solver、抽水結構或錦標賽節點的精確 GTO 解；沒有對應節點時，查詢邏輯不應以其他情境冒充精確答案。
+資料可信度是產品的一部分，不是註腳。Solver、Exact Math、Population Evidence、Expert Baseline、Derived 與 Heuristic 分層呈現。內建 teaching range / sizing EV 不宣稱為特定 solver 的精確輸出；沒有完全匹配的策略節點時，查詢層應回 `unsupported` 或清楚標示 approximate。
+
+Exploit overlay 目前是透明的教學規則，`trustTier` 固定為 `heuristic-estimate`；只有未來真的匯入具有樣本數與來源的 population profile 時，才能升級成 `population-exploit`。
+
+## 🧪 Benchmark 原則
+
+一般「未見題探索」屬於 training pool；真正 **Hidden Benchmark** 使用獨立穩定分池：
+
+- 不進 daily planner
+- 不進一般專項訓練
+- 不進 normal due-review
+- 只在 Hidden Benchmark 入口作答
+- 結果獨立寫成 `trainingType: benchmark`
+
+小型測試題庫不會被硬切 holdout；只有足夠大的題庫或題目明確標示 `benchmarkRole: holdout` 才啟用。
+
+## 🏆 Tournament 模型邊界
+
+- **ICM**：Independent Chip Model，處理獎金結構與 risk premium。
+- **PKO**：在 ICM 基礎上加入可立即取得的 bounty EV；只有 Hero covers 並能實際淘汰 Villain 才計入。
+- **Satellite**：把晉級席位建模為等值票券 payout。
+- **FGS**：尚未實作；需要完整未來牌局樹，不使用簡化公式冒充。
+
+## 🃏 真實牌局資料
+
+現有的**手動自訂牌局實驗室**仍可把一手牌標成個人漏點寫入 Skill Model。
+
+v4 **刻意沒有加入 Poker Hand History 自動匯入器**。也就是不解析 PokerStars/GG/其他平台 hand-history 檔案，不建立自動實戰資料 ingestion pipeline。
 
 ## 💻 本地開發
 
@@ -45,36 +87,36 @@ Windows 也可使用專案內的 `start.bat` 啟動本地環境。
 ```bash
 npm run audit      # high 以上依賴漏洞不可通過 CI
 npm run lint       # TypeScript tsc --noEmit
-npm run validate   # 88 個情境 + Range 題資料契約驗證
-npm test           # Learning / Strategy / ICM / Scheduler 等單元測試
+npm run validate   # 88 個情境 + 6 個 Range 題資料契約
+npm test           # Equity / Learning / Strategy / ICM / PKO / Benchmark / Scheduler
 npm run check      # lint + validate + tests
 npm run build:web  # GitHub Pages production build
 npm run build      # web + Node server build
 ```
 
-所有 Pull Request 都會經過 GitHub Actions 驗證；`main` 的成功建置才有資格發布正式網站。
+所有 Pull Request 都必須通過 GitHub Actions；`main` 成功建置後才發布正式網站。
 
 ## 🚀 部署
 
-部署只有一條正式路徑：**push / merge 到 `main` → GitHub Actions 驗證與 build → 自動發布 `dist` 到 `gh-pages`**。
+唯一正式路徑：**push / merge 到 `main` → GitHub Actions audit / validate / test / build → 自動發布 `dist` 到 `gh-pages`**。
 
-不需要也不應手動執行 `npm run deploy`。這樣可避免 `main` 與正式網站的 production branch 再次不同步。
+不使用第二套手動部署流程，避免 `main` 與線上 production bundle 不一致。
 
 ## 💾 訓練資料
 
-- History 使用 schema v4，新增欄位保持向下相容。
-- 記錄 confidence、duration、review interval、unseen/delayed review、EV loss、skill IDs、transfer evidence 等資料。
+- History schema 維持 v4，新增欄位皆為 optional，以保持舊資料相容。
+- 可記錄 confidence、duration、review interval、unseen/delayed review、chosen/best EV、EV loss、skill IDs、situation IDs、transfer evidence、bet-size action 與 spot-frequency prior。
 - 支援 JSON 完整匯出／匯入與舊資料遷移。
 - 選配遠端同步使用使用者自己的 HTTPS PUT/GET endpoint；資料先在瀏覽器以 AES-GCM 加密，密碼與 Bearer Token 不寫入 localStorage。
 
 ## 🤖 AI 分析
 
 - **離線教練**：GitHub Pages 可直接使用，不需 API Key。
-- **Gemini server 模式**：本地啟動 server 後可透過 `/api` 使用；API Key 應只存在伺服器環境變數，不應打包進前端。
+- **Gemini server 模式**：本地 server 透過 `/api` 使用；API Key 僅存在伺服器環境變數，不打包進前端。
 
 ## 🏗️ Production baseline
 
-- App version: `3.0.0`
+- App version: `4.0.0`
 - Runtime baseline: Node 24 / npm 11
 - Production source: `main`
 - GitHub Pages artifact branch: `gh-pages`
