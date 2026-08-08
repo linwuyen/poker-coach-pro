@@ -4,8 +4,10 @@ export type StrategySpot = 'rfi' | 'vs-open' | 'bb-defense' | '3bet' | '4bet' | 
 export type StrategyAction = 'raise' | 'call' | 'limp' | 'fold' | 'allIn';
 export type Position = 'utg' | 'utg1' | 'utg2' | 'mp' | 'hj' | 'co' | 'btn' | 'sb' | 'bb';
 export type HandClass = 'pair' | 'suited' | 'offsuit';
-export type StrategySourceType = 'heuristic' | 'solver' | 'expert';
-export type StrategyTrustTier = 'verified-solver' | 'expert-baseline' | 'heuristic-estimate';
+export type StrategySourceType = 'heuristic' | 'solver' | 'expert' | 'population' | 'derived';
+export type StrategyTrustTier = 'verified-solver' | 'exact-math' | 'population-exploit' | 'expert-baseline' | 'derived-interpolation' | 'heuristic-estimate';
+export type StrategyMode = 'theory' | 'exploit';
+export type VillainArchetype = 'population' | 'nit' | 'tag' | 'lag' | 'calling-station';
 
 export interface ActionFrequency {
   raise: number;
@@ -58,6 +60,7 @@ export interface StrategySource {
   generatedAt: string;
   authoredBy?: string;
   reviewedBy?: string[];
+  sampleSize?: number;
   disclaimer: string;
 }
 
@@ -75,6 +78,8 @@ export interface StrategyProfile {
   evByHand?: Record<string, HandActionEv>;
   actionSizesBB?: Partial<Record<StrategyAction, number[]>>;
   tags: string[];
+  mode?: StrategyMode;
+  villainArchetype?: VillainArchetype;
   immutable?: boolean;
   contentHash?: string;
 }
@@ -82,6 +87,8 @@ export interface StrategyProfile {
 export interface StrategyQuery extends Partial<StrategyContext> {
   hand?: string;
   allowApproximate?: boolean;
+  mode?: StrategyMode;
+  villainArchetype?: VillainArchetype;
 }
 
 export interface StrategyMatch {
