@@ -18,6 +18,17 @@ export interface HeadsUpRiskResult {
   chipEvBreakEvenPercent: number;
   icmBreakEvenPercent: number;
 }
+export interface PkoRiskInput extends HeadsUpRiskInput {
+  villainBountyValue: number;
+  bountyCashFraction?: number;
+}
+export interface PkoRiskResult extends HeadsUpRiskResult {
+  bountyEv: number;
+  pkoCallEquity: number;
+  pkoDollarEvDelta: number;
+  pkoBreakEvenPercent: number;
+  canEliminateVillain: boolean;
+}
 
 function clonePlayers(players: IcmPlayer[]): IcmPlayer[] { return players.map(player => ({ ...player })); }
 
@@ -44,6 +55,11 @@ export function calculateIcm(players: IcmPlayer[], payouts: number[]): IcmResult
   if (ids.size !== players.length) throw new Error('Player ids must be unique.');
   if (payouts.some(value => value < 0)) throw new Error('Payouts must be non-negative.');
   return { equities: payoutEquities(players, payouts), totalPayout: payouts.reduce((sum, value) => sum + value, 0) };
+}
+
+export function satellitePayouts(seats: number, ticketValue = 1): number[] {
+  const count = Math.max(0, Math.floor(seats));
+  return Array.from({ length: count }, () => Math.max(0, ticketValue));
 }
 
 function resolveAllIn(players: IcmPlayer[], heroId: string, villainId: string, amount: number, heroWins: boolean): IcmPlayer[] {
@@ -81,5 +97,29 @@ export function calculateHeadsUpIcmRisk(input: HeadsUpRiskInput): HeadsUpRiskRes
     riskPremiumPercent: Math.max(0, (icmBreakEven - chipEvBreakEven) * 100),
     chipEvBreakEvenPercent: chipEvBreakEven * 100,
     icmBreakEvenPercent: Math.min(100, Math.max(0, icmBreakEven * 100)),
+  };
+}
+
+export function calculateHeadsUpPkoRisk(input: PkoRiskInput): PkoRiskResult {
+  const base = calculateHeadsUpIcmRisk(input);
+  const hero = input.players.find(player => player.id === input.heroId);
+  const villain = input.players.find(player => player.id === input.villainId);
+  if (!hero || !villain) throw new Error('Hero and villain must exist.');
+  const canEliminateVillain = input.amountAtRisk >= villain.stack && hero.stack >= villain.stack;
+  const bountyCashFraction = Math.min(1, Math.max(0, input.bountyCashFraction ?? 1));
+  const bountyValue = Math.max(0, input.villainBountyValue) * bountyCashFraction;
+  const showdownEquity = Math.min(1, Math.max(0, input.showdownEquity));
+  const bountyEv = canEliminateVillain ? showdownEquity * bountyValue : 0;
+  const pkoCallEquity = base.callEquity + bountyEv;
+  const winValue = base.winEquity + (canEliminateVillain ? bountyValue : 0);
+  const denominator = winValue - base.loseEquity;
+  const pkoBreakEven = denominator > 0 ? (base.foldEquity - base.loseEquity) / denominator : 1;
+  return {
+    ...base,
+    bountyEv,
+    pkoCallEquity,
+    pkoDollarEvDelta: pkoCallEquity - base.foldEquity,
+    pkoBreakEvenPercent: Math.min(100, Math.max(0, pkoBreakEven * 100)),
+    canEliminateVillain,
   };
 }
