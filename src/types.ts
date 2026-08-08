@@ -112,7 +112,7 @@ export interface Scenario {
 export interface HistoryItem {
   schemaVersion?: 3 | 4;
   attemptId?: string;
-  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range' | 'counterfactual' | 'transfer' | 'real-hand';
+  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range' | 'counterfactual' | 'transfer' | 'real-hand' | 'solver-corpus';
   scenarioId: string;
   stepId?: string;
   masteryKey?: string;
@@ -137,6 +137,12 @@ export interface HistoryItem {
   bestEvBB?: number;
   evLossBB?: number;
   truthTier?: TruthTier;
+  truthSourceId?: string;
+  truthSourceRef?: string;
+  truthSourceLicense?: string;
+  truthSourceRevision?: string;
+  datasetSplit?: string;
+  datasetRowId?: string;
   strategyMode?: StrategyMode;
   spotFrequencyPer100Hands?: number;
   difficultyWeight?: number;

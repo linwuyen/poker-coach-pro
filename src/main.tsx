@@ -7,6 +7,7 @@ import { RangeReadingTrainer } from './features/range/RangeReadingTrainer';
 import { ExploitWorkbench } from './features/strategy/ExploitWorkbench';
 import { BenchmarkTrainer } from './features/training/BenchmarkTrainer';
 import { CounterfactualTrainer } from './features/training/CounterfactualTrainer';
+import { PokerBenchTrainer } from './features/training/PokerBenchTrainer';
 import { SizingTrainer } from './features/training/SizingTrainer';
 import { IcmWorkbench } from './features/tournament/IcmWorkbench';
 import './index.css';
@@ -24,6 +25,7 @@ function RootRouter() {
   if (route === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
   if (route === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
   if (route === '#sizing-trainer') return <SizingTrainer onExit={exitLab} />;
+  if (route === '#solver-corpus') return <PokerBenchTrainer onExit={exitLab} />;
   if (route === '#hidden-benchmark') return <BenchmarkTrainer onExit={exitLab} />;
   if (route === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
   if (route === '#exploit-workbench') return <ExploitWorkbench onExit={exitLab} />;
