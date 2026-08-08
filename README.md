@@ -1,6 +1,6 @@
 # ♠️ 想高龍了 德撲訓練機
 
-**v4 Truth & Transfer Engine · Strategy Engine v2.1**
+**v5 Solver Truth Engine · Strategy Engine v2.2**
 
 繁體中文德州撲克決策學習系統。核心目標不是刷題數，而是用最少訓練時間降低未來實戰決策的 EV loss：
 
@@ -27,6 +27,15 @@ GitHub Pages：**https://linwuyen.github.io/poker-coach-pro/**
 - **Tournament $EV Workbench**：ICM、PKO bounty EV、Satellite 等值席位分開計算；FGS 需要未來 game tree，系統明確不假裝已支援。
 - **Weighted Range Versus Hand**：建立加權 Villain range，再計算 Hero Equity、Pot Odds、Call EV 與最佳動作。
 - **Strategy Engine v2.1**：Profile 保存節點、位置、籌碼、Ante、Rake、下注樹、頻率、EV、來源與 immutable version。
+
+## ♠️ v5 Solver Truth
+
+- PokerBench pinned solver corpus：使用 Apache-2.0 的 solver-computed NLHE decisions，固定 dataset revision。
+- Preflop 1,000 + Postflop 10,000 lightweight solver rows 直接在 GitHub Pages lazy-load，並使用 Cache Storage。
+- Solver row 會保存 source id、revision、license、split、row id 到 History，答案可追溯。
+- Sizing Trainer 已移除手填 heuristic EV，改以資料集實際的 Bet/Raise size label 作答。
+- PokerBench 沒有提供 per-action EV / mixed frequency 時，產品明確留白，不計算假 EV regret。
+- 原本內建 heuristic range 仍可作教學 fallback，但不再冒充 verified solver。
 
 ## ✨ v4 視覺系統
 
@@ -116,7 +125,7 @@ npm run build      # web + Node server build
 
 ## 🏗️ Production baseline
 
-- App version: `4.0.0`
+- App version: `5.0.0`
 - Runtime baseline: Node 24 / npm 11
 - Production source: `main`
 - GitHub Pages artifact branch: `gh-pages`
