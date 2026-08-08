@@ -1,6 +1,6 @@
 import { HistoryItem, PlayerProfile, Scenario } from '../types';
 import { scenarioProfileScore } from '../domain/playerProfile';
-import { inferScenarioSkillIds, calculateSkillMastery, getSkillNode } from './skillGraph';
+import { inferScenarioSkillIds, calculateSkillMastery, getSkillNode, inferSkillIds } from './skillGraph';
 
 export interface LearningValueBreakdown {
   total: number;
@@ -41,7 +41,11 @@ export function expectedLearningValue(
     : 0;
   const uncertainty = Math.max(0.15, 1 - avgConfidence);
   const forgettingRisk = due ? 1 : latest ? Math.min(1, Math.max(0.1, (now - latest.timestamp) / (14 * 86400000))) : 0.45;
-  const relatedSkillSeenElsewhere = skills.some(id => history.some(item => item.scenarioId !== scenario.id && (item.skillIds || []).includes(id)));
+  const relatedSkillSeenElsewhere = skills.some(id => history.some(item => {
+    if (item.scenarioId === scenario.id) return false;
+    const itemSkills = item.skillIds?.length ? item.skillIds : inferSkillIds(item.category, item.street);
+    return itemSkills.includes(id);
+  }));
   const transferValue = unseen && relatedSkillSeenElsewhere ? 1 : unseen ? 0.65 : 0.25;
   const evImportance = skills.length
     ? skills.reduce((sum, id) => sum + (getSkillNode(id)?.evImportance || 1), 0) / skills.length
