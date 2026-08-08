@@ -105,7 +105,7 @@ function TrainPage({ profile, history, relevant, onStart }: { profile: PlayerPro
     { title: '翻後決策', description: 'Flop、Turn、River 的價值與詐唬', icon: <Brain className="h-6 w-6" />, items: relevant.filter(s => s.steps.some(step => step.street !== 'Preflop')).slice(0, 20) },
     { title: '短碼與 ICM', description: 'Push/Fold、重偷與生存價值', icon: <Target className="h-6 w-6" />, items: relevant.filter(s => s.type === 'Tournament' && (s.userBB <= 25 || s.category?.some(c => /ICM|短碼/.test(c)))).slice(0, 20) },
     { title: '數學與 SPR', description: '底池賠率、SPR、組合與尺寸', icon: <BarChart3 className="h-6 w-6" />, items: relevant.filter(s => s.category?.some(c => /SPR|賠率|數學|尺寸|組合/.test(c)) || s.steps.some(step => step.spr !== undefined || step.potOdds)).slice(0, 20) },
-    { title: '未見題 Benchmark', description: '只看尚未作答的題，測量真實泛化', icon: <CheckCircle2 className="h-6 w-6" />, items: relevant.filter(s => !history.some(item => item.scenarioId === s.id)).slice(0, 12) },
+    { title: '未見題探索', description: '一般訓練池的未見題；真正 Holdout 請使用 Hidden Benchmark', icon: <CheckCircle2 className="h-6 w-6" />, items: relevant.filter(s => !history.some(item => item.scenarioId === s.id)).slice(0, 12) },
   ];
   return <div><div className="mb-6 max-w-2xl"><h2 className="text-2xl font-semibold">選擇訓練模式</h2><p className="mt-2 text-sm text-slate-400">預設使用系統推薦。專項訓練仍會記錄信心、掌握度與延遲留存。</p></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{modes.map(mode => <ModeCard key={mode.title} {...mode} onClick={() => onStart(mode.title, mode.items)} />)}</div></div>;
 }

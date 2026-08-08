@@ -1,4 +1,5 @@
 import { PlayerProfile, Scenario, StackBand } from '../types';
+import { getTrainingScenarios } from '../learning-engine/benchmark';
 
 export const PLAYER_PROFILE_KEY = 'poker_player_profile_v1';
 
@@ -75,9 +76,10 @@ export function scenarioProfileScore(scenario: Scenario, profile: PlayerProfile)
 }
 
 export function filterRelevantScenarios(scenarios: Scenario[], profile: PlayerProfile): Scenario[] {
-  const ranked = scenarios
+  const trainingScenarios = getTrainingScenarios(scenarios);
+  const ranked = trainingScenarios
     .map(scenario => ({ scenario, score: scenarioProfileScore(scenario, profile) }))
     .sort((a, b) => b.score - a.score);
   const relevant = ranked.filter(item => item.score >= 2).map(item => item.scenario);
-  return relevant.length >= Math.min(12, scenarios.length) ? relevant : ranked.map(item => item.scenario);
+  return relevant.length >= Math.min(12, trainingScenarios.length) ? relevant : ranked.map(item => item.scenario);
 }

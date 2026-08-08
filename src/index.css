@@ -25,8 +25,10 @@ body {
   min-height: 100vh;
   margin: 0;
   background:
-    radial-gradient(circle at 15% -10%, rgba(16, 185, 129, 0.08), transparent 28rem),
+    radial-gradient(circle at 15% -10%, rgba(16, 185, 129, 0.1), transparent 28rem),
+    radial-gradient(circle at 88% 4%, rgba(59, 130, 246, 0.07), transparent 24rem),
     var(--pc-bg);
+  overflow-x: hidden;
 }
 
 button,
@@ -70,4 +72,148 @@ textarea:focus-visible {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
+}
+
+.pc-ambient-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.pc-ambient-orb {
+  position: absolute;
+  width: 30rem;
+  height: 30rem;
+  border-radius: 9999px;
+  filter: blur(70px);
+  opacity: 0.11;
+  will-change: transform;
+  animation: pc-orbit 18s ease-in-out infinite alternate;
+}
+
+.pc-ambient-orb-a {
+  left: -14rem;
+  top: 8%;
+  background: rgba(16, 185, 129, 0.72);
+}
+
+.pc-ambient-orb-b {
+  right: -16rem;
+  top: 42%;
+  background: rgba(99, 102, 241, 0.62);
+  animation-delay: -8s;
+  animation-duration: 24s;
+}
+
+.pc-grid-fade {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.022) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent 78%);
+}
+
+.pc-card-lift {
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.pc-card-lift:hover {
+  transform: translateY(-3px);
+  border-color: rgba(100, 116, 139, 0.72);
+  box-shadow: 0 16px 42px rgba(2, 6, 23, 0.34);
+}
+
+.pc-interactive {
+  transition: transform 160ms ease, filter 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.pc-interactive:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+.pc-interactive:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+}
+
+.pc-shimmer {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.pc-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: -40% auto -40% -55%;
+  width: 42%;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+  animation: pc-shimmer 4.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.pc-hero-glow {
+  position: relative;
+  isolation: isolate;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 24px 70px rgba(2, 6, 23, 0.22);
+}
+
+.pc-hero-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(circle at 78% 12%, rgba(255, 255, 255, 0.07), transparent 32%);
+  opacity: 0.7;
+  animation: pc-pulse 7s ease-in-out infinite alternate;
+}
+
+.pc-enter {
+  animation: pc-enter 360ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+@keyframes pc-orbit {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(4rem, -2rem, 0) scale(1.12); }
+}
+
+@keyframes pc-shimmer {
+  0%, 70% { left: -55%; opacity: 0; }
+  78% { opacity: 1; }
+  96%, 100% { left: 120%; opacity: 0; }
+}
+
+@keyframes pc-pulse {
+  from { opacity: 0.46; transform: scale(0.985); }
+  to { opacity: 0.9; transform: scale(1.01); }
+}
+
+@keyframes pc-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .pc-ambient-orb,
+  .pc-shimmer::after,
+  .pc-hero-glow::before,
+  .pc-enter {
+    animation: none !important;
+  }
+  .pc-card-lift,
+  .pc-interactive {
+    transition: none !important;
+  }
+  .pc-card-lift:hover,
+  .pc-interactive:hover:not(:disabled),
+  .pc-interactive:active:not(:disabled) {
+    transform: none !important;
+  }
 }
