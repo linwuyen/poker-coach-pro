@@ -20,6 +20,7 @@ interface AppShellProps {
 
 export function AppShell({ page, onPageChange, children, onOpenSettings }: AppShellProps) {
   const current = NAV_ITEMS.find(item => item.id === page) || NAV_ITEMS[0];
+  const openRangeTraining = () => { window.location.hash = 'range-reading'; };
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-800/80 bg-slate-950/95 px-4 py-5 backdrop-blur lg:flex lg:flex-col">
@@ -32,7 +33,7 @@ export function AppShell({ page, onPageChange, children, onOpenSettings }: AppSh
       </aside>
 
       <div className="min-h-screen pb-24 lg:ml-64 lg:pb-0">
-        <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/85 px-4 py-3 backdrop-blur md:px-8 lg:px-10"><div className="mx-auto flex max-w-7xl items-center justify-between"><div><h1 className="text-lg font-semibold tracking-tight md:text-xl">{current.label}</h1><p className="text-xs text-slate-500">{current.description}</p></div><button type="button" onClick={onOpenSettings} className="rounded-lg border border-slate-800 px-3 py-2 text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-100 lg:hidden">設定</button></div></header>
+        <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/85 px-4 py-3 backdrop-blur md:px-8 lg:px-10"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3"><div><h1 className="text-lg font-semibold tracking-tight md:text-xl">{current.label}</h1><p className="text-xs text-slate-500">{current.description}</p></div><div className="flex items-center gap-2">{page === 'train' && <button type="button" onClick={openRangeTraining} className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/15"><Brain className="h-4 w-4" /><span>對抗範圍訓練</span></button>}<button type="button" onClick={onOpenSettings} className="rounded-lg border border-slate-800 px-3 py-2 text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-100 lg:hidden">設定</button></div></div></header>
         <main className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8 lg:px-10">{children}</main>
       </div>
 

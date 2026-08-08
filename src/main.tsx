@@ -1,6 +1,5 @@
 import { StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Brain } from 'lucide-react';
 import AppV2 from './app/AppV2';
 import { RangeReadingTrainer } from './features/range/RangeReadingTrainer';
 import './index.css';
@@ -18,18 +17,7 @@ function RootRouter() {
     return <RangeReadingTrainer onExit={() => { window.location.hash = ''; }} />;
   }
 
-  return <>
-    <AppV2 />
-    <button
-      type="button"
-      onClick={() => { window.location.hash = 'range-reading'; }}
-      className="fixed bottom-24 right-4 z-50 flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500 px-4 py-3 text-sm font-bold text-emerald-950 shadow-2xl shadow-emerald-950/40 transition hover:-translate-y-0.5 lg:bottom-6 lg:right-6"
-      aria-label="開啟對抗範圍訓練"
-    >
-      <Brain className="h-5 w-5" />
-      <span>對抗範圍訓練</span>
-    </button>
-  </>;
+  return <AppV2 />;
 }
 
 createRoot(document.getElementById('root')!).render(
