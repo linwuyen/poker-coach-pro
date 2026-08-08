@@ -1,81 +1,81 @@
-# ♠️ Poker Coach Pro (德州撲克戰術教練)
+# ♠️ 想高龍了 德撲訓練機
 
-繁體中文德州撲克決策訓練器，包含 88 個精選情境、分支多街題、GTO 翻前範圍練習、錯題間隔複習、弱點診斷、離線教練與選用的 Gemini 線上 AI 分析。
+**v3 Decision Learning Engine · Strategy Engine v2.1**
 
----
+繁體中文德州撲克決策學習系統。核心不是單純刷題，而是把每次決策轉成可追蹤的能力與 EV 成本：
 
-## 🌐 線上直接玩 (GitHub Pages)
+> 牌局／訓練 → 決策 → EV Regret → Skill Graph → 延遲提取／Transfer → Expected Learning Value → 下一個最值得練的題目
 
-無需安裝任何軟體，開啟瀏覽器即可直接遊玩：
-👉 **[https://linwuyen.github.io/poker-coach-pro/](https://linwuyen.github.io/poker-coach-pro/)**
+## 🌐 線上版本
 
-> 💡 **提示**：線上版本支援 PWA，可將網頁「安裝」至手機或電腦桌面離線開啟使用。
+GitHub Pages：**https://linwuyen.github.io/poker-coach-pro/**
 
----
+支援 PWA，可從瀏覽器安裝到桌面或手機。GitHub Pages 為靜態版本，因此不提供 `/api` 後端；需要伺服器端 Gemini 分析時請使用本地 server 模式。
 
-## 💻 本地電腦啟動方式 (Local Development)
+## 🧠 v3 核心能力
 
-### 方式一：雙擊啟動 (Windows 推薦)
-1. 確保電腦已安裝 [Node.js](https://nodejs.org/)。
-2. 雙擊專案目錄下的 **`start.bat`**。
-3. 首次執行會自動安裝套件並啟動伺服器，自動開啟瀏覽器前往 `http://localhost:3000`。
-4. 關閉跳出的啟動視窗即可關閉伺服器。
+- **Expected Learning Value Scheduler**：依弱點、遺忘風險、不確定性、transfer value、EV importance、玩家設定與時間成本排序每日訓練。
+- **EV Regret**：以最佳行動 EV 與實際選擇 EV 的差值衡量錯誤成本，而不是只看答對／答錯。
+- **Poker Skill Graph**：跨題追蹤 Preflop、Range、Math、Postflop、Tournament、Decision Boundary 等能力。
+- **Transfer Mastery**：Mastered 需要穩定表現、延遲提取，以及 sibling／counterfactual transfer 證據。
+- **Counterfactual Decision Boundary**：固定 range/equity，只改下注尺寸，找出 Call/Fold 決策反轉點。
+- **Weighted Range Versus Hand**：建立加權 Villain range，再計算 Hero equity、Pot Odds、Call EV 與最佳動作。
+- **ICM / $EV Workbench**：以 Independent Chip Model 計算 Fold $EV、Call $EV、break-even equity 與 risk premium。
+- **Real-hand Feedback Loop**：真實牌局可標記為漏點並寫回個人 Skill Model，讓後續 Scheduler 優先安排相關 sibling drills。
+- **EV Leak Graph**：依 EV loss 與 mastery 找真正最燒 BB 的能力缺口。
+- **Strategy Engine v2.1**：策略 Profile 包含節點、位置、籌碼、Ante、Rake、下注樹、頻率、EV 與來源可信度。
 
-### 方式二：指令啟動 (Terminal)
+## 🎯 策略資料可信度
+
+策略資料會標示來源層級，例如 `verified-solver`、`expert-baseline`、`heuristic-estimate`。內建教學範圍是可審核的 baseline，不宣稱為特定 solver、抽水結構或錦標賽節點的精確 GTO 解；沒有對應節點時，查詢邏輯不應以其他情境冒充精確答案。
+
+## 💻 本地開發
+
+需求：**Node.js 24+、npm 11**。
+
 ```bash
-# 1. 安裝依賴套件
-npm install
-
-# 2. 啟動開發伺服器
+npm ci
 npm run dev
 ```
 
----
+Windows 也可使用專案內的 `start.bat` 啟動本地環境。
 
-## 🚀 重新部署與更新線上版本 (Deployment)
-
-若未來修改了程式碼或題庫，想要更新 GitHub Pages 線上版，只需執行：
+## ✅ 品質與安全閘門
 
 ```bash
-# 1. 提交程式碼變更
-git add .
-git commit -m "feat: 更新內容"
-git push origin main
-
-# 2. 一鍵打包並發布至 GitHub Pages
-npm run deploy
+npm run audit      # high 以上依賴漏洞不可通過 CI
+npm run lint       # TypeScript tsc --noEmit
+npm run validate   # 88 個情境 + Range 題資料契約驗證
+npm test           # Learning / Strategy / ICM / Scheduler 等單元測試
+npm run check      # lint + validate + tests
+npm run build:web  # GitHub Pages production build
+npm run build      # web + Node server build
 ```
 
----
+所有 Pull Request 都會經過 GitHub Actions 驗證；`main` 的成功建置才有資格發布正式網站。
 
-## ⚙️ AI 牌局分析模式說明
+## 🚀 部署
 
-專案支援兩種牌局分析模式：
+部署只有一條正式路徑：**push / merge 到 `main` → GitHub Actions 驗證與 build → 自動發布 `dist` 到 `gh-pages`**。
 
-1. **離線教練模式 (預設)**：不需要任何設定或 API Key，系統會根據內建牌局演算法自動生成詳細的心理、範圍與尺寸分析。
-2. **Gemini 線上 AI 模式**：
-   - 複製 `.env.example` 為 `.env`
-   - 填入您的 Gemini API Key：
-     ```dotenv
-     GEMINI_API_KEY=YOUR_GEMINI_API_KEY
-     GEMINI_MODEL=gemini-3.5-flash
-     PORT=3000
-     ```
+不需要也不應手動執行 `npm run deploy`。這樣可避免 `main` 與正式網站的 production branch 再次不同步。
 
----
+## 💾 訓練資料
 
-## 🛠 開發與測試指令
+- History 使用 schema v4，新增欄位保持向下相容。
+- 記錄 confidence、duration、review interval、unseen/delayed review、EV loss、skill IDs、transfer evidence 等資料。
+- 支援 JSON 完整匯出／匯入與舊資料遷移。
+- 選配遠端同步使用使用者自己的 HTTPS PUT/GET endpoint；資料先在瀏覽器以 AES-GCM 加密，密碼與 Bearer Token 不寫入 localStorage。
 
-```bash
-npm run validate  # 題庫資料契約與衝突檢查 (檢查 88 個情境)
-npm test          # 執行單元測試
-npm run check     # 執行完整驗證 (TypeScript + Validate + Test)
-npm run build     # 驗證並建立 Production 打包檔案 (dist)
-```
+## 🤖 AI 分析
 
----
+- **離線教練**：GitHub Pages 可直接使用，不需 API Key。
+- **Gemini server 模式**：本地啟動 server 後可透過 `/api` 使用；API Key 應只存在伺服器環境變數，不應打包進前端。
 
-## 💾 訓練資料與備份
+## 🏗️ Production baseline
 
-* 系統會自動記錄訓練成績、思考時間與間隔複習排程。
-* 支援在首頁「匯出/匯入 JSON 備份」，換電腦也能隨時轉移學習進度。
+- App version: `3.0.0`
+- Runtime baseline: Node 24 / npm 11
+- Production source: `main`
+- GitHub Pages artifact branch: `gh-pages`
+- Web base path: `/poker-coach-pro/`
