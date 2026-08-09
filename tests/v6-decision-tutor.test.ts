@@ -104,7 +104,7 @@ test('contrastive pairs require different solver labels from sibling partition',
 });
 
 test('calibration report detects high-confidence overconfidence', () => {
-  const history: HistoryItem[] = Array.from({ length: 10 }, (_, index) => ({ scenarioId: `c${index}`, category: ['x'], score: index < 5 ? 10 : 0, timestamp: index, confidence: 4, correct: index < 5 }));
+  const history: HistoryItem[] = Array.from({ length: 10 }, (_, index) => ({ scenarioId: `c${index}`, category: ['x'], score: index < 5 ? 10 : 0, judgment: index < 5 ? '正確' : '錯誤', timestamp: index, confidence: 4, correct: index < 5 }));
   const report = buildCalibrationReport(history);
   assert.equal(report.label, 'overconfident');
   assert.ok(report.overconfidence > 0.2);
