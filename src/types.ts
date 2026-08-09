@@ -37,6 +37,9 @@ export type FeedbackQuality = 'best' | 'acceptable' | 'suboptimal' | 'major-erro
 export type MasteryStatus = 'new' | 'learning' | 'review' | 'mastered';
 export type TruthTier = 'verified-solver' | 'exact-math' | 'population-exploit' | 'expert-baseline' | 'derived-interpolation' | 'heuristic-estimate';
 export type StrategyMode = 'theory' | 'exploit';
+export type ContextMatchStatus = 'exact' | 'approximate' | 'unsupported';
+export type SolverCorpusRole = 'training' | 'sibling' | 'holdout';
+export type DecisionErrorType = 'none' | 'knowledge-gap' | 'mental-model' | 'sizing-boundary' | 'action-boundary' | 'lucky-guess' | 'fragile-knowledge';
 
 export interface FeedbackEvidence {
   objective?: string;
@@ -112,7 +115,7 @@ export interface Scenario {
 export interface HistoryItem {
   schemaVersion?: 3 | 4;
   attemptId?: string;
-  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range' | 'counterfactual' | 'transfer' | 'real-hand' | 'solver-corpus';
+  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range' | 'counterfactual' | 'transfer' | 'real-hand' | 'solver-corpus' | 'solver-benchmark' | 'contrastive' | 'strategy-surface';
   scenarioId: string;
   stepId?: string;
   masteryKey?: string;
@@ -156,6 +159,15 @@ export interface HistoryItem {
   notes?: string;
   aiAnalysis?: string;
   playerProfileVersion?: number;
+  contextFingerprint?: string;
+  contextMatchStatus?: ContextMatchStatus;
+  strategyDistance?: number;
+  reasoningConceptIds?: string[];
+  errorType?: DecisionErrorType;
+  solverCorpusRole?: SolverCorpusRole;
+  curriculumLevel?: 1 | 2 | 3 | 4 | 5;
+  contrastivePairId?: string;
+  boardTextureId?: string;
 }
 
 export type PlayerExperience = 'beginner' | 'intermediate' | 'advanced';
