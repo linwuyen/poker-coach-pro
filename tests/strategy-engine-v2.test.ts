@@ -38,6 +38,22 @@ test('strict query refuses to substitute another strategy node', () => {
   assert.equal(result.status, 'unsupported');
 });
 
+test('strict query rejects material stack mismatch instead of calling it exact', () => {
+  const profile = STRATEGY_PROFILES_V2.find(item => item.context.position === 'btn' && item.context.spot === 'rfi' && item.context.tableSize === '6max')!;
+  const result = queryStrategy(STRATEGY_PROFILES_V2, {
+    hand: 'AKs',
+    format: profile.context.format,
+    tableSize: profile.context.tableSize,
+    spot: profile.context.spot,
+    position: profile.context.position,
+    stackDepthBB: profile.context.stackDepthBB + 10,
+    anteBB: profile.context.anteBB,
+    ...(profile.context.openSizeBB !== undefined ? { openSizeBB: profile.context.openSizeBB } : {}),
+  });
+  assert.equal(result.status, 'unsupported');
+  if (result.status === 'unsupported') assert.ok(result.missingContexts.includes('stackDepthBB'));
+});
+
 test('major preflop nodes are represented by separate profiles', () => {
   const spots = new Set(STRATEGY_PROFILES_V2.map(profile => profile.context.spot));
   ['rfi', 'vs-open', 'bb-defense', '3bet', '4bet', 'push-fold'].forEach(spot => assert.ok(spots.has(spot as any), spot));

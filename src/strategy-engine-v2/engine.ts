@@ -151,6 +151,14 @@ export function queryStrategy(profiles: StrategyProfile[], query: StrategyQuery)
   }
 
   const match = findBestProfile(candidates, query);
+  const materialContextMismatches: string[] = [];
+  if (query.stackDepthBB !== undefined && Math.abs(match.profile.context.stackDepthBB - query.stackDepthBB) > 5) materialContextMismatches.push('stackDepthBB');
+  if (query.anteBB !== undefined && Math.abs(match.profile.context.anteBB - query.anteBB) > 0.05) materialContextMismatches.push('anteBB');
+  if (query.openSizeBB !== undefined && (match.profile.context.openSizeBB === undefined || Math.abs(match.profile.context.openSizeBB - query.openSizeBB) > 0.25)) materialContextMismatches.push('openSizeBB');
+  if (query.rakePercent !== undefined && (match.profile.context.rakePercent === undefined || Math.abs(match.profile.context.rakePercent - query.rakePercent) > 0.5)) materialContextMismatches.push('rakePercent');
+  if (query.rakeCapBB !== undefined && (match.profile.context.rakeCapBB === undefined || Math.abs(match.profile.context.rakeCapBB - query.rakeCapBB) > 0.25)) materialContextMismatches.push('rakeCapBB');
+  if (materialContextMismatches.length && !query.allowApproximate) return { status: 'unsupported', missingContexts: materialContextMismatches, warnings: ['策略情境存在重大 mismatch；系統拒絕把近似節點冒充 exact solver truth。'] };
+  if (materialContextMismatches.length) match.warnings.push(`Approximate context: ${materialContextMismatches.join(', ')}`);
   const stackDistance = query.stackDepthBB === undefined ? 0 : Math.abs(match.profile.context.stackDepthBB - query.stackDepthBB);
   const maxApproximateDistance = Math.max(5, match.profile.context.stackDepthBB * 0.2);
   if (stackDistance > maxApproximateDistance && !query.allowApproximate) {

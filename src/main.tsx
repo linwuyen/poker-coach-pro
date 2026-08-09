@@ -1,12 +1,16 @@
 import { StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import AppV2 from './app/AppV2';
+import { CalibrationDashboard } from './features/analysis/CalibrationDashboard';
 import { SkillGraphDashboard } from './features/analysis/SkillGraphDashboard';
 import { EquityWorkbench } from './features/learning/EquityWorkbench';
 import { RangeReadingTrainer } from './features/range/RangeReadingTrainer';
 import { ExploitWorkbench } from './features/strategy/ExploitWorkbench';
+import { SolverSurfaceLab } from './features/strategy/SolverSurfaceLab';
 import { BenchmarkTrainer } from './features/training/BenchmarkTrainer';
+import { ContrastiveTrainer } from './features/training/ContrastiveTrainer';
 import { CounterfactualTrainer } from './features/training/CounterfactualTrainer';
+import { DecisionBoundaryMap } from './features/training/DecisionBoundaryMap';
 import { PokerBenchTrainer } from './features/training/PokerBenchTrainer';
 import { SizingTrainer } from './features/training/SizingTrainer';
 import { IcmWorkbench } from './features/tournament/IcmWorkbench';
@@ -24,13 +28,18 @@ function RootRouter() {
   const exitLab = () => { window.location.hash = ''; };
   if (route === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
   if (route === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
+  if (route === '#boundary-map') return <DecisionBoundaryMap onExit={exitLab} />;
+  if (route === '#contrastive-trainer') return <ContrastiveTrainer onExit={exitLab} />;
   if (route === '#sizing-trainer') return <SizingTrainer onExit={exitLab} />;
   if (route === '#solver-corpus') return <PokerBenchTrainer onExit={exitLab} />;
+  if (route === '#solver-benchmark') return <PokerBenchTrainer onExit={exitLab} mode="benchmark" />;
+  if (route === '#strategy-surface') return <SolverSurfaceLab onExit={exitLab} />;
   if (route === '#hidden-benchmark') return <BenchmarkTrainer onExit={exitLab} />;
   if (route === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
   if (route === '#exploit-workbench') return <ExploitWorkbench onExit={exitLab} />;
   if (route === '#icm-workbench') return <IcmWorkbench onExit={exitLab} />;
   if (route === '#skill-graph') return <SkillGraphDashboard onExit={exitLab} />;
+  if (route === '#calibration') return <CalibrationDashboard onExit={exitLab} />;
   return <AppV2 />;
 }
 

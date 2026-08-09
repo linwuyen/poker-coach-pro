@@ -1,6 +1,6 @@
 # ♠️ 想高龍了 德撲訓練機
 
-**v5 Solver Truth Engine · Strategy Engine v2.2**
+**v6 Decision Tutor · Strategy Engine v2.3**
 
 繁體中文德州撲克決策學習系統。核心目標不是刷題數，而是用最少訓練時間降低未來實戰決策的 EV loss：
 
@@ -11,6 +11,22 @@
 GitHub Pages：**https://linwuyen.github.io/poker-coach-pro/**
 
 支援 PWA，可從瀏覽器安裝到桌面或手機。GitHub Pages 為靜態版本，因此不提供 `/api` 後端；需要伺服器端 Gemini 分析時請使用本地 server 模式。
+
+## 🧭 v6 Decision Tutor
+
+- **Expected EV Gain Scheduler**：排序目標從 learning value 進一步改成 expected loss × spot frequency × probability of improvement，再納入 retention / transfer / time cost。
+- **Strict Context Fingerprint**：Position、street、action tree、pot bucket、board texture，以及 Strategy Profile 的 stack/open/rake/ante 都可產生 deterministic fingerprint；重大 mismatch 直接 unsupported。
+- **Strategy-Distance Learning**：完整 frequency profile 以 total-variation distance 評分，不把 55/45 mixed strategy 簡化成單一答案；只有真實 action EV 存在才計算 strategy EV regret。
+- **Solver Curriculum**：PokerBench 固定分成 Training 80% / Sibling 10% / Holdout 10%；正常訓練看不到 sibling/holdout。Level 1→4 由簡單 pure decision 逐步進到 sizing / complex boundary。
+- **Contrastive Trainer**：只使用 sibling partition，配對看起來相似但 solver label 不同的 spot，找真正改變答案的 context。
+- **Solver Holdout Benchmark**：只使用從未進 normal training 的 10% holdout，和舊 Scenario Hidden Benchmark 分開。
+- **Explain-before-reveal**：先選 action、推理假設、confidence，再看 solver label；PokerBench 沒有 reason ground truth，所以理由只作 mental-model diagnosis，不偽造 solver explanation。
+- **Board Texture Engine**：Pairing、tone、high card、broadway density、straight connectivity、suit concentration、dynamicity 進入 Situation Graph。
+- **Calibration & Error Model**：區分 knowledge gap、mental-model、sizing boundary、action boundary、lucky guess、fragile knowledge，並計算 confidence calibration / ECE。
+- **Decision Boundary Map**：用 exact pot-odds math 顯示下注尺寸改變時 Call/Fold 門檻在哪裡翻轉。
+- **UI 收斂**：Today 先顯示下一個最高 Expected EV Gain drill；進階工具退到 Train/Learn/Analysis 二級入口。
+
+> 公開 PokerBench 仍只提供 optimal decision label，沒有每個 action 的完整 frequency/EV surface。v6 已把完整 surface 的資料模型、import/profile scoring、Strategy Distance 與 EV regret 做完；缺資料時顯示 unavailable，而不是製造數字。
 
 ## 🧠 v4 核心能力
 
@@ -125,7 +141,7 @@ npm run build      # web + Node server build
 
 ## 🏗️ Production baseline
 
-- App version: `5.0.0`
+- App version: `6.0.0`
 - Runtime baseline: Node 24 / npm 11
 - Production source: `main`
 - GitHub Pages artifact branch: `gh-pages`
