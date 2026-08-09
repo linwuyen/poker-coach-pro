@@ -62,14 +62,15 @@ test('strategy distance scores full distributions rather than binary labels', ()
   const target = { raise: 0.55, call: 0.45, fold: 0 };
   assert.equal(strategyDistance(target, target).similarity, 100);
   const pureRaise = strategyDistance(target, { raise: 1, call: 0, fold: 0 });
-  assert.equal(pureRaise.totalVariation, 0.45);
+  assert.ok(Math.abs(pureRaise.totalVariation - 0.45) < 1e-9);
   assert.equal(pureRaise.similarity, 55);
 });
 
 test('strategy EV regret is only computed when action EV is available', () => {
   const target = { raise: 0.5, call: 0.5 };
   const chosen = { raise: 1, call: 0 };
-  assert.equal(strategyEvRegret(target, chosen, { raise: 1, call: 1.2 }), 0.1);
+  const regret = strategyEvRegret(target, chosen, { raise: 1, call: 1.2 });
+  assert.ok(regret !== undefined && Math.abs(regret - 0.1) < 1e-9);
   assert.equal(strategyEvRegret(target, chosen, { raise: 1 }), undefined);
 });
 
