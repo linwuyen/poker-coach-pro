@@ -5,7 +5,7 @@ import { getTrainingScenarios } from '../../learning-engine/benchmark';
 import { rankByExpectedLearningValue } from '../../learning-engine/trainingValue';
 
 export type TrainingReason = 'due-review' | 'weak-area' | 'recent-mistake' | 'new' | 'benchmark' | 'mixed';
-export interface PlannedScenario { scenario: Scenario; reason: TrainingReason; learningValue?: number; }
+export interface PlannedScenario { scenario: Scenario; reason: TrainingReason; learningValue?: number; expectedEvGainPer100Hands?: number; }
 export interface DailyTrainingPlan { items: PlannedScenario[]; counts: Record<TrainingReason, number>; weakCategories: string[]; }
 
 const EMPTY_COUNTS: Record<TrainingReason, number> = { 'due-review': 0, 'weak-area': 0, 'recent-mistake': 0, new: 0, benchmark: 0, mixed: 0 };
@@ -25,14 +25,19 @@ export function buildDailyTrainingPlan(scenarios: Scenario[], history: HistoryIt
       else benchmarkAssigned = true;
     }
     counts[reason] += 1;
-    return { scenario, reason, learningValue: Math.round(value.total * 100) / 100 };
+    return {
+      scenario,
+      reason,
+      learningValue: Math.round(value.total * 100) / 100,
+      expectedEvGainPer100Hands: Math.round(value.expectedEvGainPer100Hands * 1000) / 1000,
+    };
   });
   return { items, counts, weakCategories };
 }
 
 export function getDueScenarioIds(history: HistoryItem[], now = Date.now()): string[] {
   const due = [...latestByMasteryKey(history).values()]
-    .filter(item => item.trainingType !== 'benchmark')
+    .filter(item => item.trainingType !== 'benchmark' && item.trainingType !== 'solver-benchmark')
     .filter(item => isDue(item, now))
     .sort((a, b) => (a.nextReviewAt || Infinity) - (b.nextReviewAt || Infinity));
   return [...new Set(due.map(item => item.scenarioId))];
