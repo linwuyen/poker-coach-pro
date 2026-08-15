@@ -85,3 +85,7 @@ Pull-request validation builds the new UX but does not publish it to the product
 - Session history, spaced review, mastery, weakness detection and player-model writes remain unchanged in semantics.
 - Existing real-money safety-gate logic remains intact for compatibility and tests.
 - `npm run check` and `npm run build:web` must pass before this convergence is considered complete.
+
+## Rollback boundary
+
+All product changes live on `agent/converge-training-companion`. `main` remains untouched until explicit merge. Reverting the PR restores the previous training-card UI without data migration because scenario/history schemas were not changed.
