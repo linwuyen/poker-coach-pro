@@ -80,8 +80,6 @@ function observedRealHandFrequency(items: HistoryItem[], scenario: Scenario): nu
 
 function utilityScale(regret: number, unit?: UtilityUnit): number {
   if (unit === 'bb' || !unit) return Math.max(0.75, Math.min(2.5, 0.75 + regret));
-  // Tournament utility units are not numerically comparable to BB. Transform
-  // them monotonically instead of pretending they share a common unit.
   return Math.max(0.75, Math.min(2.5, 0.9 + Math.log1p(Math.max(0, regret))));
 }
 
@@ -117,9 +115,6 @@ export function expectedLearningValue(
     ? skills.reduce((sum, id) => sum + (getSkillNode(id)?.evImportance || 1), 0) / skills.length
     : 1;
 
-  // v8 evidence contract: observed frequency and observed regret must both
-  // resolve to this scenario's structured context family. Same-skill evidence
-  // is useful as a prior, but may not be multiplied into a reportable gain.
   const utilityEvidence = matchingUtilityEvidence(history, scenario);
   const observedUtilityRegret = average(utilityEvidence.map(entry => entry.observation.loss));
   const utilityUnit = utilityEvidence[0]?.observation.unit;
@@ -151,10 +146,10 @@ export function expectedLearningValue(
   const repairProbability = improvementProbabilityFromHistory(related.length ? related : skillRelatedHistory);
   const probabilityOfImprovement = Math.max(0.25, Math.min(0.92, repairProbability + weakness * 0.16 + uncertainty * 0.08 + (due ? 0.04 : 0)));
   const expectedUtilityGainPer100Hands = expectedLossPer100Hands * probabilityOfImprovement;
-  // Legacy field retained as an internal ranking proxy. User-facing code must
-  // use one of the reportable fields below.
   const expectedEvGainPer100Hands = expectedUtilityGainPer100Hands;
-  const reportableExpectedUtilityGainPer100Hands = evGainEvidence !== 'estimated' && utilityMode !== 'tournament-priority'
+  // Numeric gain is a report, not merely a ranking signal. v8 only exposes it
+  // when the regret source is verified/exact and the real-game exposure is observed.
+  const reportableExpectedUtilityGainPer100Hands = evGainEvidence === 'verified' && utilityMode !== 'tournament-priority'
     ? expectedUtilityGainPer100Hands
     : undefined;
   const reportableExpectedEvGainPer100Hands = utilityMode === 'cash-bb'
