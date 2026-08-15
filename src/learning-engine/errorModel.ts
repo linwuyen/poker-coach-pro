@@ -16,6 +16,15 @@ export interface ErrorDiagnosisInput {
   bestDecision?: PokerDecisionAction;
 }
 
+export interface LearningOutcomeSummary {
+  immediateRepair: number;
+  delayedRetention: number;
+  transferSuccess: number;
+  repairSamples: number;
+  retentionSamples: number;
+  transferSamples: number;
+}
+
 export function classifyDecisionError(input: ErrorDiagnosisInput): DecisionErrorType {
   if (input.correct) {
     if (input.confidence === 1) return 'lucky-guess';
@@ -38,20 +47,63 @@ export function classifyHistoryError(item: HistoryItem): DecisionErrorType {
   });
 }
 
-function empiricalRepairPosterior(items: HistoryItem[]): { probability: number; samples: number } {
+function betaPosterior(successes: number, failures: number, alpha = 2, beta = 2): number {
+  return (alpha + successes) / (alpha + beta + successes + failures);
+}
+
+export function empiricalRepairPosterior(items: HistoryItem[]): { probability: number; samples: number } {
   const ordered = [...items].sort((a, b) => a.timestamp - b.timestamp);
   let successes = 0;
   let failures = 0;
   for (let index = 1; index < ordered.length; index += 1) {
-    const previousCorrect = ordered[index - 1].correct ?? ordered[index - 1].score >= 8;
+    const previous = ordered[index - 1];
+    const current = ordered[index];
+    const previousCorrect = previous.correct ?? previous.score >= 8;
     if (previousCorrect) continue;
-    const currentCorrect = ordered[index].correct ?? ordered[index].score >= 8;
+    // Immediate repair measures whether instruction changed the next policy
+    // sample. It is useful, but deliberately not treated as retention.
+    if (current.timestamp - previous.timestamp > 6 * 60 * 60 * 1000) continue;
+    const currentCorrect = current.correct ?? current.score >= 8;
     if (currentCorrect) successes += 1;
     else failures += 1;
   }
-  const alpha = 2;
-  const beta = 2;
-  return { probability: (alpha + successes) / (alpha + beta + successes + failures), samples: successes + failures };
+  return { probability: betaPosterior(successes, failures), samples: successes + failures };
+}
+
+function delayedRetentionPosterior(items: HistoryItem[]): { probability: number; samples: number } {
+  const candidates = items.filter(item => item.isDelayedReview || item.isReview || item.reviewIntervalDays && item.reviewIntervalDays >= 0.25);
+  let successes = 0;
+  let failures = 0;
+  candidates.forEach(item => {
+    if (item.correct ?? item.score >= 8) successes += 1;
+    else failures += 1;
+  });
+  return { probability: betaPosterior(successes, failures), samples: successes + failures };
+}
+
+function transferPosterior(items: HistoryItem[]): { probability: number; samples: number } {
+  const candidates = items.filter(item => item.isTransferTest || item.trainingType === 'transfer' || item.trainingType === 'counterfactual' || item.trainingType === 'solver-benchmark' || item.transferLevel);
+  let successes = 0;
+  let failures = 0;
+  candidates.forEach(item => {
+    if (item.correct ?? item.score >= 8) successes += 1;
+    else failures += 1;
+  });
+  return { probability: betaPosterior(successes, failures), samples: successes + failures };
+}
+
+export function learningOutcomeSummary(items: HistoryItem[]): LearningOutcomeSummary {
+  const repair = empiricalRepairPosterior(items);
+  const retention = delayedRetentionPosterior(items);
+  const transfer = transferPosterior(items);
+  return {
+    immediateRepair: repair.probability,
+    delayedRetention: retention.probability,
+    transferSuccess: transfer.probability,
+    repairSamples: repair.samples,
+    retentionSamples: retention.samples,
+    transferSamples: transfer.samples,
+  };
 }
 
 export function improvementProbabilityFromHistory(items: HistoryItem[]): number {
@@ -66,8 +118,14 @@ export function improvementProbabilityFromHistory(items: HistoryItem[]): number 
   const mentalModelPenalty = highConfidenceWrong * 0.04;
   const diagnosticPrior = Math.max(0.25, Math.min(0.9, 0.48 + repairOpportunity + fragile * 0.025 - repeatedPenalty - mentalModelPenalty));
 
-  const empirical = empiricalRepairPosterior(items);
-  if (empirical.samples === 0) return diagnosticPrior;
-  const empiricalWeight = Math.min(0.8, 0.25 + empirical.samples * 0.1);
-  return Math.max(0.25, Math.min(0.9, diagnosticPrior * (1 - empiricalWeight) + empirical.probability * empiricalWeight));
+  const outcome = learningOutcomeSummary(items);
+  const weighted: Array<{ value: number; weight: number }> = [{ value: diagnosticPrior, weight: 1.5 }];
+  if (outcome.repairSamples) weighted.push({ value: outcome.immediateRepair, weight: Math.min(2, 0.5 + outcome.repairSamples * 0.2) });
+  // Retention and transfer are stronger evidence that the learned policy will
+  // survive outside the immediate drill, so they receive higher maximum weight.
+  if (outcome.retentionSamples) weighted.push({ value: outcome.delayedRetention, weight: Math.min(3, 1 + outcome.retentionSamples * 0.3) });
+  if (outcome.transferSamples) weighted.push({ value: outcome.transferSuccess, weight: Math.min(3.5, 1.25 + outcome.transferSamples * 0.35) });
+  const denominator = weighted.reduce((sum, item) => sum + item.weight, 0);
+  const probability = weighted.reduce((sum, item) => sum + item.value * item.weight, 0) / denominator;
+  return Math.max(0.25, Math.min(0.9, probability));
 }
