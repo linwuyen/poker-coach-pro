@@ -1,0 +1,31 @@
+name: V7 Debug Check
+
+on:
+  push:
+    branches: [agent/v7-converged-coach]
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Capture check output
+        run: |
+          set +e
+          npm run check > check.log 2>&1
+          echo $? > check.exit
+          exit 0
+      - uses: actions/upload-artifact@v6
+        with:
+          name: v7-check-log
+          path: |
+            check.log
+            check.exit
