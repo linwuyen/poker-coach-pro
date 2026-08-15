@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity, ArrowLeft, ArrowRight, Brain, CheckCircle2, Clock3, Eye, Lightbulb,
+  Activity, ArrowLeft, ArrowRight, Brain, CheckCircle2, Clock3, Lightbulb,
   MonitorUp, RotateCcw, ShieldQuestion, Target, XCircle, Zap,
 } from 'lucide-react';
 import { CardUI } from '../../components/CardUI';
@@ -31,7 +31,7 @@ interface TrainingSessionProps {
 
 const ACTION_LABELS: Partial<Record<ActionType, string>> = {
   Fold: '棄牌', Call: '跟注', Raise: '加注', '3-bet': '3-Bet', '4-bet (Raise)': '4-Bet',
-  'All-in': '全下', Check: '過牌', 'Bet small': '小注 33%', 'Bet half pot': '半池 50%', 'Bet big': '大注 75%+',
+  'All-in': '全下', Check: '過牌', 'Bet small': '小注', 'Bet half pot': '半池', 'Bet big': '大注',
 };
 
 const CONFIDENCE: Array<{ value: ConfidenceLevel; label: string; hint: string }> = [
