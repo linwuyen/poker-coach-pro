@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import AppV2 from './app/AppV2';
 import { CalibrationDashboard } from './features/analysis/CalibrationDashboard';
 import { SkillGraphDashboard } from './features/analysis/SkillGraphDashboard';
+import { CompanionPanel } from './features/companion/CompanionPanel';
 import { EquityWorkbench } from './features/learning/EquityWorkbench';
 import { RangeReadingTrainer } from './features/range/RangeReadingTrainer';
 import { ExploitWorkbench } from './features/strategy/ExploitWorkbench';
@@ -26,6 +27,7 @@ function RootRouter() {
   }, []);
 
   const exitLab = () => { window.location.hash = ''; };
+  if (route === '#companion') return <CompanionPanel onExit={exitLab} />;
   if (route === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
   if (route === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
   if (route === '#boundary-map') return <DecisionBoundaryMap onExit={exitLab} />;
