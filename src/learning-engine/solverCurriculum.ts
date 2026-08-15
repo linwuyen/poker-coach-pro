@@ -1,3 +1,4 @@
+import { fingerprintPokerBenchRow } from '../solver-data/contextFingerprint';
 import { PokerBenchRow, canonicalHolding, isSizingDecisionRow, normalizeDecision } from '../solver-data/pokerbench';
 
 export type SolverCurriculumLevel = 1 | 2 | 3 | 4 | 5;
@@ -18,8 +19,12 @@ function hash(value: string): number {
   return result >>> 0;
 }
 
-export function solverCorpusRole(row: Pick<PokerBenchRow, 'id' | 'split'>): SolverCorpusRole {
-  const bucket = hash(`v6-corpus:${row.split}:${row.id}`) % 100;
+export function solverContextFamilyId(row: PokerBenchRow): string {
+  return fingerprintPokerBenchRow(row).id;
+}
+
+export function solverCorpusRole(row: PokerBenchRow): SolverCorpusRole {
+  const bucket = hash(`v7-family:${row.split}:${solverContextFamilyId(row)}`) % 100;
   if (bucket < 80) return 'training';
   if (bucket < 90) return 'sibling';
   return 'holdout';
