@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useRef, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Brain, CheckCircle2, Clock3, Lightbulb, RotateCcw, ShieldQuestion, XCircle } from 'lucide-react';
 import { CardUI } from '../../components/CardUI';
 import { ActionType, ConfidenceLevel, Feedback, HistoryItem, Scenario } from '../../types';
@@ -11,6 +11,9 @@ import {
   makeMasteryKey,
   resolveFeedbackQuality,
 } from '../../learning-engine';
+import { scenarioContextFamilyId, inferSituationIdsFromScenario } from '../../learning-engine/contextIdentity';
+import { companionStateFromScenario } from '../../companion/adapters';
+import { clearCompanionHandState, publishCompanionHandState } from '../../companion/handStateBus';
 import { CoachDrawer } from '../coach/CoachDrawer';
 
 interface TrainingSessionProps {
@@ -50,6 +53,20 @@ export function TrainingSession({ scenarios, history, title, onRecord, onExit, o
     .filter(item => getHistoryMasteryKey(item) === currentMasteryKey)
     .sort((a, b) => b.timestamp - a.timestamp)[0], [history, currentMasteryKey]);
 
+  useEffect(() => {
+    if (!scenario || !step) {
+      clearCompanionHandState();
+      return;
+    }
+    publishCompanionHandState(companionStateFromScenario(scenario, stepIndex, {
+      mode: 'training',
+      handComplete: Boolean(feedback),
+      decisionLocked: !feedback,
+    }));
+  }, [scenario, step, stepIndex, feedback]);
+
+  useEffect(() => () => clearCompanionHandState(), []);
+
   if (!scenario || !step) {
     return (
       <section className="mx-auto max-w-3xl rounded-2xl border border-slate-800 bg-slate-900/60 p-6 md:p-8">
@@ -81,7 +98,7 @@ export function TrainingSession({ scenarios, history, title, onRecord, onExit, o
     const schedule = getReviewSchedule(result.score, confidence, latestPrevious, now);
     const quality = resolveFeedbackQuality(result);
     const item: HistoryItem = {
-      schemaVersion: 4,
+      schemaVersion: 5,
       attemptId: createAttemptId(),
       trainingType: 'scenario',
       scenarioId: scenario.id,
@@ -105,6 +122,9 @@ export function TrainingSession({ scenarios, history, title, onRecord, onExit, o
       isDelayedReview: isDelayedReview(latestPrevious, now),
       isUnseen: !latestPrevious,
       questionLabel: scenario.title,
+      gameFormat: scenario.type === 'Tournament' ? 'MTT' : 'Cash',
+      contextFamilyId: scenarioContextFamilyId(scenario),
+      situationIds: inferSituationIdsFromScenario(scenario),
       ...schedule,
     };
     setSelectedAction(action);
