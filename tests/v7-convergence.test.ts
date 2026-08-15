@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { expectedLearningValue } from '../src/learning-engine/trainingValue';
 import { improvementProbabilityFromHistory } from '../src/learning-engine/errorModel';
 import { solverContextFamilyId, solverCorpusRole } from '../src/learning-engine/solverCurriculum';
+import { scenarioContextFamilyId } from '../src/learning-engine/contextIdentity';
 import { HistoryItem, Scenario } from '../src/types';
 import { PokerBenchPreflopRow } from '../src/solver-data/pokerbench';
 
@@ -25,13 +26,18 @@ function cashScenario(): Scenario {
   };
 }
 
-function observedLeak(format: 'Cash' | 'MTT' = 'Cash'): HistoryItem {
+function observedLeak(scenario: Scenario, format: 'Cash' | 'MTT' = 'Cash'): HistoryItem {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     trainingType: 'real-hand',
     scenarioId: 'real-1',
     skillIds: ['preflop.bb-defense'],
     category: ['BB 防守', format],
+    gameFormat: format,
+    contextFamilyId: scenarioContextFamilyId(scenario),
+    sessionId: 'session-1',
+    handsObserved: 100,
+    spotExposureCount: 6,
     score: 0,
     judgment: '錯誤',
     timestamp: 1,
@@ -65,8 +71,9 @@ test('estimated priority does not masquerade as reportable EV gain', () => {
   assert.ok(value.expectedEvGainPer100Hands > 0);
 });
 
-test('real-hand frequency plus verified regret unlocks reportable cash EV gain', () => {
-  const value = expectedLearningValue(cashScenario(), [observedLeak('Cash')]);
+test('context-matched real-hand frequency plus verified regret unlocks reportable cash EV gain', () => {
+  const scenario = cashScenario();
+  const value = expectedLearningValue(scenario, [observedLeak(scenario, 'Cash')]);
   assert.equal(value.evGainEvidence, 'verified');
   assert.equal(value.spotFrequencySource, 'observed-real-hand');
   assert.equal(value.spotFrequencyPer100Hands, 6);
@@ -74,15 +81,17 @@ test('real-hand frequency plus verified regret unlocks reportable cash EV gain',
 });
 
 test('real-hand frequency does not cross-contaminate cash and tournament formats', () => {
-  const scenario = { ...cashScenario(), id: 'mtt-bb-defense', type: 'Tournament' as const };
-  const value = expectedLearningValue(scenario, [observedLeak('Cash')]);
+  const cash = cashScenario();
+  const scenario = { ...cash, id: 'mtt-bb-defense', type: 'Tournament' as const };
+  const value = expectedLearningValue(scenario, [observedLeak(cash, 'Cash')]);
   assert.equal(value.spotFrequencySource, 'heuristic-prior');
   assert.equal(value.evGainEvidence, 'estimated');
 });
 
 test('tournament scheduler does not present chip BB/100 as tournament dollar EV', () => {
   const scenario = { ...cashScenario(), id: 'mtt-bb-defense', type: 'Tournament' as const };
-  const value = expectedLearningValue(scenario, [observedLeak('MTT')]);
+  const leak = observedLeak(scenario, 'MTT');
+  const value = expectedLearningValue(scenario, [leak]);
   assert.equal(value.utilityMode, 'tournament-priority');
   assert.equal(value.reportableExpectedEvGainPer100Hands, undefined);
 });
@@ -96,10 +105,10 @@ test('solver train and holdout split is stable at context-family level', () => {
 
 test('repair probability learns from repeated recovery instead of only fixed heuristics', () => {
   const improving: HistoryItem[] = [false, true, false, true].map((correct, index) => ({
-    scenarioId: 'repair', category: ['x'], score: correct ? 10 : 0, judgment: correct ? '正確' : '錯誤', timestamp: index, correct,
+    scenarioId: 'repair', category: ['x'], score: correct ? 10 : 0, judgment: correct ? '正確' : '錯誤', timestamp: index * 1000, correct,
   }));
   const stuck: HistoryItem[] = [false, false, false, false].map((correct, index) => ({
-    scenarioId: 'stuck', category: ['x'], score: 0, judgment: '錯誤', timestamp: index, correct,
+    scenarioId: 'stuck', category: ['x'], score: 0, judgment: '錯誤', timestamp: index * 1000, correct,
   }));
   assert.ok(improvementProbabilityFromHistory(improving) > improvementProbabilityFromHistory(stuck));
 });
