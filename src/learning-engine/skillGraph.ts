@@ -137,9 +137,12 @@ export function calculateSkillMastery(history: HistoryItem[], now = Date.now()):
     const sampleConfidence = Math.round((1 - Math.exp(-effectiveSampleSize / 7)) * 100);
     const latest = ordered[ordered.length - 1];
     const trulyTransferred = transferAttempts > 0 || contexts >= 2;
+    // ESS controls how certain we are about the mastery estimate, but it does
+    // not redefine the semantic milestone. A skill still requires strong
+    // performance, delayed retrieval and transfer before becoming mastered.
     const status: MasteryStatus = ordered.length < 2
       ? 'new'
-      : score >= 82 && delayedAttempts >= 1 && trulyTransferred && sampleConfidence >= 55
+      : score >= 82 && delayedAttempts >= 1 && trulyTransferred
         ? 'mastered'
         : typeof latest.nextReviewAt === 'number' && latest.nextReviewAt <= now
           ? 'review'
