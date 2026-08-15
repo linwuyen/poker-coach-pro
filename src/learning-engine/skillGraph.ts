@@ -1,5 +1,6 @@
-import { HistoryItem, MasteryStatus, Scenario, Street } from '../types';
+import { HistoryItem, MasteryStatus, Scenario, Street, TruthTier } from '../types';
 import { effectiveEvLoss, evRegretScore } from './ev';
+import { historyContextFamilyId, inferSituationIdsFromHistory } from './contextIdentity';
 
 export interface SkillNode {
   id: string;
@@ -14,6 +15,8 @@ export interface SkillMastery {
   label: string;
   attempts: number;
   distinctScenarios: number;
+  contextFamilies: number;
+  effectiveSampleSize: number;
   delayedAttempts: number;
   transferAttempts: number;
   score: number;
@@ -67,6 +70,37 @@ export function getSkillNode(skillId: string): SkillNode | undefined {
   return SKILL_GRAPH.find(skill => skill.id === skillId);
 }
 
+function truthWeight(tier?: TruthTier): number {
+  if (tier === 'verified-solver' || tier === 'exact-math') return 1.2;
+  if (tier === 'population-exploit' || tier === 'expert-baseline') return 1;
+  if (tier === 'derived-interpolation') return 0.85;
+  if (tier === 'heuristic-estimate') return 0.65;
+  return 0.8;
+}
+
+function contextKey(item: HistoryItem): string {
+  return historyContextFamilyId(item) || `scenario:${item.scenarioId}`;
+}
+
+function evidenceSampleSize(items: HistoryItem[]): number {
+  const seenContexts = new Set<string>();
+  const seenDays = new Set<string>();
+  let ess = 0;
+  items.forEach(item => {
+    const context = contextKey(item);
+    const day = new Date(item.timestamp).toISOString().slice(0, 10);
+    const contextNovelty = seenContexts.has(context) ? 0.32 : 1;
+    const temporalNovelty = seenDays.has(day) ? 0.85 : 1.12;
+    const delayed = item.isDelayedReview ? 1.2 : 1;
+    const transfer = item.isTransferTest || item.trainingType === 'transfer' || item.trainingType === 'counterfactual' || item.trainingType === 'solver-benchmark' ? 1.25 : 1;
+    const situationBreadth = Math.min(1.15, 0.9 + inferSituationIdsFromHistory(item).length * 0.03);
+    ess += contextNovelty * temporalNovelty * delayed * transfer * truthWeight(item.truthTier) * situationBreadth;
+    seenContexts.add(context);
+    seenDays.add(day);
+  });
+  return ess;
+}
+
 export function calculateSkillMastery(history: HistoryItem[], now = Date.now()): SkillMastery[] {
   const groups = new Map<string, HistoryItem[]>();
   history.filter(item => item.trainingType !== 'custom').forEach(item => {
@@ -86,26 +120,40 @@ export function calculateSkillMastery(history: HistoryItem[], now = Date.now()):
       const ageDays = Math.max(0, (now - item.timestamp) / 86400000);
       const recency = Math.exp(-ageDays / 60);
       const difficulty = item.difficultyWeight || 1;
-      const weight = recency * difficulty * (item.isDelayedReview ? 1.2 : 1) * (item.isTransferTest ? 1.2 : 1);
+      const weight = recency * difficulty * truthWeight(item.truthTier) * (item.isDelayedReview ? 1.2 : 1) * (item.isTransferTest ? 1.2 : 1);
       const loss = effectiveEvLoss(item);
       const performance = typeof loss === 'number' ? evRegretScore(loss) / 100 : (item.correct ?? item.score >= 8) ? 1 : Math.max(0, item.score / 10);
       totalPerformance += performance * weight;
       totalWeight += weight;
-      if (typeof loss === 'number') losses.push(loss);
+      const isCashLoss = item.utilityUnit === 'bb' || (!item.utilityUnit && !item.category.includes('MTT'));
+      if (typeof loss === 'number' && isCashLoss) losses.push(loss);
       if (item.isDelayedReview) delayedAttempts += 1;
-      if (item.isTransferTest || item.trainingType === 'transfer' || item.trainingType === 'counterfactual') transferAttempts += 1;
+      if (item.isTransferTest || item.trainingType === 'transfer' || item.trainingType === 'counterfactual' || item.trainingType === 'solver-benchmark') transferAttempts += 1;
     });
     const distinctScenarios = new Set(ordered.map(item => item.scenarioId)).size;
+    const contexts = new Set(ordered.map(contextKey)).size;
     const score = totalWeight ? Math.round(totalPerformance / totalWeight * 100) : 0;
-    const sampleConfidence = Math.round((1 - Math.exp(-ordered.length / 8)) * 100);
+    const effectiveSampleSize = evidenceSampleSize(ordered);
+    const sampleConfidence = Math.round((1 - Math.exp(-effectiveSampleSize / 7)) * 100);
     const latest = ordered[ordered.length - 1];
-    const trulyTransferred = transferAttempts > 0 || distinctScenarios >= 2;
-    const status: MasteryStatus = ordered.length < 2 ? 'new' : score >= 82 && delayedAttempts >= 1 && trulyTransferred ? 'mastered' : typeof latest.nextReviewAt === 'number' && latest.nextReviewAt <= now ? 'review' : 'learning';
+    const trulyTransferred = transferAttempts > 0 || contexts >= 2;
+    // ESS controls how certain we are about the mastery estimate, but it does
+    // not redefine the semantic milestone. A skill still requires strong
+    // performance, delayed retrieval and transfer before becoming mastered.
+    const status: MasteryStatus = ordered.length < 2
+      ? 'new'
+      : score >= 82 && delayedAttempts >= 1 && trulyTransferred
+        ? 'mastered'
+        : typeof latest.nextReviewAt === 'number' && latest.nextReviewAt <= now
+          ? 'review'
+          : 'learning';
     return {
       skillId,
       label: node?.label || skillId,
       attempts: ordered.length,
       distinctScenarios,
+      contextFamilies: contexts,
+      effectiveSampleSize: Math.round(effectiveSampleSize * 10) / 10,
       delayedAttempts,
       transferAttempts,
       score,
@@ -113,15 +161,15 @@ export function calculateSkillMastery(history: HistoryItem[], now = Date.now()):
       status,
       sampleConfidence,
     };
-  }).sort((a, b) => b.averageEvLossBB - a.averageEvLossBB || a.score - b.score || b.attempts - a.attempts);
+  }).sort((a, b) => b.averageEvLossBB - a.averageEvLossBB || a.score - b.score || b.effectiveSampleSize - a.effectiveSampleSize);
 }
 
 export function topEvLeaks(history: HistoryItem[], limit = 5): SkillMastery[] {
   return calculateSkillMastery(history)
     .filter(item => item.attempts >= 2)
     .sort((a, b) => {
-      const aCost = a.averageEvLossBB * Math.max(0.25, a.attempts / 10) * (1 - a.score / 200);
-      const bCost = b.averageEvLossBB * Math.max(0.25, b.attempts / 10) * (1 - b.score / 200);
+      const aCost = a.averageEvLossBB * Math.max(0.25, a.effectiveSampleSize / 10) * (1 - a.score / 200);
+      const bCost = b.averageEvLossBB * Math.max(0.25, b.effectiveSampleSize / 10) * (1 - b.score / 200);
       return bCost - aCost;
     })
     .slice(0, limit);

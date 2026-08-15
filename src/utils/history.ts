@@ -1,8 +1,8 @@
 import { ConfidenceLevel, HistoryItem, PlayerProfile } from '../types';
 import { getHistoryMasteryKey, isHistoryCorrect } from '../learning-engine';
 
-export const HISTORY_KEY = 'poker_training_history_v4';
-const LEGACY_HISTORY_KEYS = ['poker_training_history_v3', 'poker_training_history_v2'];
+export const HISTORY_KEY = 'poker_training_history_v5';
+const LEGACY_HISTORY_KEYS = ['poker_training_history_v4', 'poker_training_history_v3', 'poker_training_history_v2'];
 
 const normalize = (item: HistoryItem, index: number): HistoryItem => {
   const timestamp = Number.isFinite(item.timestamp) ? item.timestamp : Date.now();
@@ -10,7 +10,7 @@ const normalize = (item: HistoryItem, index: number): HistoryItem => {
   const correct = item.correct ?? (score >= 8);
   const normalized: HistoryItem = {
     ...item,
-    schemaVersion: 4,
+    schemaVersion: 5,
     attemptId: item.attemptId || `legacy-${timestamp}-${index}`,
     trainingType: item.trainingType || 'scenario',
     category: Array.isArray(item.category) ? item.category : [],
@@ -62,17 +62,17 @@ export function getReviewSchedule(
   return { nextReviewAt: now + days * 86400000, reviewIntervalDays: days };
 }
 
-export interface TrainingBackup { version: 4; exportedAt: string; history: HistoryItem[]; starredIds: string[]; playerProfile?: PlayerProfile; }
-export function makeTrainingBackup(history: HistoryItem[], starredIds: string[], playerProfile?: PlayerProfile): TrainingBackup { return { version: 4, exportedAt: new Date().toISOString(), history: history.map(normalize), starredIds, playerProfile }; }
+export interface TrainingBackup { version: 5; exportedAt: string; history: HistoryItem[]; starredIds: string[]; playerProfile?: PlayerProfile; }
+export function makeTrainingBackup(history: HistoryItem[], starredIds: string[], playerProfile?: PlayerProfile): TrainingBackup { return { version: 5, exportedAt: new Date().toISOString(), history: history.map(normalize), starredIds, playerProfile }; }
 export function exportTrainingData(history: HistoryItem[], starredIds: string[], playerProfile?: PlayerProfile): void {
   const blob = new Blob([JSON.stringify(makeTrainingBackup(history, starredIds, playerProfile), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `poker-coach-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url);
 }
 export async function importTrainingData(file: File): Promise<{ history: HistoryItem[]; starredIds: string[]; playerProfile?: PlayerProfile }> {
-  const parsed = JSON.parse(await file.text()) as Partial<TrainingBackup>;
+  const parsed = JSON.parse(await file.text()) as { version?: number; history?: HistoryItem[]; starredIds?: unknown[]; playerProfile?: PlayerProfile };
   if (!parsed || !Array.isArray(parsed.history)) throw new Error('Invalid Poker Coach backup file.');
   const history = parsed.history.map(normalize);
-  const starredIds = Array.isArray(parsed.starredIds) ? parsed.starredIds.filter((id: unknown) => typeof id === 'string') : [];
+  const starredIds = Array.isArray(parsed.starredIds) ? parsed.starredIds.filter((id: unknown): id is string => typeof id === 'string') : [];
   saveHistory(history); localStorage.setItem('poker_starred_ids', JSON.stringify(starredIds));
   return { history, starredIds, playerProfile: parsed.playerProfile };
 }

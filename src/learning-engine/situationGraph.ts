@@ -1,6 +1,7 @@
 import { HistoryItem, Scenario, StackBand, Street } from '../types';
 import { getStackBand } from '../domain/playerProfile';
 import { effectiveEvLoss, evRegretScore } from './ev';
+import { historyContextFamilyId } from './contextIdentity';
 
 export interface SituationNode {
   id: string;
@@ -12,6 +13,8 @@ export interface SituationLeak {
   situationId: string;
   label: string;
   attempts: number;
+  contextFamilies: number;
+  sampleConfidence: number;
   score: number;
   averageEvLossBB: number;
   totalEvLossBB: number;
@@ -55,12 +58,15 @@ export function inferScenarioSituationNodes(scenario: Scenario): SituationNode[]
   if (/同花|flush|♥|♠|♦|♣/i.test(text)) nodes.push({ id: 'situation.texture.flush-relevant', label: 'Flush-Relevant', axis: 'texture' });
   if (/順子|straight|connected|連張/i.test(text)) nodes.push({ id: 'situation.texture.connected', label: 'Connected', axis: 'texture' });
   if (/paired|成對|對子面/i.test(text)) nodes.push({ id: 'situation.texture.paired', label: 'Paired Board', axis: 'texture' });
+  (scenario.situationIds || []).forEach(id => nodes.push({ id, label: id, axis: 'pot' }));
   return [...new Map(nodes.map(node => [node.id, node])).values()];
 }
 
 export function inferSituationIdsFromHistory(item: HistoryItem): string[] {
-  if (item.situationIds?.length) return item.situationIds;
+  if (item.situationIds?.length) return [...new Set(item.situationIds)];
   const ids: string[] = [];
+  if (item.gameFormat === 'Cash' || item.category.includes('Cash')) ids.push('situation.format.cash');
+  if (item.gameFormat === 'MTT' || item.category.includes('MTT')) ids.push('situation.format.tournament');
   if (item.street) ids.push(`situation.street.${item.street.toLowerCase()}`);
   const position = normalizePosition(item.position);
   if (position) ids.push(`situation.position.${position.toLowerCase().replace('+', 'p')}`);
@@ -69,6 +75,7 @@ export function inferSituationIdsFromHistory(item: HistoryItem): string[] {
   else if (/3-?bet|squeeze|擠壓/i.test(text)) ids.push('situation.pot.3bet');
   else if (/多人|multiway/i.test(text)) ids.push('situation.pot.multiway');
   if (/overbet|超額下注|150%|125%/i.test(text)) ids.push('situation.size.overbet');
+  if (item.boardTextureId) ids.push(`situation.texture.${item.boardTextureId}`);
   return [...new Set(ids)];
 }
 
@@ -80,19 +87,27 @@ export function calculateSituationLeaks(history: HistoryItem[]): SituationLeak[]
     inferSituationIdsFromHistory(item).forEach(id => groups.set(id, [...(groups.get(id) || []), item]));
   });
   return [...groups.entries()].map(([situationId, attempts]) => {
-    const losses = attempts.map(effectiveEvLoss).filter((value): value is number => typeof value === 'number');
+    const losses = attempts
+      .filter(item => item.utilityUnit === 'bb' || (!item.utilityUnit && !item.category.includes('MTT')))
+      .map(effectiveEvLoss)
+      .filter((value): value is number => typeof value === 'number');
     const performances = attempts.map(item => {
-      const loss = effectiveEvLoss(item);
+      const loss = item.utilityUnit === 'bb' || (!item.utilityUnit && !item.category.includes('MTT')) ? effectiveEvLoss(item) : undefined;
       return typeof loss === 'number' ? evRegretScore(loss) : (item.correct ?? item.score >= 8) ? 100 : item.score * 10;
     });
     const totalEvLossBB = losses.reduce((sum, value) => sum + value, 0);
+    const contextFamilies = new Set(attempts.map(item => historyContextFamilyId(item) || `scenario:${item.scenarioId}`)).size;
+    const days = new Set(attempts.map(item => new Date(item.timestamp).toISOString().slice(0, 10))).size;
+    const effectiveSamples = Math.min(attempts.length, contextFamilies * 1.5 + days * 0.5);
     return {
       situationId,
       label: labelFromId(situationId),
       attempts: attempts.length,
+      contextFamilies,
+      sampleConfidence: Math.round((1 - Math.exp(-effectiveSamples / 6)) * 100),
       score: performances.length ? Math.round(performances.reduce((sum, value) => sum + value, 0) / performances.length) : 0,
       averageEvLossBB: losses.length ? totalEvLossBB / losses.length : 0,
       totalEvLossBB,
     };
-  }).sort((a, b) => b.totalEvLossBB - a.totalEvLossBB || a.score - b.score);
+  }).sort((a, b) => b.totalEvLossBB - a.totalEvLossBB || a.score - b.score || b.sampleConfidence - a.sampleConfidence);
 }

@@ -1,8 +1,9 @@
-import { HistoryItem, PlayerProfile, Scenario } from '../../types';
+import { HistoryItem, PlayerProfile, Scenario, UtilityUnit } from '../../types';
 import { filterRelevantScenarios } from '../../domain/playerProfile';
 import { getWeaknessInsights, isDue, latestByMasteryKey } from '../../learning-engine';
 import { getTrainingScenarios } from '../../learning-engine/benchmark';
 import { EvGainEvidence, SpotFrequencySource, UtilityMode, rankByExpectedLearningValue } from '../../learning-engine/trainingValue';
+import { recommendIntervention, TrainingIntervention } from '../../learning-engine/interventionRouter';
 
 export type TrainingReason = 'due-review' | 'weak-area' | 'recent-mistake' | 'new' | 'benchmark' | 'mixed';
 export interface PlannedScenario {
@@ -10,9 +11,12 @@ export interface PlannedScenario {
   reason: TrainingReason;
   learningValue?: number;
   expectedEvGainPer100Hands?: number;
+  expectedUtilityGainPer100Hands?: number;
+  utilityUnit?: UtilityUnit;
   evGainEvidence: EvGainEvidence;
   spotFrequencySource: SpotFrequencySource;
   utilityMode: UtilityMode;
+  intervention: TrainingIntervention;
 }
 export interface DailyTrainingPlan { items: PlannedScenario[]; counts: Record<TrainingReason, number>; weakCategories: string[]; }
 
@@ -40,9 +44,14 @@ export function buildDailyTrainingPlan(scenarios: Scenario[], history: HistoryIt
       expectedEvGainPer100Hands: value.reportableExpectedEvGainPer100Hands === undefined
         ? undefined
         : Math.round(value.reportableExpectedEvGainPer100Hands * 1000) / 1000,
+      expectedUtilityGainPer100Hands: value.reportableExpectedUtilityGainPer100Hands === undefined
+        ? undefined
+        : Math.round(value.reportableExpectedUtilityGainPer100Hands * 1000) / 1000,
+      utilityUnit: value.utilityUnit,
       evGainEvidence: value.evGainEvidence,
       spotFrequencySource: value.spotFrequencySource,
       utilityMode: value.utilityMode,
+      intervention: recommendIntervention(scenario, history, now),
     };
   });
   return { items, counts, weakCategories };
