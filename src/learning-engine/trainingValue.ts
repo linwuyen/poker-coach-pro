@@ -55,11 +55,30 @@ function average(values: number[]): number | undefined {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined;
 }
 
-function observedRealHandFrequency(items: HistoryItem[]): number | undefined {
-  return average(items
-    .filter(item => item.trainingType === 'real-hand')
-    .map(item => item.spotFrequencyPer100Hands)
-    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0));
+function formatLabel(scenario: Scenario): 'Cash' | 'MTT' {
+  return scenario.type === 'Tournament' ? 'MTT' : 'Cash';
+}
+
+function matchesEvidenceFormat(item: HistoryItem, scenario: Scenario): boolean {
+  const hasCashTag = item.category.includes('Cash');
+  const hasMttTag = item.category.includes('MTT');
+  if (!hasCashTag && !hasMttTag) return item.scenarioId === scenario.id;
+  return item.category.includes(formatLabel(scenario));
+}
+
+function observedRealHandFrequency(items: HistoryItem[], scenario: Scenario): number | undefined {
+  const seen = new Set<string>();
+  const values: number[] = [];
+  items.forEach(item => {
+    if (item.trainingType !== 'real-hand' || !matchesEvidenceFormat(item, scenario)) return;
+    const value = item.spotFrequencyPer100Hands;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return;
+    const key = item.attemptId || `${item.scenarioId}:${item.timestamp}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    values.push(value);
+  });
+  return average(values);
 }
 
 function isVerifiedRegret(item: HistoryItem): boolean {
@@ -102,10 +121,13 @@ export function expectedLearningValue(
     const itemSkills = item.skillIds?.length ? item.skillIds : inferSkillIds(item.category, item.street);
     return skills.some(skill => itemSkills.includes(skill));
   });
-  const observedLosses = skills.map(id => skillMastery.get(id)?.averageEvLossBB || 0).filter(value => value > 0);
-  const observedEvRegretBB = observedLosses.length ? observedLosses.reduce((sum, value) => sum + value, 0) / observedLosses.length : 0.08 * evImportance;
+  const evidenceHistory = skillRelatedHistory.filter(item => matchesEvidenceFormat(item, scenario));
+  const regretItems = evidenceHistory.filter(item => typeof effectiveEvLoss(item) === 'number');
+  const formatObservedLosses = regretItems.map(item => effectiveEvLoss(item)).filter((value): value is number => typeof value === 'number' && value > 0);
+  const skillPriorLosses = skills.map(id => skillMastery.get(id)?.averageEvLossBB || 0).filter(value => value > 0);
+  const observedEvRegretBB = average(formatObservedLosses) ?? average(skillPriorLosses) ?? 0.08 * evImportance;
 
-  const observedFrequency = observedRealHandFrequency([...related, ...skillRelatedHistory]);
+  const observedFrequency = observedRealHandFrequency([...related, ...skillRelatedHistory], scenario);
   const spotFrequencyPer100Hands = observedFrequency ?? estimateSpotFrequencyPer100Hands(scenario);
   const spotFrequencySource: SpotFrequencySource = observedFrequency !== undefined
     ? 'observed-real-hand'
@@ -113,7 +135,6 @@ export function expectedLearningValue(
       ? 'scenario-prior'
       : 'heuristic-prior';
 
-  const regretItems = skillRelatedHistory.filter(item => typeof effectiveEvLoss(item) === 'number');
   const hasObservedRegret = regretItems.length > 0;
   const hasVerifiedRegret = regretItems.some(isVerifiedRegret);
   const evGainEvidence: EvGainEvidence = hasObservedRegret && spotFrequencySource === 'observed-real-hand'
