@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { analyzeBoardTexture } from '../src/learning-engine/boardTexture';
 import { buildCalibrationReport } from '../src/learning-engine/calibration';
 import { classifyDecisionError } from '../src/learning-engine/errorModel';
-import { solverCorpusRole, solverCurriculum, buildContrastivePairs } from '../src/learning-engine/solverCurriculum';
+import { solverContextFamilyId, solverCorpusRole, solverCurriculum, buildContrastivePairs } from '../src/learning-engine/solverCurriculum';
 import { strategyDistance, strategyEvRegret } from '../src/learning-engine/strategyDistance';
 import { expectedLearningValue } from '../src/learning-engine/trainingValue';
 import { fingerprintPokerBenchRow } from '../src/solver-data/contextFingerprint';
@@ -74,20 +74,35 @@ test('strategy EV regret is only computed when action EV is available', () => {
   assert.equal(strategyEvRegret(target, chosen, { raise: 1 }), undefined);
 });
 
-test('solver corpus partition is stable and keeps holdout outside training', () => {
-  const rows = Array.from({ length: 1000 }, (_, index) => preflop(`role-${index}`));
+test('solver corpus partition is stable by context family and balanced across many families', () => {
+  const sameFamilyA = preflop('same-a');
+  const sameFamilyB = preflop('same-b');
+  sameFamilyB.holding = 'AsQh';
+  assert.equal(solverContextFamilyId(sameFamilyA), solverContextFamilyId(sameFamilyB));
+  assert.equal(solverCorpusRole(sameFamilyA), solverCorpusRole(sameFamilyB));
+
+  const rows = Array.from({ length: 1000 }, (_, index) => {
+    const row = preflop(`role-${index}`);
+    row.prevLine = `BTN/2.5bb/path-${index}`;
+    return row;
+  });
   const counts = { training: 0, sibling: 0, holdout: 0 };
   rows.forEach(row => { counts[solverCorpusRole(row)] += 1; });
   assert.ok(counts.training > 740 && counts.training < 860);
   assert.ok(counts.sibling > 50 && counts.sibling < 150);
   assert.ok(counts.holdout > 50 && counts.holdout < 150);
-  assert.equal(solverCorpusRole(rows[12]), solverCorpusRole(rows[12]));
 });
 
 test('solver curriculum promotes complex sizing and reserves transfer as level five', () => {
   const simple = preflop('simple');
   simple.availableMoves = ['Fold', 'Call'];
   simple.numBets = 0;
+  let variant = 0;
+  while (solverCorpusRole(simple) !== 'training' && variant < 1000) {
+    simple.prevLine = `BTN/2.5bb/simple-${variant}`;
+    variant += 1;
+  }
+  assert.equal(solverCorpusRole(simple), 'training');
   assert.ok(solverCurriculum(simple).level <= 2);
   const complex = postflop('complex', '8c7c4d', 'Bet 5');
   assert.ok(solverCurriculum(complex).level >= 3);
@@ -95,8 +110,9 @@ test('solver curriculum promotes complex sizing and reserves transfer as level f
 
 test('contrastive pairs require different solver labels from sibling partition', () => {
   const sibling: PokerBenchPreflopRow[] = [];
-  for (let index = 0; sibling.length < 8 && index < 1000; index += 1) {
-    const row = preflop(`pair-${index}`, sibling.length % 2 ? 'Raise 9' : 'Call');
+  for (let index = 0; sibling.length < 8 && index < 5000; index += 1) {
+    const row = preflop(`pair-${index}`, index % 2 ? 'Raise 9' : 'Call');
+    row.prevLine = `BTN/2.5bb/contrast-${index}`;
     if (solverCorpusRole(row) === 'sibling') sibling.push(row);
   }
   const pairs = buildContrastivePairs(sibling, 2);

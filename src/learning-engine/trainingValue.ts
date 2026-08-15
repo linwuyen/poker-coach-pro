@@ -2,6 +2,11 @@ import { HistoryItem, PlayerProfile, Scenario } from '../types';
 import { scenarioProfileScore } from '../domain/playerProfile';
 import { inferScenarioSkillIds, calculateSkillMastery, getSkillNode, inferSkillIds } from './skillGraph';
 import { improvementProbabilityFromHistory } from './errorModel';
+import { effectiveEvLoss } from './ev';
+
+export type EvGainEvidence = 'verified' | 'observed' | 'estimated';
+export type SpotFrequencySource = 'observed-real-hand' | 'scenario-prior' | 'heuristic-prior';
+export type UtilityMode = 'cash-bb' | 'tournament-priority';
 
 export interface LearningValueBreakdown {
   total: number;
@@ -12,9 +17,13 @@ export interface LearningValueBreakdown {
   evImportance: number;
   observedEvRegretBB: number;
   spotFrequencyPer100Hands: number;
+  spotFrequencySource: SpotFrequencySource;
   expectedLossPer100Hands: number;
   probabilityOfImprovement: number;
   expectedEvGainPer100Hands: number;
+  reportableExpectedEvGainPer100Hands?: number;
+  evGainEvidence: EvGainEvidence;
+  utilityMode: UtilityMode;
   profileRelevance: number;
   timeCost: number;
   due: boolean;
@@ -40,6 +49,40 @@ export function estimateSpotFrequencyPer100Hands(scenario: Scenario): number {
   if (scenario.steps.some(step => step.street === 'Turn')) return 1.8;
   if (scenario.steps.some(step => step.street === 'Flop')) return 3.5;
   return 2;
+}
+
+function average(values: number[]): number | undefined {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined;
+}
+
+function formatLabel(scenario: Scenario): 'Cash' | 'MTT' {
+  return scenario.type === 'Tournament' ? 'MTT' : 'Cash';
+}
+
+function matchesEvidenceFormat(item: HistoryItem, scenario: Scenario): boolean {
+  const hasCashTag = item.category.includes('Cash');
+  const hasMttTag = item.category.includes('MTT');
+  if (!hasCashTag && !hasMttTag) return item.scenarioId === scenario.id;
+  return item.category.includes(formatLabel(scenario));
+}
+
+function observedRealHandFrequency(items: HistoryItem[], scenario: Scenario): number | undefined {
+  const seen = new Set<string>();
+  const values: number[] = [];
+  items.forEach(item => {
+    if (item.trainingType !== 'real-hand' || !matchesEvidenceFormat(item, scenario)) return;
+    const value = item.spotFrequencyPer100Hands;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return;
+    const key = item.attemptId || `${item.scenarioId}:${item.timestamp}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    values.push(value);
+  });
+  return average(values);
+}
+
+function isVerifiedRegret(item: HistoryItem): boolean {
+  return typeof effectiveEvLoss(item) === 'number' && (item.truthTier === 'verified-solver' || item.truthTier === 'exact-math');
 }
 
 export function expectedLearningValue(
@@ -73,17 +116,40 @@ export function expectedLearningValue(
   const evImportance = skills.length
     ? skills.reduce((sum, id) => sum + (getSkillNode(id)?.evImportance || 1), 0) / skills.length
     : 1;
-  const observedLosses = skills.map(id => skillMastery.get(id)?.averageEvLossBB || 0).filter(value => value > 0);
-  const observedEvRegretBB = observedLosses.length ? observedLosses.reduce((sum, value) => sum + value, 0) / observedLosses.length : 0.08 * evImportance;
-  const spotFrequencyPer100Hands = estimateSpotFrequencyPer100Hands(scenario);
-  const expectedLossPer100Hands = observedEvRegretBB * spotFrequencyPer100Hands;
+
   const skillRelatedHistory = history.filter(item => {
     const itemSkills = item.skillIds?.length ? item.skillIds : inferSkillIds(item.category, item.street);
     return skills.some(skill => itemSkills.includes(skill));
   });
+  const evidenceHistory = skillRelatedHistory.filter(item => matchesEvidenceFormat(item, scenario));
+  const regretItems = evidenceHistory.filter(item => typeof effectiveEvLoss(item) === 'number');
+  const formatObservedLosses = regretItems.map(item => effectiveEvLoss(item)).filter((value): value is number => typeof value === 'number' && value > 0);
+  const skillPriorLosses = skills.map(id => skillMastery.get(id)?.averageEvLossBB || 0).filter(value => value > 0);
+  const observedEvRegretBB = average(formatObservedLosses) ?? average(skillPriorLosses) ?? 0.08 * evImportance;
+
+  const observedFrequency = observedRealHandFrequency([...related, ...skillRelatedHistory], scenario);
+  const spotFrequencyPer100Hands = observedFrequency ?? estimateSpotFrequencyPer100Hands(scenario);
+  const spotFrequencySource: SpotFrequencySource = observedFrequency !== undefined
+    ? 'observed-real-hand'
+    : typeof scenario.spotFrequencyPer100Hands === 'number' && scenario.spotFrequencyPer100Hands > 0
+      ? 'scenario-prior'
+      : 'heuristic-prior';
+
+  const hasObservedRegret = regretItems.length > 0;
+  const hasVerifiedRegret = regretItems.some(isVerifiedRegret);
+  const evGainEvidence: EvGainEvidence = hasObservedRegret && spotFrequencySource === 'observed-real-hand'
+    ? hasVerifiedRegret ? 'verified' : 'observed'
+    : 'estimated';
+
+  const expectedLossPer100Hands = observedEvRegretBB * spotFrequencyPer100Hands;
   const repairProbability = improvementProbabilityFromHistory(related.length ? related : skillRelatedHistory);
   const probabilityOfImprovement = Math.max(0.25, Math.min(0.92, repairProbability + weakness * 0.16 + uncertainty * 0.08 + (due ? 0.04 : 0)));
   const expectedEvGainPer100Hands = expectedLossPer100Hands * probabilityOfImprovement;
+  const utilityMode: UtilityMode = scenario.type === 'Tournament' ? 'tournament-priority' : 'cash-bb';
+  const reportableExpectedEvGainPer100Hands = utilityMode === 'cash-bb' && evGainEvidence !== 'estimated'
+    ? expectedEvGainPer100Hands
+    : undefined;
+
   const frequencyMultiplier = Math.max(0.45, Math.min(2.2, Math.sqrt(spotFrequencyPer100Hands / 2)));
   const evCostMultiplier = Math.max(0.75, Math.min(2.5, 0.75 + observedEvRegretBB));
   const gainMultiplier = Math.max(0.65, Math.min(2.5, 0.85 + Math.sqrt(Math.max(0, expectedEvGainPer100Hands))));
@@ -101,7 +167,29 @@ export function expectedLearningValue(
   else if (unseen) reason = 'new';
   else if (weakness >= 0.45) reason = 'weak-area';
 
-  return { total, weakness, forgettingRisk, uncertainty, transferValue, evImportance, observedEvRegretBB, spotFrequencyPer100Hands, expectedLossPer100Hands, probabilityOfImprovement, expectedEvGainPer100Hands, profileRelevance, timeCost, due, recentMistake, unseen, reason };
+  return {
+    total,
+    weakness,
+    forgettingRisk,
+    uncertainty,
+    transferValue,
+    evImportance,
+    observedEvRegretBB,
+    spotFrequencyPer100Hands,
+    spotFrequencySource,
+    expectedLossPer100Hands,
+    probabilityOfImprovement,
+    expectedEvGainPer100Hands,
+    reportableExpectedEvGainPer100Hands,
+    evGainEvidence,
+    utilityMode,
+    profileRelevance,
+    timeCost,
+    due,
+    recentMistake,
+    unseen,
+    reason,
+  };
 }
 
 export function rankByExpectedLearningValue(scenarios: Scenario[], history: HistoryItem[], now = Date.now(), profile?: PlayerProfile) {
