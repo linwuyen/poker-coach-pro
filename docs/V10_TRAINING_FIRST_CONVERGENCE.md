@@ -46,7 +46,7 @@ The convergence changes the interaction surface without replacing already-tested
 
 ### 6. Do not fabricate poker state
 
-The table may visualize only state supported by the scenario schema or existing parsers. Hero stack, effective stack, pot, board, positions and parsed actions come from existing data. Unknown opponent stacks are not invented merely to make the table look realistic.
+The table may visualize only state supported by the scenario schema or existing parsers. Hero stack, effective stack, pot, board, positions and parsed actions come from existing data. Unknown opponent stacks are not invented merely to make the table look realistic. Generic action labels such as `Bet small` also remain generic unless an actual size is present in the scenario or structured hand state.
 
 ## User-facing contract
 
@@ -68,6 +68,10 @@ The user-facing promise is:
 ## Development-only diagnostics
 
 The manual HandState adapter is rendered only in Vite development mode. This preserves adapter and safety-gate diagnostics without exposing implementation modes in production.
+
+## Production visibility
+
+Pull-request validation builds the new UX but does not publish it to the production GitHub Pages site. The production site changes only after this branch is merged into `main` (or otherwise pushed to a deploy-triggering branch). This distinction is intentional so visual/product changes can be reviewed without silently changing the live application.
 
 ## Acceptance criteria
 
