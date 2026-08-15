@@ -89,3 +89,7 @@ Pull-request validation builds the new UX but does not publish it to the product
 ## Rollback boundary
 
 All product changes live on `agent/converge-training-companion`. `main` remains untouched until explicit merge. Reverting the PR restores the previous training-card UI without data migration because scenario/history schemas were not changed.
+
+## Implemented surface
+
+This branch changes four product surfaces only: `AppShell`, `CompanionPanel`, `TrainingSession`, and this contract. The core strategy engine, learning engine, scenario schema, history schema, review scheduler, HandStateBus transport, and real-money safety policy are intentionally unchanged.
