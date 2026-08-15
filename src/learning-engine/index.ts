@@ -1,4 +1,7 @@
 import { ConfidenceLevel, Feedback, FeedbackQuality, HistoryItem, MasteryStatus, Scenario } from '../types';
+import { calculateSkillMastery } from './skillGraph';
+import { historyContextFamilyId } from './contextIdentity';
+import { transferBenchmarkReport } from './transferBenchmark';
 
 const DAY = 86400000;
 const CONFIDENCE_PROBABILITY: Record<ConfidenceLevel, number> = { 1: 0.35, 2: 0.55, 3: 0.75, 4: 0.9 };
@@ -110,7 +113,8 @@ export function calculateMastery(history: HistoryItem[], now = Date.now()): Mast
       const recency = Math.exp(-ageDays / 45);
       const difficulty = item.difficultyWeight || 1;
       const delayedBoost = item.isDelayedReview ? 1.25 : 1;
-      const weight = recency * difficulty * delayedBoost;
+      const transferBoost = item.isTransferTest ? 1.2 : 1;
+      const weight = recency * difficulty * delayedBoost * transferBoost;
       const correct = isHistoryCorrect(item) ? 1 : 0;
       weightedCorrect += correct * weight;
       totalWeight += weight;
@@ -148,6 +152,14 @@ export function calculateMastery(history: HistoryItem[], now = Date.now()): Mast
   }).sort((a, b) => a.score - b.score || b.attempts - a.attempts);
 }
 
+function effectiveSampleCount(items: HistoryItem[]): number {
+  const contexts = new Set(items.map(item => historyContextFamilyId(item) || `scenario:${item.scenarioId}`)).size;
+  const days = new Set(items.map(item => new Date(item.timestamp).toISOString().slice(0, 10))).size;
+  const delayed = items.filter(item => item.isDelayedReview).length;
+  const transfer = items.filter(item => item.isTransferTest || item.transferLevel).length;
+  return Math.min(items.length, contexts * 1.4 + days * 0.45 + delayed * 0.35 + transfer * 0.45);
+}
+
 export function getWeaknessInsights(history: HistoryItem[], now = Date.now()): WeaknessInsight[] {
   const groups = new Map<string, HistoryItem[]>();
   history.filter(isLearningAttempt).forEach(item => {
@@ -158,7 +170,7 @@ export function getWeaknessInsights(history: HistoryItem[], now = Date.now()): W
     const correct = items.filter(isHistoryCorrect).length;
     const rawAccuracy = items.length ? correct / items.length : 0;
     const adjustedAccuracy = (correct + 2) / (items.length + 4);
-    const sampleConfidence = 1 - Math.exp(-items.length / 8);
+    const sampleConfidence = 1 - Math.exp(-effectiveSampleCount(items) / 8);
     const relevantMastery = calculateMastery(items, now);
     const mastery = relevantMastery.length ? average(relevantMastery.map(item => item.score / 100)) : adjustedAccuracy;
     const chronological = [...items].sort((a, b) => a.timestamp - b.timestamp);
@@ -183,18 +195,27 @@ export function getLearningMetrics(history: HistoryItem[]): LearningMetrics {
   const unseen = items.filter(item => item.isUnseen);
   const delayed = items.filter(item => item.isDelayedReview);
   const calibrated = items.filter(item => item.confidence);
-  const evItems = items.filter(item => typeof item.evLossBB === 'number');
-  const categoryScenarioMap = new Map<string, Map<string, boolean[]>>();
-  items.forEach(item => (item.category || []).forEach(category => {
-    const scenarios = categoryScenarioMap.get(category) || new Map<string, boolean[]>();
-    scenarios.set(item.scenarioId, [...(scenarios.get(item.scenarioId) || []), isHistoryCorrect(item)]);
-    categoryScenarioMap.set(category, scenarios);
-  }));
-  const transferGroups = [...categoryScenarioMap.values()].filter(group => group.size >= 2);
-  const transferScore = transferGroups.length ? average(transferGroups.map(group => {
-    const scenarioRates = [...group.values()].map(values => values.filter(Boolean).length / values.length);
-    return Math.min(...scenarioRates);
-  })) : 0;
+  const evItems = items.filter(item => typeof item.evLossBB === 'number' && (item.utilityUnit === 'bb' || (!item.utilityUnit && !item.category.includes('MTT'))));
+  const explicitTransfer = transferBenchmarkReport(items);
+  const explicitAttempts = explicitTransfer.near.attempts + explicitTransfer.context.attempts + explicitTransfer.structural.attempts;
+
+  let transferScore = 0;
+  if (explicitAttempts) {
+    const correct = explicitTransfer.near.correct + explicitTransfer.context.correct + explicitTransfer.structural.correct;
+    transferScore = correct / explicitAttempts;
+  } else {
+    const categoryScenarioMap = new Map<string, Map<string, boolean[]>>();
+    items.forEach(item => (item.category || []).forEach(category => {
+      const scenarios = categoryScenarioMap.get(category) || new Map<string, boolean[]>();
+      scenarios.set(item.scenarioId, [...(scenarios.get(item.scenarioId) || []), isHistoryCorrect(item)]);
+      categoryScenarioMap.set(category, scenarios);
+    }));
+    const transferGroups = [...categoryScenarioMap.values()].filter(group => group.size >= 2);
+    transferScore = transferGroups.length ? average(transferGroups.map(group => {
+      const scenarioRates = [...group.values()].map(values => values.filter(Boolean).length / values.length);
+      return Math.min(...scenarioRates);
+    })) : 0;
+  }
 
   return {
     totalDecisions: items.length,
@@ -206,7 +227,7 @@ export function getLearningMetrics(history: HistoryItem[]): LearningMetrics {
     })) * 100) : 0,
     averageEvLossBB: evItems.length ? round(average(evItems.map(item => item.evLossBB || 0)), 3) : 0,
     transferScore: Math.round(transferScore * 100),
-    masteredNodes: calculateMastery(items).filter(item => item.status === 'mastered').length,
+    masteredNodes: calculateSkillMastery(items).filter(item => item.status === 'mastered').length,
   };
 }
 
