@@ -21,7 +21,6 @@ import { analyzeCompanionState } from '../../companion/companionEngine';
 import { clearCompanionHandState, publishCompanionHandState } from '../../companion/handStateBus';
 import { formatFrequency, StrategyAction } from '../../strategy-engine-v2';
 import { isFolded, isPositionMatch, NINE_MAX_SEATS, parseSeatAction, SIX_MAX_SEATS } from '../../utils/table';
-import { CoachDrawer } from '../coach/CoachDrawer';
 
 interface TrainingSessionProps {
   scenarios: Scenario[];
@@ -48,6 +47,18 @@ const CONFIDENCE: Array<{ value: ConfidenceLevel; label: string; hint: string }>
   { value: 4, label: '非常確定', hint: '約 90%' },
 ];
 
+type DiagnosticToolId = 'tournament' | 'range' | 'math' | 'strategy' | 'boundary' | 'mental-model' | 'adaptive';
+type DiagnosticPriority = 'primary' | 'secondary' | 'support';
+
+interface DiagnosticTool {
+  id: DiagnosticToolId;
+  label: string;
+  score: number;
+  priority: DiagnosticPriority;
+  reason: string;
+  available: boolean;
+}
+
 export function TrainingSession({ scenarios, history, title, onRecord, onExit, onComplete }: TrainingSessionProps) {
   const [queue, setQueue] = useState<Scenario[]>(() => [...scenarios]);
   const [scenarioIndex, setScenarioIndex] = useState(0);
@@ -56,7 +67,6 @@ export function TrainingSession({ scenarios, history, title, onRecord, onExit, o
   const [confidence, setConfidence] = useState<ConfidenceLevel | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [sessionItems, setSessionItems] = useState<HistoryItem[]>([]);
-  const [coachOpen, setCoachOpen] = useState(false);
   const startedAt = useRef(Date.now());
 
   const scenario = queue[scenarioIndex];
@@ -156,7 +166,6 @@ export function TrainingSession({ scenarios, history, title, onRecord, onExit, o
     setSelectedAction(null);
     setConfidence(null);
     setFeedback(null);
-    setCoachOpen(false);
     startedAt.current = Date.now();
   };
 
@@ -232,18 +241,6 @@ export function TrainingSession({ scenarios, history, title, onRecord, onExit, o
           nextLabel={nextLabel}
           onRestart={restart}
           onNext={next}
-          onCoach={() => setCoachOpen(true)}
-        />
-      )}
-
-      {feedback && (
-        <CoachDrawer
-          open={coachOpen}
-          scenario={scenario}
-          step={step}
-          feedback={feedback}
-          selectedAction={selectedAction}
-          onClose={() => setCoachOpen(false)}
         />
       )}
     </div>
@@ -436,7 +433,7 @@ function DecisionDock({ step, feedback, selectedAction, confidence, onConfidence
   );
 }
 
-function PostDecisionReview({ scenario, step, stepIndex, feedback, item, selectedAction, history, nextPreview, nextLabel, onRestart, onNext, onCoach }: {
+function PostDecisionReview({ scenario, step, stepIndex, feedback, item, selectedAction, history, nextPreview, nextLabel, onRestart, onNext }: {
   scenario: Scenario;
   step: ScenarioStep;
   stepIndex: number;
@@ -448,7 +445,6 @@ function PostDecisionReview({ scenario, step, stepIndex, feedback, item, selecte
   nextLabel: string;
   onRestart: () => void;
   onNext: () => void;
-  onCoach: () => void;
 }) {
   const correct = item.correct;
   const qualityLabels = { best: '最佳線', acceptable: '可接受', suboptimal: '次佳', 'major-error': '重大錯誤' } as const;
@@ -470,7 +466,7 @@ function PostDecisionReview({ scenario, step, stepIndex, feedback, item, selecte
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-700/60 pt-5">
             <div className="flex items-center gap-2 text-xs text-slate-500"><Clock3 className="h-4 w-4" />{item.nextReviewAt ? `下次提取練習：${new Date(item.nextReviewAt).toLocaleString('zh-TW')}` : '這個決策已記錄進玩家模型'}</div>
-            <div className="flex flex-wrap gap-2"><button type="button" onClick={onCoach} className="flex items-center gap-2 rounded-lg border border-violet-500/30 px-3 py-2.5 text-sm text-violet-300 hover:bg-violet-500/10"><Brain className="h-4 w-4" />直接問這手</button><button type="button" onClick={onRestart} className="rounded-lg border border-slate-700 p-2.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100" title="重新開始"><RotateCcw className="h-4 w-4" /></button><button type="button" onClick={onNext} className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-950 hover:bg-emerald-400">{nextLabel}<ArrowRight className="h-4 w-4" /></button></div>
+            <div className="flex flex-wrap gap-2"><button type="button" onClick={onRestart} className="rounded-lg border border-slate-700 p-2.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100" title="重新開始"><RotateCcw className="h-4 w-4" /></button><button type="button" onClick={onNext} className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-950 hover:bg-emerald-400">{nextLabel}<ArrowRight className="h-4 w-4" /></button></div>
           </div>
         </div>
       </div>
@@ -498,13 +494,18 @@ function IntegratedDeepDive({ scenario, step, stepIndex, feedback, item, selecte
   const potOdds = step.potOdds || (analysis.potOdds !== undefined ? `${(analysis.potOdds * 100).toFixed(1)}%` : undefined);
   const spr = step.spr ?? analysis.spr;
   const strategy = analysis.strategy;
+  const diagnostics = useMemo(
+    () => buildHandDiagnostics(scenario, step, feedback, item, analysis, spr, potOdds),
+    [scenario, step, feedback, item, analysis, spr, potOdds],
+  );
+  const primary = diagnostics[0];
 
   return (
     <div className="mt-5 overflow-hidden rounded-2xl border border-emerald-500/20 bg-slate-950/45">
       <div className="border-b border-slate-800 bg-emerald-500/5 px-4 py-4 md:px-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><div className="flex items-center gap-2 text-sm font-semibold text-emerald-300"><Target className="h-4 w-4" />深挖這手 · 已自動帶入</div><p className="mt-1 text-xs leading-5 text-slate-500">不再填第二份表單。牌桌狀態、你的選擇、最佳線與 feedback 直接成為同一份 analysis context。</p></div>
-          {analysis.intervention && <span className="rounded-full border border-violet-500/20 bg-violet-500/8 px-3 py-1 text-xs text-violet-300">優先修：{analysis.intervention.label}</span>}
+          <div><div className="flex items-center gap-2 text-sm font-semibold text-emerald-300"><Target className="h-4 w-4" />深挖這手 · 自動診斷</div><p className="mt-1 text-xs leading-5 text-slate-500">牌桌狀態、你的選擇、最佳線與 evidence 直接進診斷；系統先指出這手真正值得看的工具，不再另外開「直接問這手」。</p></div>
+          {analysis.intervention && <span className="rounded-full border border-violet-500/20 bg-violet-500/8 px-3 py-1 text-xs text-violet-300">訓練介入：{analysis.intervention.label}</span>}
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <ContextCell label="Hero" value={`${state.heroHand || scenario.holeCards.map(card => card.rank).join('')} · ${state.heroPosition}`} />
@@ -514,6 +515,22 @@ function IntegratedDeepDive({ scenario, step, stepIndex, feedback, item, selecte
         </div>
         <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs leading-5 text-slate-500"><span className="font-semibold text-slate-400">Action line：</span>{actionLine || '題目未提供結構化 action history'}</div>
       </div>
+
+      {primary && (
+        <div className="border-b border-slate-800 bg-slate-900/45 p-4 md:p-5">
+          <div className="rounded-2xl border border-amber-500/25 bg-amber-500/7 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-300"><Activity className="h-4 w-4" />主診斷 · {primary.label}</div>
+              {!primary.available && <span className="rounded-full border border-slate-700 px-2 py-1 text-[10px] text-slate-500">資料不足，只能定性</span>}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-200">{primary.reason}</p>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            {diagnostics.slice(0, 3).map(tool => <DiagnosticToolCard key={tool.id} tool={tool} />)}
+          </div>
+          {diagnostics.length > 3 && <div className="mt-3 flex flex-wrap gap-2">{diagnostics.slice(3).map(tool => <span key={tool.id} className="rounded-full border border-slate-800 bg-slate-950/35 px-3 py-1.5 text-[11px] text-slate-500">{tool.label} · {tool.priority === 'support' ? '輔助' : '次診斷'}</span>)}</div>}
+        </div>
+      )}
 
       <div className="grid gap-3 p-4 md:grid-cols-2 md:p-5 xl:grid-cols-3">
         <DeepDiveCard icon={<Brain className="h-4 w-4" />} title="Range / Blocker">
@@ -546,11 +563,12 @@ function IntegratedDeepDive({ scenario, step, stepIndex, feedback, item, selecte
           {step.assumptions?.map((text, index) => <Fact key={`${text}-${index}`} label="Assumption" value={text} />)}
         </DeepDiveCard>
 
-        <DeepDiveCard icon={<Lightbulb className="h-4 w-4" />} title="診斷">
+        <DeepDiveCard icon={<Lightbulb className="h-4 w-4" />} title="診斷證據">
           <Fact label="真正漏點" value={feedback.conceptualError === '無' ? '沒有明顯概念錯誤' : feedback.conceptualError} />
           <Fact label="決策目標" value={evidence?.objective} />
           <Fact label="下一手規則" value={feedback.remember} />
           <Fact label="信心" value={item.confidence ? `${item.confidence}/4` : undefined} />
+          <Fact label="診斷類型" value={diagnosticErrorLabel(item)} />
         </DeepDiveCard>
 
         <DeepDiveCard icon={<ArrowRight className="h-4 w-4" />} title="Adaptive 下一手">
@@ -559,6 +577,94 @@ function IntegratedDeepDive({ scenario, step, stepIndex, feedback, item, selecte
       </div>
     </div>
   );
+}
+
+function buildHandDiagnostics(
+  scenario: Scenario,
+  step: ScenarioStep,
+  feedback: Feedback,
+  item: HistoryItem,
+  analysis: ReturnType<typeof analyzeCompanionState>,
+  spr?: number,
+  potOdds?: string,
+): DiagnosticTool[] {
+  const evidence = feedback.evidence;
+  const text = `${scenario.title} ${(scenario.category || []).join(' ')} ${scenario.tourneyInfo || ''} ${scenario.preAction} ${step.description} ${feedback.conceptualError}`.toLowerCase();
+  const raw: Array<Omit<DiagnosticTool, 'priority'>> = [];
+  const add = (id: DiagnosticToolId, label: string, score: number, reason: string, available = true) => raw.push({ id, label, score, reason, available });
+
+  const tournamentSpot = scenario.type === 'Tournament' && /icm|泡沫|pko|衛星|satellite|獎金|pay jump|final table/i.test(text);
+  if (tournamentSpot) {
+    add('tournament', 'Tournament $EV / ICM', 120, '這手的目標函數不是單純 chip-EV；先確認 ICM、PKO 或衛星賽的風險溢價，再談一般籌碼策略。', /icm|pko|衛星|satellite/i.test(text));
+  }
+
+  const rangeEvidence = Boolean(evidence?.heroRange || evidence?.villainRange || evidence?.continues || evidence?.blockers);
+  const rangeLeak = /range|範圍|blocker|阻擋牌|combo|組合|dominat|踢腳|kicker/i.test(text);
+  if (step.street === 'Preflop' || rangeLeak || rangeEvidence) {
+    add('range', 'Range / Blocker', (rangeLeak ? 105 : 0) + (step.street === 'Preflop' ? 70 : 35), rangeLeak
+      ? '目前錯誤訊號直接指向 range construction、combo 或 blocker；先修「對手有哪些牌」而不是先算單一手牌勝率。'
+      : step.street === 'Preflop'
+        ? '翻前決策主要由位置、有效籌碼與 range 互動決定；Range 是這手最基本的診斷層。'
+        : '題庫已有 range / blocker evidence，這層可以直接驗證你的假設。', rangeEvidence || step.street === 'Preflop');
+  }
+
+  const mathSignal = Boolean(potOdds || spr !== undefined || evidence?.actionEvBB !== undefined || evidence?.bestEvBB !== undefined || evidence?.evLossBB !== undefined);
+  const mathLeak = /pot odds|賠率|equity|勝率|spr|ev|底池|commit|draw|聽牌/i.test(text);
+  if (mathSignal || mathLeak) {
+    const shortSprBoost = spr !== undefined && spr <= 4 ? 45 : 0;
+    add('math', 'Math / EV / SPR', (mathLeak ? 95 : 45) + shortSprBoost, spr !== undefined && spr <= 4
+      ? `SPR ${spr.toFixed(2)} 已進入低 SPR 區，commitment 與可承受下注尺度會明顯改變；先看 Math / SPR。`
+      : evidence?.evLossBB !== undefined
+        ? `這手已有 ${evidence.evLossBB.toFixed(2)} BB 的 EV leak evidence，可直接量化你的決策成本。`
+        : '這手存在 pot odds、SPR 或 EV 門檻；先把數學門檻釐清，再討論 exploit。', mathSignal);
+  }
+
+  const strategyAvailable = Boolean(analysis.strategy && analysis.strategy.status !== 'unsupported');
+  if (step.street === 'Preflop') {
+    add('strategy', 'Strategy baseline', strategyAvailable ? 90 : 42, strategyAvailable
+      ? '找到相符的 preflop strategy node，可用 frequency 當基準線檢查你的動作。'
+      : '這是 preflop spot，但目前沒有可信的相符 strategy node；保留為待驗證項目，不補假 GTO frequency。', strategyAvailable);
+  } else if (analysis.strategy) {
+    add('strategy', 'Strategy baseline', 30, '翻後目前沒有完整 solver surface；Strategy 只作為可用資料提示，不應壓過本題 evidence。', strategyAvailable);
+  }
+
+  const boundarySignal = Boolean(evidence?.reversals?.length || step.assumptions?.length || /boundary|反轉|臨界|尺寸|sizing|何時|如果/i.test(text));
+  if (boundarySignal) {
+    add('boundary', 'Boundary / 反轉條件', 88, '這手最有學習價值的是找出答案何時會翻轉；把 stack、size、position 或 villain range 的臨界點記下來。', Boolean(evidence?.reversals?.length || step.assumptions?.length));
+  }
+
+  const highConfidenceError = item.correct === false && (item.confidence || 0) >= 3;
+  const fragileCorrect = item.correct === true && (item.confidence || 4) <= 2;
+  if (highConfidenceError) {
+    add('mental-model', 'Mental model', 130, '你是高信心答錯：這不是單純忘記，而是內部模型可能反了。優先對照相近 spot，找出錯誤規則。');
+  } else if (fragileCorrect) {
+    add('mental-model', 'Fragile knowledge', 82, '這手答對但把握度低，屬於脆弱知識；需要再用相近情境確認不是猜中的。');
+  }
+
+  if (analysis.intervention) {
+    add('adaptive', `下一個訓練：${analysis.intervention.label}`, 55, analysis.intervention.reason, true);
+  }
+
+  if (!raw.length) {
+    add('mental-model', '決策理由', 50, '目前沒有足夠結構化 evidence 指向單一工具；先用本題 feedback 的 why / remember 建立可重複的決策規則。', true);
+  }
+
+  const unique = [...new Map(raw.map(tool => [tool.id, tool])).values()]
+    .sort((a, b) => b.score - a.score);
+
+  return unique.map((tool, index) => ({
+    ...tool,
+    priority: index === 0 ? 'primary' : index <= 2 ? 'secondary' : 'support',
+  }));
+}
+
+function diagnosticErrorLabel(item: HistoryItem): string {
+  if (item.correct === false && (item.confidence || 0) >= 3) return '高信心錯誤 / mental-model risk';
+  if (item.correct === true && (item.confidence || 4) <= 2) return '答對但脆弱 / fragile knowledge';
+  if (item.feedbackQuality === 'major-error') return '重大策略錯誤';
+  if (item.feedbackQuality === 'suboptimal') return '次佳線 / 可優化';
+  if (item.correct) return '穩定正確';
+  return '一般錯誤';
 }
 
 function SessionComplete({ summary, decisions, evLoss, onComplete, onExit }: {
@@ -581,6 +687,16 @@ function SessionComplete({ summary, decisions, evLoss, onComplete, onExit }: {
       <div className="flex flex-wrap justify-center gap-3 border-t border-slate-800 px-6 py-6"><button type="button" onClick={onComplete} className="rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-950 hover:bg-emerald-400">回到今日教練</button><button type="button" onClick={onExit} className="rounded-xl border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-300 hover:bg-slate-800">選擇下一個訓練</button></div>
     </section>
   );
+}
+
+function DiagnosticToolCard({ tool }: { tool: DiagnosticTool }) {
+  const tone = tool.priority === 'primary'
+    ? 'border-amber-500/25 bg-amber-500/7 text-amber-100'
+    : tool.priority === 'secondary'
+      ? 'border-emerald-500/20 bg-emerald-500/5 text-slate-200'
+      : 'border-slate-800 bg-slate-950/35 text-slate-400';
+  const badge = tool.priority === 'primary' ? '主診斷' : tool.priority === 'secondary' ? '次診斷' : '輔助';
+  return <div className={`rounded-xl border p-3 ${tone}`}><div className="flex items-center justify-between gap-2"><span className="text-sm font-semibold">{tool.label}</span><span className="rounded-full border border-current/20 px-2 py-0.5 text-[9px] uppercase tracking-wider opacity-70">{badge}</span></div><p className="mt-2 text-xs leading-5 opacity-75">{tool.reason}</p>{!tool.available && <div className="mt-2 text-[10px] text-slate-500">目前缺少可信資料，僅作診斷方向。</div>}</div>;
 }
 
 function DeepDiveCard({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
