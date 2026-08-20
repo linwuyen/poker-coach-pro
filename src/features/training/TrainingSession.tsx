@@ -1,1 +1,1 @@
-export { TrainingSession } from './TrainingSessionV11';
+export { TrainingSessionV12 as TrainingSession } from './TrainingSessionV12';

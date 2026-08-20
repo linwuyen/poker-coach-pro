@@ -14,6 +14,7 @@ import { CounterfactualTrainer } from './features/training/CounterfactualTrainer
 import { DecisionBoundaryMap } from './features/training/DecisionBoundaryMap';
 import { PokerBenchTrainer } from './features/training/PokerBenchTrainer';
 import { SizingTrainer } from './features/training/SizingTrainer';
+import { VariantTrainer } from './features/training/VariantTrainer';
 import { IcmWorkbench } from './features/tournament/IcmWorkbench';
 import './index.css';
 
@@ -33,6 +34,7 @@ function RootRouter() {
   if (route === '#boundary-map') return <DecisionBoundaryMap onExit={exitLab} />;
   if (route === '#contrastive-trainer') return <ContrastiveTrainer onExit={exitLab} />;
   if (route === '#sizing-trainer') return <SizingTrainer onExit={exitLab} />;
+  if (route === '#variant-trainer') return <VariantTrainer onExit={exitLab} />;
   if (route === '#solver-corpus') return <PokerBenchTrainer onExit={exitLab} />;
   if (route === '#solver-benchmark') return <PokerBenchTrainer onExit={exitLab} mode="benchmark" />;
   if (route === '#strategy-surface') return <SolverSurfaceLab onExit={exitLab} />;
