@@ -24,6 +24,7 @@ const SUITS: Suit[] = ['spades', 'hearts', 'diamonds', 'clubs'];
  */
 const GROUND_TRUTH_FIXES: Record<string, ActionType> = {
   '71:1:Fold': 'Call',
+  '82:1:Fold': 'Call',
 };
 
 function mapTextSymbols(text: string | undefined, map: Record<Suit, Suit>): string | undefined {
@@ -97,7 +98,7 @@ export function makeSuitIsomorphicScenario(base: Scenario, variantIndex: number,
 
 export const coreScenarios: Scenario[] = rawCoreScenarios.map(repairKnownGroundTruth);
 
-// 88 originals + 64 hand-reviewed, strategy-equivalent suit isomorphs = 152 curated teaching scenarios.
+// 88 originals + 64 curated, strategy-equivalent suit isomorphs = 152 teaching scenarios.
 // These variants change visual identity but not strategic truth, so they are safe for retrieval practice.
 export const curatedTeachingVariants: Scenario[] = coreScenarios
   .slice(0, 64)
