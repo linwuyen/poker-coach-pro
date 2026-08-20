@@ -1,6 +1,6 @@
 import { ConfidenceLevel, Feedback, FeedbackQuality, HistoryItem, MasteryStatus, Scenario } from '../types';
 import { calculateSkillMastery } from './skillGraph';
-import { historyContextFamilyId } from './contextIdentity';
+import { canonicalDecisionFamilyId, historyContextFamilyId, historyDecisionFamilyId } from './contextIdentity';
 import { transferBenchmarkReport } from './transferBenchmark';
 
 const DAY = 86400000;
@@ -50,11 +50,18 @@ export interface SessionLearningSummary {
 }
 
 export function makeMasteryKey(scenarioId: string, stepId?: string): string {
-  return `${scenarioId}::${stepId || 'root'}`;
+  return `${canonicalDecisionFamilyId(scenarioId)}::${stepId || 'root'}`;
 }
 
-export function getHistoryMasteryKey(item: Pick<HistoryItem, 'scenarioId' | 'stepId' | 'masteryKey'>): string {
-  return item.masteryKey || makeMasteryKey(item.scenarioId, item.stepId);
+export function getHistoryMasteryKey(item: Pick<HistoryItem, 'scenarioId' | 'decisionFamilyId' | 'stepId' | 'masteryKey'>): string {
+  if (item.masteryKey) {
+    const separator = item.masteryKey.indexOf('::');
+    const prefix = separator >= 0 ? item.masteryKey.slice(0, separator) : item.masteryKey;
+    const suffix = separator >= 0 ? item.masteryKey.slice(separator + 2) : (item.stepId || 'root');
+    const family = item.decisionFamilyId || canonicalDecisionFamilyId(prefix);
+    return `${canonicalDecisionFamilyId(family)}::${suffix || 'root'}`;
+  }
+  return makeMasteryKey(historyDecisionFamilyId(item), item.stepId);
 }
 
 export function getDifficultyWeight(difficulty?: Scenario['difficulty']): number {
@@ -86,8 +93,9 @@ export function latestByMasteryKey(history: HistoryItem[]): Map<string, HistoryI
 export function latestByScenario(history: HistoryItem[]): Map<string, HistoryItem> {
   const latest = new Map<string, HistoryItem>();
   history.filter(isLearningAttempt).forEach(item => {
-    const current = latest.get(item.scenarioId);
-    if (!current || current.timestamp < item.timestamp) latest.set(item.scenarioId, item);
+    const key = historyDecisionFamilyId(item);
+    const current = latest.get(key);
+    if (!current || current.timestamp < item.timestamp) latest.set(key, item);
   });
   return latest;
 }
@@ -153,7 +161,7 @@ export function calculateMastery(history: HistoryItem[], now = Date.now()): Mast
 }
 
 function effectiveSampleCount(items: HistoryItem[]): number {
-  const contexts = new Set(items.map(item => historyContextFamilyId(item) || `scenario:${item.scenarioId}`)).size;
+  const contexts = new Set(items.map(item => historyContextFamilyId(item) || `scenario:${historyDecisionFamilyId(item)}`)).size;
   const days = new Set(items.map(item => new Date(item.timestamp).toISOString().slice(0, 10))).size;
   const delayed = items.filter(item => item.isDelayedReview).length;
   const transfer = items.filter(item => item.isTransferTest || item.transferLevel).length;
@@ -207,7 +215,8 @@ export function getLearningMetrics(history: HistoryItem[]): LearningMetrics {
     const categoryScenarioMap = new Map<string, Map<string, boolean[]>>();
     items.forEach(item => (item.category || []).forEach(category => {
       const scenarios = categoryScenarioMap.get(category) || new Map<string, boolean[]>();
-      scenarios.set(item.scenarioId, [...(scenarios.get(item.scenarioId) || []), isHistoryCorrect(item)]);
+      const family = historyDecisionFamilyId(item);
+      scenarios.set(family, [...(scenarios.get(family) || []), isHistoryCorrect(item)]);
       categoryScenarioMap.set(category, scenarios);
     }));
     const transferGroups = [...categoryScenarioMap.values()].filter(group => group.size >= 2);
