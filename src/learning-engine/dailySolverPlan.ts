@@ -16,6 +16,7 @@ export interface SolverSelectionOptions {
   random?: () => number;
   now?: number;
   roleOf?: (row: PokerBenchRow) => SolverCorpusRole;
+  levelOf?: (row: PokerBenchRow) => SolverCurriculumLevel;
   excludeIds?: Set<string>;
 }
 
@@ -57,7 +58,14 @@ function profileBoost(row: PokerBenchRow, profile?: PlayerProfile): number {
   return boost;
 }
 
-function rowPriority(row: PokerBenchRow, history: HistoryItem[], profile: PlayerProfile | undefined, now: number, random: () => number): number {
+function rowPriority(
+  row: PokerBenchRow,
+  history: HistoryItem[],
+  profile: PlayerProfile | undefined,
+  now: number,
+  random: () => number,
+  levelOf: (row: PokerBenchRow) => SolverCurriculumLevel,
+): number {
   const attempts = rowHistory(row, history).sort((left, right) => right.timestamp - left.timestamp);
   const latest = attempts[0];
   const unseen = attempts.length === 0;
@@ -66,7 +74,7 @@ function rowPriority(row: PokerBenchRow, history: HistoryItem[], profile: Player
   const recent = latest ? now - latest.timestamp < 86400000 : false;
   const accuracy = situationAccuracy(row, history);
   const weakness = accuracy === undefined ? 0.45 : 1 - accuracy;
-  const curriculum = solverCurriculum(row).level;
+  const curriculum = levelOf(row);
   const novelty = unseen ? 1.7 : 1;
   const correction = wrong ? 1.8 : 1;
   const dueBoost = due ? 1.7 : 1;
@@ -76,11 +84,16 @@ function rowPriority(row: PokerBenchRow, history: HistoryItem[], profile: Player
   return (0.8 + weakness) * novelty * correction * dueBoost * repeatPenalty * difficultyFit * profileBoost(row, profile) * jitter;
 }
 
-function eligibleTrainingRows(rows: PokerBenchRow[], profile: PlayerProfile | undefined, roleOf: (row: PokerBenchRow) => SolverCorpusRole): PokerBenchRow[] {
+function eligibleTrainingRows(
+  rows: PokerBenchRow[],
+  profile: PlayerProfile | undefined,
+  roleOf: (row: PokerBenchRow) => SolverCorpusRole,
+  levelOf: (row: PokerBenchRow) => SolverCurriculumLevel,
+): PokerBenchRow[] {
   const maxLevel = profileMaxSolverLevel(profile);
   return rows.filter(row => roleOf(row) === 'training')
     .filter(row => row.correctDecision && row.availableMoves.length >= 2)
-    .filter(row => solverCurriculum(row).level <= maxLevel);
+    .filter(row => levelOf(row) <= maxLevel);
 }
 
 export function selectDailySemanticPairs(
@@ -91,14 +104,15 @@ export function selectDailySemanticPairs(
   options: SolverSelectionOptions = {},
 ): SemanticDecisionPair[] {
   const roleOf = options.roleOf || solverCorpusRole;
+  const levelOf = options.levelOf || (row => solverCurriculum(row).level);
   const random = options.random || Math.random;
   const now = options.now ?? Date.now();
-  const eligibleIds = new Set(eligibleTrainingRows(rows, profile, roleOf).map(row => row.id));
+  const eligibleIds = new Set(eligibleTrainingRows(rows, profile, roleOf, levelOf).map(row => row.id));
   const recentPairs = new Set(history.slice().sort((a, b) => b.timestamp - a.timestamp).slice(0, 30).map(item => item.contrastivePairId).filter(Boolean));
   return buildSemanticDecisionPairs(rows, { role: 'training', roleOf, limit: 1000 })
     .filter(pair => eligibleIds.has(pair.left.id) && eligibleIds.has(pair.right.id))
     .filter(pair => !options.excludeIds?.has(pair.left.id) && !options.excludeIds?.has(pair.right.id))
-    .map(pair => ({ pair, score: rowPriority(pair.left, history, profile, now, random) + rowPriority(pair.right, history, profile, now, random) + (recentPairs.has(pair.id) ? -4 : 1) }))
+    .map(pair => ({ pair, score: rowPriority(pair.left, history, profile, now, random, levelOf) + rowPriority(pair.right, history, profile, now, random, levelOf) + (recentPairs.has(pair.id) ? -4 : 1) }))
     .sort((left, right) => right.score - left.score || left.pair.id.localeCompare(right.pair.id))
     .slice(0, Math.max(0, count))
     .map(item => item.pair);
@@ -112,11 +126,12 @@ export function selectDailyGeneralizationRows(
   options: SolverSelectionOptions = {},
 ): PokerBenchRow[] {
   const roleOf = options.roleOf || solverCorpusRole;
+  const levelOf = options.levelOf || (row => solverCurriculum(row).level);
   const random = options.random || Math.random;
   const now = options.now ?? Date.now();
-  return eligibleTrainingRows(rows, profile, roleOf)
+  return eligibleTrainingRows(rows, profile, roleOf, levelOf)
     .filter(row => !options.excludeIds?.has(row.id))
-    .map(row => ({ row, score: rowPriority(row, history, profile, now, random) }))
+    .map(row => ({ row, score: rowPriority(row, history, profile, now, random, levelOf) }))
     .sort((left, right) => right.score - left.score || left.row.id.localeCompare(right.row.id))
     .slice(0, Math.max(0, count))
     .map(item => item.row);
