@@ -1,4 +1,4 @@
-import { Scenario } from '../types';
+import { ActionType, Scenario } from '../types';
 
 const expectedBoardCount = { Preflop: 0, Flop: 3, Turn: 4, River: 5 } as const;
 
@@ -28,6 +28,17 @@ export function validateScenarios(scenarios: Scenario[]): string[] {
       if (!Number.isFinite(step.potSize) || step.potSize <= 0) errors.push(`${stepPrefix}: potSize must be positive`);
       if (new Set(step.options).size !== step.options.length) errors.push(`${stepPrefix}: duplicate options`);
 
+      const definedFeedbacks = step.options
+        .map(option => ({ option, feedback: step.feedbacks[option] }))
+        .filter((entry): entry is { option: ActionType; feedback: NonNullable<typeof entry.feedback> } => Boolean(entry.feedback));
+      const declaredBestActions = new Set(definedFeedbacks.map(entry => entry.feedback.bestAction));
+      if (declaredBestActions.size > 1) {
+        errors.push(`${stepPrefix}: feedbacks disagree on canonical bestAction (${[...declaredBestActions].join(', ')})`);
+      }
+      const canonicalBest = definedFeedbacks[0]?.feedback.bestAction;
+      const highestScore = definedFeedbacks.reduce((max, entry) => Math.max(max, entry.feedback.score), -Infinity);
+      const highestActions = definedFeedbacks.filter(entry => entry.feedback.score === highestScore).map(entry => entry.option);
+
       step.options.forEach(option => {
         const feedback = step.feedbacks[option];
         if (!feedback) {
@@ -36,10 +47,23 @@ export function validateScenarios(scenarios: Scenario[]): string[] {
         }
         if (!step.options.includes(feedback.bestAction)) errors.push(`${stepPrefix}: bestAction "${feedback.bestAction}" is not an option`);
         if (feedback.score < 0 || feedback.score > 10) errors.push(`${stepPrefix}: score must be between 0 and 10`);
+        if (feedback.judgment === '正確' && feedback.score < 8) errors.push(`${stepPrefix}: judgment "正確" requires score >= 8 for option "${option}"`);
+        if (feedback.judgment === '錯誤' && feedback.score >= 8) errors.push(`${stepPrefix}: judgment "錯誤" requires score < 8 for option "${option}"`);
+        if (canonicalBest && feedback.bestAction !== canonicalBest) {
+          errors.push(`${stepPrefix}: option "${option}" declares bestAction "${feedback.bestAction}" but canonical bestAction is "${canonicalBest}"`);
+        }
       });
 
+      if (canonicalBest && highestActions.length && !highestActions.includes(canonicalBest)) {
+        errors.push(`${stepPrefix}: canonical bestAction "${canonicalBest}" is not among highest-scoring actions (${highestActions.join(', ')})`);
+      }
+      if (canonicalBest) {
+        const bestFeedback = step.feedbacks[canonicalBest];
+        if (!bestFeedback || bestFeedback.score < 8) errors.push(`${stepPrefix}: canonical bestAction "${canonicalBest}" must score at least 8`);
+      }
+
       Object.keys(step.feedbacks).forEach(option => {
-        if (!step.options.includes(option as any)) errors.push(`${stepPrefix}: feedback exists for unknown option "${option}"`);
+        if (!step.options.includes(option as ActionType)) errors.push(`${stepPrefix}: feedback exists for unknown option "${option}"`);
       });
     });
 
