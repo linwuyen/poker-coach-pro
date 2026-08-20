@@ -29,6 +29,17 @@ export function dailyCurriculumQuota(total: number): DailyCurriculumQuota {
   return { total, curated: Math.max(0, total - semanticDecisions - generalization), semanticPairs, semanticDecisions, generalization };
 }
 
+/** Due review consumes today's budget before new solver transfer work. */
+export function rebalanceDailyCurriculumQuota(base: DailyCurriculumQuota, dueCount: number): DailyCurriculumQuota {
+  const curated = Math.min(base.total, Math.max(base.curated, Math.max(0, dueCount)));
+  let remaining = Math.max(0, base.total - curated);
+  const semanticDecisions = Math.min(base.semanticDecisions, remaining - (remaining % 2));
+  const semanticPairs = Math.floor(semanticDecisions / 2);
+  remaining -= semanticDecisions;
+  const generalization = remaining;
+  return { total: base.total, curated, semanticPairs, semanticDecisions, generalization };
+}
+
 export function profileMaxSolverLevel(profile?: PlayerProfile): SolverCurriculumLevel {
   if (!profile || profile.experience === 'intermediate') return 3;
   return profile.experience === 'beginner' ? 2 : 4;
