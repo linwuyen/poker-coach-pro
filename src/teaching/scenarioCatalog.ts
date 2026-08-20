@@ -1,4 +1,4 @@
-import { scenarios as rawCoreScenarios } from '../data/core';
+import { scenarios as rawCoreScenarios } from '../coreData';
 import { ActionType, Feedback, Scenario, Suit } from '../types';
 
 const SUIT_SYMBOL: Record<Suit, string> = {
