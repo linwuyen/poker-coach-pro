@@ -2,6 +2,7 @@ import { HistoryItem, PlayerProfile, Scenario, UtilityUnit } from '../../types';
 import { filterRelevantScenarios } from '../../domain/playerProfile';
 import { getWeaknessInsights, isDue, latestByMasteryKey } from '../../learning-engine';
 import { getTrainingScenarios } from '../../learning-engine/benchmark';
+import { canonicalDecisionFamilyId, historyDecisionFamilyId, scenarioDecisionFamilyId } from '../../learning-engine/contextIdentity';
 import { EvGainEvidence, SpotFrequencySource, UtilityMode, rankByExpectedLearningValue } from '../../learning-engine/trainingValue';
 import { recommendIntervention, TrainingIntervention } from '../../learning-engine/interventionRouter';
 
@@ -22,9 +23,9 @@ export interface DailyTrainingPlan { items: PlannedScenario[]; counts: Record<Tr
 export interface DailyPlanOptions {
   /** Injected in tests; production intentionally samples a fresh high-value plan. */
   random?: () => number;
-  /** The previously presented first question. Avoid it when an equally-valid alternative exists. */
+  /** The previously presented first question/family. Avoid it when an equally-valid alternative exists. */
   avoidFirstScenarioId?: string;
-  /** How many recent unique scenarios receive a repeat penalty. */
+  /** How many recent unique decision families receive a repeat penalty. */
   recentWindow?: number;
   /** Disable browser persistence for deterministic tests or server-side callers. */
   persistFirstScenario?: boolean;
@@ -32,7 +33,7 @@ export interface DailyPlanOptions {
 
 const EMPTY_COUNTS: Record<TrainingReason, number> = { 'due-review': 0, 'weak-area': 0, 'recent-mistake': 0, new: 0, benchmark: 0, mixed: 0 };
 const DAY_MS = 86400000;
-const LAST_DAILY_FIRST_KEY = 'poker_last_daily_first_v1';
+const LAST_DAILY_FIRST_KEY = 'poker_last_daily_first_v2';
 
 type RankedScenario = ReturnType<typeof rankByExpectedLearningValue>[number];
 
@@ -58,15 +59,26 @@ function weightedSampleWithoutReplacement(
   return selected;
 }
 
+function uniqueFamilies(ranked: RankedScenario[]): RankedScenario[] {
+  const seen = new Set<string>();
+  return ranked.filter(entry => {
+    const family = scenarioDecisionFamilyId(entry.scenario);
+    if (seen.has(family)) return false;
+    seen.add(family);
+    return true;
+  });
+}
+
 function recentScenarioIds(history: HistoryItem[], windowSize: number): Set<string> {
   const ids: string[] = [];
   const seen = new Set<string>();
   [...history]
     .sort((a, b) => b.timestamp - a.timestamp)
     .forEach(item => {
-      if (!item.scenarioId || seen.has(item.scenarioId) || ids.length >= windowSize) return;
-      seen.add(item.scenarioId);
-      ids.push(item.scenarioId);
+      const family = historyDecisionFamilyId(item);
+      if (!family || seen.has(family) || ids.length >= windowSize) return;
+      seen.add(family);
+      ids.push(family);
     });
   return new Set(ids);
 }
@@ -74,8 +86,9 @@ function recentScenarioIds(history: HistoryItem[], windowSize: number): Set<stri
 function latestScenarioTimestamp(history: HistoryItem[]): Map<string, number> {
   const latest = new Map<string, number>();
   history.forEach(item => {
-    const current = latest.get(item.scenarioId) || 0;
-    if (item.timestamp > current) latest.set(item.scenarioId, item.timestamp);
+    const family = historyDecisionFamilyId(item);
+    const current = latest.get(family) || 0;
+    if (item.timestamp > current) latest.set(family, item.timestamp);
   });
   return latest;
 }
@@ -87,15 +100,16 @@ function candidateWeight(
   now: number,
 ): number {
   const base = Math.max(0.05, entry.value.total);
+  const family = scenarioDecisionFamilyId(entry.scenario);
   if (entry.value.due) {
-    const latest = latestTimestamp.get(entry.scenario.id);
+    const latest = latestTimestamp.get(family);
     const overdueDays = latest ? Math.max(0, (now - latest) / DAY_MS) : 0;
     return base * (2.5 + Math.min(3, overdueDays / 3));
   }
 
   let repeatPenalty = 1;
-  if (recentIds.has(entry.scenario.id)) repeatPenalty *= 0.15;
-  const latest = latestTimestamp.get(entry.scenario.id);
+  if (recentIds.has(family)) repeatPenalty *= 0.15;
+  const latest = latestTimestamp.get(family);
   if (latest && now - latest < DAY_MS) repeatPenalty *= 0.2;
 
   // Preserve the ELV ordering signal while allowing close alternatives to rotate.
@@ -121,7 +135,8 @@ function persistBrowserLastFirst(id?: string): void {
 }
 
 function avoidRepeatedFirst(items: RankedScenario[], avoidId?: string): RankedScenario[] {
-  if (!avoidId || items.length < 2 || items[0].scenario.id !== avoidId) return items;
+  const avoidFamily = avoidId ? canonicalDecisionFamilyId(avoidId) : undefined;
+  if (!avoidFamily || items.length < 2 || scenarioDecisionFamilyId(items[0].scenario) !== avoidFamily) return items;
   const firstIsDue = items[0].value.due;
   const swapIndex = items.findIndex((entry, index) => index > 0 && (!firstIsDue || entry.value.due));
   if (swapIndex < 0) return items;
@@ -141,7 +156,9 @@ export function buildDailyTrainingPlan(
   const trainingScenarios = getTrainingScenarios(scenarios);
   const relevant = profile ? filterRelevantScenarios(trainingScenarios, profile) : trainingScenarios;
   const pool = relevant.length >= Math.min(size, trainingScenarios.length) ? relevant : trainingScenarios;
-  const ranked = rankByExpectedLearningValue(pool, history, now, profile);
+  // P3-C: one knowledge family gets one slot. Cosmetic suit variants can still be
+  // used as instances elsewhere, but they must not crowd out distinct concepts.
+  const ranked = uniqueFamilies(rankByExpectedLearningValue(pool, history, now, profile));
   const requested = Math.min(size, ranked.length);
   const random = options.random || Math.random;
   const recentIds = recentScenarioIds(history, options.recentWindow ?? 10);
@@ -153,13 +170,13 @@ export function buildDailyTrainingPlan(
     ? weightedSampleWithoutReplacement(due, due.length, random, entry => candidateWeight(entry, recentIds, latestTimestamp, now))
     : weightedSampleWithoutReplacement(due, requested, random, entry => candidateWeight(entry, recentIds, latestTimestamp, now));
 
-  const selectedIds = new Set(dueSelected.map(entry => entry.scenario.id));
+  const selectedFamilies = new Set(dueSelected.map(entry => scenarioDecisionFamilyId(entry.scenario)));
   const remainingSlots = requested - dueSelected.length;
   const candidateWindowSize = Math.min(ranked.length, Math.max(24, requested * 3));
   const highValueCandidates = ranked
-    .filter(entry => !selectedIds.has(entry.scenario.id))
+    .filter(entry => !selectedFamilies.has(scenarioDecisionFamilyId(entry.scenario)))
     .slice(0, candidateWindowSize);
-  const exploratoryCandidates = ranked.filter(entry => !selectedIds.has(entry.scenario.id) && !highValueCandidates.some(candidate => candidate.scenario.id === entry.scenario.id));
+  const exploratoryCandidates = ranked.filter(entry => !selectedFamilies.has(scenarioDecisionFamilyId(entry.scenario)) && !highValueCandidates.some(candidate => scenarioDecisionFamilyId(candidate.scenario) === scenarioDecisionFamilyId(entry.scenario)));
 
   let sampled = weightedSampleWithoutReplacement(
     highValueCandidates,
@@ -171,7 +188,7 @@ export function buildDailyTrainingPlan(
     sampled = [
       ...sampled,
       ...weightedSampleWithoutReplacement(
-        exploratoryCandidates.filter(entry => !sampled.some(selected => selected.scenario.id === entry.scenario.id)),
+        exploratoryCandidates.filter(entry => !sampled.some(selected => scenarioDecisionFamilyId(selected.scenario) === scenarioDecisionFamilyId(entry.scenario))),
         remainingSlots - sampled.length,
         random,
         entry => candidateWeight(entry, recentIds, latestTimestamp, now),
@@ -181,7 +198,7 @@ export function buildDailyTrainingPlan(
 
   const avoidFirst = options.avoidFirstScenarioId ?? browserLastFirst();
   const chosen = avoidRepeatedFirst([...dueSelected, ...sampled], avoidFirst);
-  if (options.persistFirstScenario !== false) persistBrowserLastFirst(chosen[0]?.scenario.id);
+  if (options.persistFirstScenario !== false) persistBrowserLastFirst(chosen[0] ? scenarioDecisionFamilyId(chosen[0].scenario) : undefined);
 
   const counts = { ...EMPTY_COUNTS };
   const weakCategories = getWeaknessInsights(history, now).filter(item => item.total >= 3 && item.mastery < 80).slice(0, 4).map(item => item.key);
@@ -218,5 +235,5 @@ export function getDueScenarioIds(history: HistoryItem[], now = Date.now()): str
     .filter(item => item.trainingType !== 'benchmark' && item.trainingType !== 'solver-benchmark')
     .filter(item => isDue(item, now))
     .sort((a, b) => (a.nextReviewAt || Infinity) - (b.nextReviewAt || Infinity));
-  return [...new Set(due.map(item => item.scenarioId))];
+  return [...new Set(due.map(historyDecisionFamilyId))];
 }
