@@ -93,6 +93,8 @@ export interface ScenarioStep {
 
 export interface Scenario {
   id: string;
+  /** Canonical knowledge node shared by cosmetic/isomorphic variants. */
+  decisionFamilyId?: string;
   title: string;
   category?: string[];
   difficulty: '新手' | '中階' | '進階';
@@ -121,6 +123,8 @@ export interface HistoryItem {
   attemptId?: string;
   trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range' | 'counterfactual' | 'transfer' | 'real-hand' | 'solver-corpus' | 'solver-benchmark' | 'contrastive' | 'strategy-surface';
   scenarioId: string;
+  /** Canonical knowledge node. Scenario ids may still identify concrete variants. */
+  decisionFamilyId?: string;
   stepId?: string;
   masteryKey?: string;
   skillIds?: string[];

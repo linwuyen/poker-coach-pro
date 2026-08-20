@@ -8,6 +8,8 @@ import { HistoryItem, PlayerProfile, Scenario } from '../types';
 import { AppPage, AppShell } from './AppShell';
 import { buildDailyTrainingPlan, getDueScenarioIds, TrainingReason } from '../features/training/sessionPlanner';
 import { TrainingSession } from '../features/training/TrainingSession';
+import { DailyCurriculumSession } from '../features/training/DailyCurriculumSession';
+import { dailyCurriculumQuota } from '../learning-engine/dailySolverPlan';
 import { Onboarding } from '../features/onboarding/Onboarding';
 import { SettingsDrawer } from '../features/settings/SettingsDrawer';
 import { HandLab } from '../features/analysis/HandLab';
@@ -30,12 +32,14 @@ export default function AppV2() {
   const [profile, setProfile] = useState<PlayerProfile>(loadPlayerProfile);
   const [starredIds, setStarredIds] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('poker_starred_ids') || '[]'); } catch { return []; } });
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  const [dailySessionOpen, setDailySessionOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(!profile.onboardingComplete);
   const [notice, setNotice] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
-  const dailyPlan = useMemo(() => buildDailyTrainingPlan(scenarios, history, profile.dailyQuestions, Date.now(), profile), [history, profile]);
+  const dailyQuota = useMemo(() => dailyCurriculumQuota(profile.dailyQuestions), [profile.dailyQuestions]);
+  const dailyPlan = useMemo(() => buildDailyTrainingPlan(scenarios, history, dailyQuota.curated, Date.now(), profile), [dailyQuota.curated, history, profile]);
   const relevantScenarios = useMemo(() => filterRelevantScenarios(scenarios, profile), [profile]);
   const dueIds = useMemo(() => getDueScenarioIds(history), [history]);
   const dueScenarios = useMemo(() => dueIds.map(id => scenarios.find(scenario => scenario.id === id)).filter((scenario): scenario is Scenario => Boolean(scenario)), [dueIds]);
@@ -44,11 +48,11 @@ export default function AppV2() {
   const mastery = useMemo(() => calculateMastery(history), [history]);
   const weekItems = history.filter(item => item.timestamp >= Date.now() - 7 * 86400000 && item.trainingType !== 'custom');
 
-  const changePage = (next: AppPage) => { setActiveSession(null); setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const changePage = (next: AppPage) => { setActiveSession(null); setDailySessionOpen(false); setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const startSession = (title: string, selected: Scenario[]) => {
     const unique = [...new Map(selected.map(scenario => [scenario.id, scenario])).values()];
     if (!unique.length) { setNotice('目前沒有符合條件的題目。若是複習，系統不會為了刷題而提前破壞間隔。'); return; }
-    setNotice(null); setActiveSession({ title, scenarios: unique }); setPage('train'); window.scrollTo({ top: 0 });
+    setNotice(null); setDailySessionOpen(false); setActiveSession({ title, scenarios: unique }); setPage('train'); window.scrollTo({ top: 0 });
   };
   const recordHistory = (item: HistoryItem) => setHistory(previous => { const updated = [...previous, item]; saveHistory(updated); return updated; });
   const completeOnboarding = (next: PlayerProfile) => { const saved = savePlayerProfile(next); setProfile(saved); setOnboardingOpen(false); setNotice('玩家模型已更新，今天的訓練已重新排序。'); };
@@ -69,8 +73,8 @@ export default function AppV2() {
   return (
     <AppShell page={page} onPageChange={changePage} onOpenSettings={() => setSettingsOpen(true)}>
       {notice && <div className="mb-5 flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-sm text-amber-200"><span>{notice}</span><button type="button" onClick={() => setNotice(null)}><X className="h-4 w-4" /></button></div>}
-      {activeSession ? <TrainingSession title={activeSession.title} scenarios={activeSession.scenarios} history={history} onRecord={recordHistory} onExit={() => setActiveSession(null)} onComplete={() => { setActiveSession(null); setPage('today'); }} /> : <>
-        {page === 'today' && <TodayPage dailyPlan={dailyPlan} dueCount={dueScenarios.length} weaknesses={weaknesses} metrics={metrics} weekItems={weekItems} onStart={() => startSession('今日自動教練', dailyPlan.items.map(item => item.scenario))} onReview={() => startSession('到期提取複習', dueScenarios)} onNavigate={changePage} />}
+      {dailySessionOpen ? <DailyCurriculumSession scenarios={scenarios} history={history} profile={profile} onRecord={recordHistory} onExit={() => setDailySessionOpen(false)} onComplete={() => { setDailySessionOpen(false); setPage('today'); }} /> : activeSession ? <TrainingSession title={activeSession.title} scenarios={activeSession.scenarios} history={history} onRecord={recordHistory} onExit={() => setActiveSession(null)} onComplete={() => { setActiveSession(null); setPage('today'); }} /> : <>
+        {page === 'today' && <TodayPage dailyPlan={dailyPlan} dailyQuota={dailyQuota} dueCount={dueScenarios.length} weaknesses={weaknesses} metrics={metrics} weekItems={weekItems} onStart={() => { setNotice(null); setActiveSession(null); setDailySessionOpen(true); setPage('today'); window.scrollTo({ top: 0 }); }} onReview={() => startSession('到期提取複習', dueScenarios)} onNavigate={changePage} />}
         {page === 'train' && <TrainPage profile={profile} history={history} relevant={relevantScenarios} onStart={startSession} />}
         {page === 'analysis' && <ProgressPage history={history} metrics={metrics} weaknesses={weaknesses} mastery={mastery} dueScenarios={dueScenarios} onStart={startSession} onRecord={recordHistory} onExport={() => exportTrainingData(history, starredIds, profile)} onImport={() => importRef.current?.click()} />}
       </>}
@@ -81,16 +85,16 @@ export default function AppV2() {
   );
 }
 
-function TodayPage({ dailyPlan, dueCount, weaknesses, metrics, weekItems, onStart, onReview, onNavigate }: {
-  dailyPlan: ReturnType<typeof buildDailyTrainingPlan>; dueCount: number; weaknesses: WeaknessInsight[]; metrics: ReturnType<typeof getLearningMetrics>;
+function TodayPage({ dailyPlan, dailyQuota, dueCount, weaknesses, metrics, weekItems, onStart, onReview, onNavigate }: {
+  dailyPlan: ReturnType<typeof buildDailyTrainingPlan>; dailyQuota: ReturnType<typeof dailyCurriculumQuota>; dueCount: number; weaknesses: WeaknessInsight[]; metrics: ReturnType<typeof getLearningMetrics>;
   weekItems: HistoryItem[]; onStart: () => void; onReview: () => void; onNavigate: (page: AppPage) => void;
 }) {
   const weekAccuracy = accuracy(weekItems);
   const nextBest = dailyPlan.items[0];
-  const evidenceLabel = nextBest?.evGainEvidence === 'verified' ? '已驗證 EV + 實戰頻率' : nextBest?.evGainEvidence === 'observed' ? '實戰觀測' : 'Priority estimate';
+  const evidenceLabel = nextBest?.evGainEvidence === 'verified' ? '已驗證 EV + 實戰頻率' : nextBest?.evGainEvidence === 'observed' ? '實戰觀測' : 'Priority estimate + solver transfer';
   return <div className="space-y-6">
-    <section className="overflow-hidden rounded-3xl border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.16),rgba(15,23,42,0.5)_55%)] p-6 md:p-9"><div className="grid items-center gap-8 lg:grid-cols-[1fr_340px]"><div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400"><Sparkles className="h-4 w-4" />今天只做一件最值得的事</div><h2 className="mt-4 max-w-2xl text-3xl font-bold tracking-tight text-white md:text-4xl">{nextBest ? nextBest.scenario.title : '完成今日自動教練'}</h2><p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 md:text-base">系統先選題；你作答後，Range、EV、Strategy、Boundary 與漏點診斷會直接吃這手牌的資料，下一手再依新結果重排。</p><div className="mt-6 flex flex-wrap gap-3"><button type="button" onClick={onStart} className="flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-3.5 text-sm font-bold text-emerald-950"><Play className="h-4 w-4 fill-current" />開始今日訓練</button><button type="button" onClick={() => onNavigate('train')} className="rounded-xl border border-slate-700 bg-slate-950/35 px-5 py-3.5 text-sm font-semibold">我要自己選方向</button></div></div><div className="rounded-2xl border border-slate-700/70 bg-slate-950/55 p-5"><div className="text-xs text-slate-500">目前排序依據</div><div className="mt-1 text-lg font-semibold text-slate-100">{evidenceLabel}</div>{nextBest?.expectedEvGainPer100Hands !== undefined ? <><div className="mt-4 text-xs text-slate-500">可報告 Expected EV Gain</div><div className="mt-1 font-mono text-xl font-bold text-emerald-300">+{nextBest.expectedEvGainPer100Hands.toFixed(3)} BB/100</div></> : <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs leading-5 text-slate-400">EV gain 尚無足夠實測證據，因此只用 Priority 排序，不製造假精度。{nextBest?.utilityMode === 'tournament-priority' ? ' MTT 也不把 chip-EV 冒充 $EV。' : ''}</div>}<div className="mt-4 space-y-2">{(Object.entries(dailyPlan.counts) as Array<[TrainingReason, number]>).filter(([, count]) => count > 0).map(([reason, count]) => <div key={reason} className="flex justify-between text-xs"><span className="text-slate-500">{REASON_LABELS[reason]}</span><span>{count} 題</span></div>)}</div></div></div></section>
-    <section className="grid gap-4 md:grid-cols-4"><MetricCard icon={<Target className="h-5 w-5" />} label="本週正確率" value={`${weekAccuracy}%`} detail={`${weekItems.length} 個決策`} /><MetricCard icon={<CalendarClock className="h-5 w-5" />} label="到期複習" value={`${dueCount}`} detail="真正到 nextReviewAt" action={dueCount ? '直接練' : undefined} onAction={onReview} /><MetricCard icon={<Brain className="h-5 w-5" />} label="延遲留存" value={`${metrics.delayedRetention}%`} detail="隔開時間仍答對" /><MetricCard icon={<Layers3 className="h-5 w-5" />} label="已掌握" value={`${metrics.masteredNodes}`} detail="需含 transfer / delay" /></section>
+    <section className="overflow-hidden rounded-3xl border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.16),rgba(15,23,42,0.5)_55%)] p-6 md:p-9"><div className="grid items-center gap-8 lg:grid-cols-[1fr_340px]"><div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400"><Sparkles className="h-4 w-4" />今天只做一件最值得的事</div><h2 className="mt-4 max-w-2xl text-3xl font-bold tracking-tight text-white md:text-4xl">{nextBest ? nextBest.scenario.title : '完成今日自動教練'}</h2><p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 md:text-base">今天不再只有 curated 題：先修你的高價值漏點，再做 one-variable solver counterfactual，最後用 unseen PokerBench row 驗證泛化。Sibling / Holdout 永不混入 Daily。</p><div className="mt-6 flex flex-wrap gap-3"><button type="button" onClick={onStart} className="flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-3.5 text-sm font-bold text-emerald-950"><Play className="h-4 w-4 fill-current" />開始今日 {dailyQuota.total} 決策</button><button type="button" onClick={() => onNavigate('train')} className="rounded-xl border border-slate-700 bg-slate-950/35 px-5 py-3.5 text-sm font-semibold">我要自己選方向</button></div></div><div className="rounded-2xl border border-slate-700/70 bg-slate-950/55 p-5"><div className="text-xs text-slate-500">目前排序依據</div><div className="mt-1 text-lg font-semibold text-slate-100">{evidenceLabel}</div>{nextBest?.expectedEvGainPer100Hands !== undefined ? <><div className="mt-4 text-xs text-slate-500">可報告 Expected EV Gain</div><div className="mt-1 font-mono text-xl font-bold text-emerald-300">+{nextBest.expectedEvGainPer100Hands.toFixed(3)} BB/100</div></> : <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs leading-5 text-slate-400">EV gain 尚無足夠實測證據，因此 curated 排序只用 Priority，不製造假精度；Solver 階段只使用 pinned optimal labels。</div>}<div className="mt-4 space-y-2">{(Object.entries(dailyPlan.counts) as Array<[TrainingReason, number]>).filter(([, count]) => count > 0).map(([reason, count]) => <div key={reason} className="flex justify-between text-xs"><span className="text-slate-500">{REASON_LABELS[reason]}</span><span>{count} 題</span></div>)}<div className="flex justify-between text-xs"><span className="text-cyan-300">Solver semantic counterfactual</span><span>{dailyQuota.semanticDecisions} 題</span></div><div className="flex justify-between text-xs"><span className="text-blue-300">Unseen solver generalization</span><span>{dailyQuota.generalization} 題</span></div></div></div></div></section>
+    <section className="grid gap-4 md:grid-cols-4"><MetricCard icon={<Target className="h-5 w-5" />} label="本週正確率" value={`${weekAccuracy}%`} detail={`${weekItems.length} 個決策`} /><MetricCard icon={<CalendarClock className="h-5 w-5" />} label="到期複習" value={`${dueCount}`} detail="真正到 nextReviewAt" action={dueCount ? '直接練' : undefined} onAction={onReview} /><MetricCard icon={<Brain className="h-5 w-5" />} label="延遲留存" value={`${metrics.delayedRetention}%`} detail="隔開時間仍答對" /><MetricCard icon={<Layers3 className="h-5 w-5" />} label="已掌握" value={`${metrics.masteredNodes}`} detail="canonical family + transfer" /></section>
     <Panel title="目前最值得修的漏點" subtitle="系統會把漏點直接帶進後續訓練，不用先挑工具" action="看完整進度" onAction={() => onNavigate('analysis')}><div className="grid gap-3 md:grid-cols-2">{weaknesses.length ? weaknesses.slice(0, 4).map(item => <div key={item.key} className="flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-950/35 p-4"><div className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl font-mono text-sm font-bold ${item.mastery < 60 ? 'bg-red-500/10 text-red-300' : 'bg-amber-500/10 text-amber-300'}`}>{item.mastery}%</div><div><div className="font-semibold text-slate-200">{item.key}</div><div className="mt-1 text-xs text-slate-500">{item.total} 次 · 樣本信心 {item.sampleConfidence}% · 趨勢 {signed(item.recentTrend)}%</div></div></div>) : <EmptyState text="完成幾次訓練後，系統會自動建立漏點排序。" />}</div></Panel>
   </div>;
 }
@@ -101,7 +105,7 @@ function TrainPage({ profile, history, relevant, onStart }: { profile: PlayerPro
   const postflop = relevant.filter(s => s.steps.some(step => step.street !== 'Preflop'));
   const tournament = relevant.filter(s => s.type === 'Tournament');
   const tracks = [
-    { title: '自動教練', description: '系統持續依你的最新結果改下一手，不用選工具', icon: <Sparkles className="h-6 w-6" />, items: daily, featured: true },
+    { title: '自動教練', description: 'Curated 專項訓練；完整 Daily curriculum 請從「今天」開始', icon: <Sparkles className="h-6 w-6" />, items: daily, featured: true },
     { title: '翻前', description: 'RFI、BB defense、3-Bet、4-Bet 與短碼；答完直接顯示可驗證 strategy', icon: <Layers3 className="h-6 w-6" />, items: preflop.slice(0, 24) },
     { title: '翻後', description: 'Flop / Turn / River；答完原地看 Range、EV、Boundary 與漏點', icon: <Brain className="h-6 w-6" />, items: postflop.slice(0, 24) },
     { title: '錦標賽', description: '短碼、ICM、PKO、Satellite；只顯示可信 $EV / priority 證據', icon: <Target className="h-6 w-6" />, items: tournament.slice(0, 24) },

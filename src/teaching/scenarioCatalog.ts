@@ -59,6 +59,7 @@ function mapFeedback(feedback: Feedback, map: Record<Suit, Suit>): Feedback {
 function repairKnownGroundTruth(scenario: Scenario): Scenario {
   return {
     ...scenario,
+    decisionFamilyId: scenario.decisionFamilyId || scenario.reviewSourceId || scenario.id,
     steps: scenario.steps.map(step => ({
       ...step,
       feedbacks: Object.fromEntries(Object.entries(step.feedbacks).map(([action, feedback]) => {
@@ -74,13 +75,15 @@ export function makeSuitIsomorphicScenario(base: Scenario, variantIndex: number,
   const permutation = SUIT_PERMUTATIONS[Math.abs(variantIndex) % SUIT_PERMUTATIONS.length];
   const suitMap = Object.fromEntries(SUITS.map((suit, index) => [suit, permutation[index]])) as Record<Suit, Suit>;
   const mapCard = (card: Scenario['holeCards'][number]) => ({ ...card, suit: suitMap[card.suit] });
+  const familyId = base.decisionFamilyId || base.reviewSourceId || base.id;
   return {
     ...base,
     id: `${idPrefix}-${base.id}-iso-${variantIndex + 1}`,
+    decisionFamilyId: familyId,
     title: `${mapTextSymbols(base.title, suitMap) || base.title} · 同構轉移`,
     preAction: mapTextSymbols(base.preAction, suitMap) || base.preAction,
     holeCards: base.holeCards.map(mapCard),
-    reviewSourceId: base.id,
+    reviewSourceId: familyId,
     benchmarkRole: 'training',
     steps: base.steps.map(step => ({
       ...step,

@@ -2,7 +2,7 @@ import { HistoryItem, PlayerProfile, Scenario, UtilityUnit } from '../types';
 import { scenarioProfileScore } from '../domain/playerProfile';
 import { inferScenarioSkillIds, calculateSkillMastery, getSkillNode, inferSkillIds } from './skillGraph';
 import { improvementProbabilityFromHistory } from './errorModel';
-import { evidenceMatchesScenario } from './contextIdentity';
+import { evidenceMatchesScenario, historyDecisionFamilyId, scenarioDecisionFamilyId } from './contextIdentity';
 import { matchingUtilityEvidence, scenarioUtilityMode } from './utility';
 
 export type EvGainEvidence = 'verified' | 'observed' | 'estimated';
@@ -91,7 +91,8 @@ export function expectedLearningValue(
 ): LearningValueBreakdown {
   const skillMastery = new Map(calculateSkillMastery(history, now).map(item => [item.skillId, item]));
   const skills = inferScenarioSkillIds(scenario);
-  const related = history.filter(item => item.scenarioId === scenario.id);
+  const familyId = scenarioDecisionFamilyId(scenario);
+  const related = history.filter(item => historyDecisionFamilyId(item) === familyId);
   const latest = [...related].sort((a, b) => b.timestamp - a.timestamp)[0];
   const due = related.some(item => typeof item.nextReviewAt === 'number' && item.nextReviewAt <= now);
   const recentMistake = related.some(item => now - item.timestamp <= 14 * 86400000 && !(item.correct ?? item.score >= 8));
@@ -106,7 +107,7 @@ export function expectedLearningValue(
   const uncertainty = Math.max(0.15, 1 - avgConfidence);
   const forgettingRisk = due ? 1 : latest ? Math.min(1, Math.max(0.1, (now - latest.timestamp) / (14 * 86400000))) : 0.45;
   const relatedSkillSeenElsewhere = skills.some(id => history.some(item => {
-    if (item.scenarioId === scenario.id) return false;
+    if (historyDecisionFamilyId(item) === familyId) return false;
     const itemSkills = item.skillIds?.length ? item.skillIds : inferSkillIds(item.category, item.street);
     return itemSkills.includes(id);
   }));

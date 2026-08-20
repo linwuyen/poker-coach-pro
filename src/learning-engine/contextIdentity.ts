@@ -41,6 +41,23 @@ function potBucket(pot: number): string {
   return '40+';
 }
 
+/**
+ * Collapse cosmetic/isomorphic instance ids into one knowledge family.
+ * This also migrates P1/P2 history that was recorded before decisionFamilyId existed.
+ */
+export function canonicalDecisionFamilyId(value: string): string {
+  const match = value.match(/^(?:teach|gen)-(.+)-iso-\d+$/);
+  return match?.[1] || value;
+}
+
+export function scenarioDecisionFamilyId(scenario: Pick<Scenario, 'id' | 'decisionFamilyId' | 'reviewSourceId'>): string {
+  return canonicalDecisionFamilyId(scenario.decisionFamilyId || scenario.reviewSourceId || scenario.id);
+}
+
+export function historyDecisionFamilyId(item: Pick<HistoryItem, 'scenarioId' | 'decisionFamilyId'>): string {
+  return canonicalDecisionFamilyId(item.decisionFamilyId || item.scenarioId);
+}
+
 export function scenarioFormat(scenario: Scenario): GameFormatTag {
   return scenario.type === 'Tournament' ? 'MTT' : 'Cash';
 }
@@ -73,7 +90,7 @@ export function historyContextFamilyId(item: HistoryItem): string | undefined {
 }
 
 export function evidenceFamilyId(item: HistoryItem): string | undefined {
-  return item.evidenceFamilyId || historyContextFamilyId(item) || (item.scenarioId ? `scenario:${item.scenarioId}` : undefined);
+  return item.evidenceFamilyId || historyContextFamilyId(item) || (item.scenarioId ? `scenario:${historyDecisionFamilyId(item)}` : undefined);
 }
 
 export function evidenceMatchesScenario(item: HistoryItem, scenario: Scenario): boolean {
@@ -82,8 +99,8 @@ export function evidenceMatchesScenario(item: HistoryItem, scenario: Scenario): 
   const family = historyContextFamilyId(item);
   if (family) return family === scenarioContextFamilyId(scenario);
   // Legacy evidence is intentionally strict: without a structured family id it
-  // can only support the exact scenario that produced it.
-  return item.scenarioId === scenario.id;
+  // can only support the exact canonical decision family that produced it.
+  return historyDecisionFamilyId(item) === scenarioDecisionFamilyId(scenario);
 }
 
 export function inferSituationIdsFromScenario(scenario: Scenario): string[] {
