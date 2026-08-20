@@ -111,9 +111,20 @@ function candidateWeight(
   if (recentIds.has(family)) repeatPenalty *= 0.15;
   const latest = latestTimestamp.get(family);
   if (latest && now - latest < DAY_MS) repeatPenalty *= 0.2;
-
-  // Preserve the ELV ordering signal while allowing close alternatives to rotate.
   return Math.pow(base, 1.35) * repeatPenalty;
+}
+
+function preserveTopLearningAnchor(sampled: RankedScenario[], ranked: RankedScenario[], dueSelected: RankedScenario[]): RankedScenario[] {
+  // Randomness rotates close candidates, but it must not erase the single highest-value
+  // personalized target in a session with no due-review override. Put the anchor at the
+  // tail so it does not recreate the deterministic-first-question problem P0 removed.
+  if (dueSelected.length || !sampled.length || !ranked.length) return sampled;
+  const anchor = ranked[0];
+  const anchorFamily = scenarioDecisionFamilyId(anchor.scenario);
+  if (sampled.some(entry => scenarioDecisionFamilyId(entry.scenario) === anchorFamily)) return sampled;
+  const anchored = [...sampled];
+  anchored[anchored.length - 1] = anchor;
+  return anchored;
 }
 
 function browserLastFirst(): string | undefined {
@@ -156,15 +167,12 @@ export function buildDailyTrainingPlan(
   const trainingScenarios = getTrainingScenarios(scenarios);
   const relevant = profile ? filterRelevantScenarios(trainingScenarios, profile) : trainingScenarios;
   const pool = relevant.length >= Math.min(size, trainingScenarios.length) ? relevant : trainingScenarios;
-  // P3-C: one knowledge family gets one slot. Cosmetic suit variants can still be
-  // used as instances elsewhere, but they must not crowd out distinct concepts.
   const ranked = uniqueFamilies(rankByExpectedLearningValue(pool, history, now, profile));
   const requested = Math.min(size, ranked.length);
   const random = options.random || Math.random;
   const recentIds = recentScenarioIds(history, options.recentWindow ?? 10);
   const latestTimestamp = latestScenarioTimestamp(history);
 
-  // Spaced review is an override: due items are never discarded merely to increase novelty.
   const due = ranked.filter(entry => entry.value.due);
   const dueSelected = due.length <= requested
     ? weightedSampleWithoutReplacement(due, due.length, random, entry => candidateWeight(entry, recentIds, latestTimestamp, now))
@@ -195,6 +203,7 @@ export function buildDailyTrainingPlan(
       ),
     ];
   }
+  sampled = preserveTopLearningAnchor(sampled, ranked, dueSelected);
 
   const avoidFirst = options.avoidFirstScenarioId ?? browserLastFirst();
   const chosen = avoidRepeatedFirst([...dueSelected, ...sampled], avoidFirst);
