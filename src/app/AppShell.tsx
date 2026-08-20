@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { BarChart3, Brain, CalendarCheck2, Settings2 } from 'lucide-react';
+import { BarChart3, Brain, CalendarCheck2, Database, Settings2, Shuffle } from 'lucide-react';
 
 export type AppPage = 'today' | 'train' | 'analysis';
 
@@ -18,6 +18,7 @@ interface AppShellProps {
 
 export function AppShell({ page, onPageChange, children, onOpenSettings }: AppShellProps) {
   const current = NAV_ITEMS.find(item => item.id === page) || NAV_ITEMS[0];
+  const openLab = (hash: string) => { window.location.hash = hash; };
   return (
     <div className="relative min-h-screen bg-slate-950 text-slate-100">
       <div className="pc-ambient-layer" aria-hidden="true"><div className="pc-grid-fade" /><div className="pc-ambient-orb pc-ambient-orb-a" /><div className="pc-ambient-orb pc-ambient-orb-b" /></div>
@@ -27,12 +28,16 @@ export function AppShell({ page, onPageChange, children, onOpenSettings }: AppSh
           <div><div className="font-semibold tracking-tight">想高龍了 德撲訓練機</div><div className="text-xs text-slate-500">Unified Training Loop</div></div>
         </button>
         <nav className="mt-8 space-y-1.5">{NAV_ITEMS.map(item => { const Icon = item.icon; const active = item.id === page; return <button key={item.id} type="button" onClick={() => onPageChange(item.id)} className={`pc-interactive flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left ${active ? 'bg-emerald-500/12 text-emerald-300 ring-1 ring-emerald-500/25 shadow-lg shadow-emerald-950/10' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100'}`}><Icon className="h-5 w-5 shrink-0" /><span><span className="block text-sm font-semibold">{item.label}</span><span className="block text-[11px] text-slate-500">{item.description}</span></span></button>; })}</nav>
-        <div className="mt-5 rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-3 text-xs leading-5 text-slate-500"><span className="font-semibold text-slate-300">唯一主迴路</span><br />看牌 → 自己決策 → 原地深挖 → 更新玩家模型 → 自適應下一手。Range、EV、Strategy、Boundary 都直接吃目前這手，不再要求重填。</div>
-        <div className="mt-auto space-y-2"><button type="button" onClick={onOpenSettings} className="pc-interactive flex w-full items-center gap-3 rounded-xl border border-slate-800 px-3 py-3 text-left text-slate-400 hover:border-slate-700 hover:bg-slate-900 hover:text-slate-100"><Settings2 className="h-5 w-5" /><span><span className="block text-sm font-semibold">玩家與資料設定</span><span className="block text-[11px] text-slate-500">個人化、備份、加密同步</span></span></button><p className="px-2 text-[11px] leading-relaxed text-slate-600">進階診斷仍可保留，但不再是訓練主流程的入口。</p></div>
+        <div className="mt-4 space-y-2 border-t border-slate-800/70 pt-4">
+          <button type="button" onClick={() => openLab('variant-trainer')} className="pc-interactive flex w-full items-center gap-3 rounded-xl border border-violet-500/15 bg-violet-500/5 px-3 py-3 text-left text-violet-200 hover:border-violet-500/35"><Shuffle className="h-5 w-5" /><span><span className="block text-sm font-semibold">泛化變式</span><span className="block text-[11px] text-slate-500">528 個安全同構 transfer nodes</span></span></button>
+          <button type="button" onClick={() => openLab('solver-corpus')} className="pc-interactive flex w-full items-center gap-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-3 text-left text-cyan-200 hover:border-cyan-500/35"><Database className="h-5 w-5" /><span><span className="block text-sm font-semibold">Solver 題庫</span><span className="block text-[11px] text-slate-500">PokerBench 1k + 10k verified rows</span></span></button>
+        </div>
+        <div className="mt-5 rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-3 text-xs leading-5 text-slate-500"><span className="font-semibold text-slate-300">唯一主迴路</span><br />看牌 → 自己決策 → 一句話修正 → 邊界檢查 → 自適應下一手。進階證據按需展開，不再一次灌滿。</div>
+        <div className="mt-auto space-y-2"><button type="button" onClick={onOpenSettings} className="pc-interactive flex w-full items-center gap-3 rounded-xl border border-slate-800 px-3 py-3 text-left text-slate-400 hover:border-slate-700 hover:bg-slate-900 hover:text-slate-100"><Settings2 className="h-5 w-5" /><span><span className="block text-sm font-semibold">玩家與資料設定</span><span className="block text-[11px] text-slate-500">個人化、備份、加密同步</span></span></button><p className="px-2 text-[11px] leading-relaxed text-slate-600">Solver 是泛化驗證；主教學仍優先用可解釋、可複習的 curated scenarios。</p></div>
       </aside>
 
       <div className="relative z-10 min-h-screen pb-24 lg:ml-64 lg:pb-0">
-        <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/78 px-4 py-3 backdrop-blur-xl md:px-8 lg:px-10"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3"><div><h1 className="text-lg font-semibold tracking-tight md:text-xl">{current.label}</h1><p className="text-xs text-slate-500">{current.description}</p></div><button type="button" onClick={onOpenSettings} className="pc-interactive rounded-lg border border-slate-800 px-3 py-2 text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-100 lg:hidden">設定</button></div></header>
+        <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/78 px-4 py-3 backdrop-blur-xl md:px-8 lg:px-10"><div className="mx-auto flex max-w-7xl items-center justify-between gap-3"><div><h1 className="text-lg font-semibold tracking-tight md:text-xl">{current.label}</h1><p className="text-xs text-slate-500">{current.description}</p></div><div className="flex items-center gap-2"><button type="button" onClick={() => openLab('variant-trainer')} className="hidden rounded-lg border border-violet-500/20 px-3 py-2 text-xs font-medium text-violet-300 hover:bg-violet-500/8 md:block">泛化變式</button><button type="button" onClick={() => openLab('solver-corpus')} className="hidden rounded-lg border border-cyan-500/20 px-3 py-2 text-xs font-medium text-cyan-300 hover:bg-cyan-500/8 md:block">Solver 題庫</button><button type="button" onClick={onOpenSettings} className="pc-interactive rounded-lg border border-slate-800 px-3 py-2 text-xs font-medium text-slate-400 hover:bg-slate-900 hover:text-slate-100 lg:hidden">設定</button></div></div></header>
         <main className="pc-enter mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8 lg:px-10">{children}</main>
       </div>
 
