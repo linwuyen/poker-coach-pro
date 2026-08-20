@@ -26,10 +26,13 @@ export interface DailyPlanOptions {
   avoidFirstScenarioId?: string;
   /** How many recent unique scenarios receive a repeat penalty. */
   recentWindow?: number;
+  /** Disable browser persistence for deterministic tests or server-side callers. */
+  persistFirstScenario?: boolean;
 }
 
 const EMPTY_COUNTS: Record<TrainingReason, number> = { 'due-review': 0, 'weak-area': 0, 'recent-mistake': 0, new: 0, benchmark: 0, mixed: 0 };
 const DAY_MS = 86400000;
+const LAST_DAILY_FIRST_KEY = 'poker_last_daily_first_v1';
 
 type RankedScenario = ReturnType<typeof rankByExpectedLearningValue>[number];
 
@@ -99,6 +102,24 @@ function candidateWeight(
   return Math.pow(base, 1.35) * repeatPenalty;
 }
 
+function browserLastFirst(): string | undefined {
+  try {
+    if (typeof localStorage === 'undefined') return undefined;
+    return localStorage.getItem(LAST_DAILY_FIRST_KEY) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistBrowserLastFirst(id?: string): void {
+  if (!id) return;
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(LAST_DAILY_FIRST_KEY, id);
+  } catch {
+    // Persistence is a UX optimization; never fail planning because storage is unavailable.
+  }
+}
+
 function avoidRepeatedFirst(items: RankedScenario[], avoidId?: string): RankedScenario[] {
   if (!avoidId || items.length < 2 || items[0].scenario.id !== avoidId) return items;
   const firstIsDue = items[0].value.due;
@@ -158,7 +179,10 @@ export function buildDailyTrainingPlan(
     ];
   }
 
-  const chosen = avoidRepeatedFirst([...dueSelected, ...sampled], options.avoidFirstScenarioId);
+  const avoidFirst = options.avoidFirstScenarioId ?? browserLastFirst();
+  const chosen = avoidRepeatedFirst([...dueSelected, ...sampled], avoidFirst);
+  if (options.persistFirstScenario !== false) persistBrowserLastFirst(chosen[0]?.scenario.id);
+
   const counts = { ...EMPTY_COUNTS };
   const weakCategories = getWeaknessInsights(history, now).filter(item => item.total >= 3 && item.mastery < 80).slice(0, 4).map(item => item.key);
   let benchmarkAssigned = false;
