@@ -8,6 +8,7 @@ const EffectivenessDashboard = lazy(() => import('./features/analysis/Effectiven
 const ExperimentDashboard = lazy(() => import('./features/analysis/ExperimentDashboard').then(module => ({ default: module.ExperimentDashboard })));
 const HandHistoryImporter = lazy(() => import('./features/analysis/HandHistoryImporter').then(module => ({ default: module.HandHistoryImporter })));
 const PostflopTruthLab = lazy(() => import('./features/analysis/PostflopTruthLab').then(module => ({ default: module.PostflopTruthLab })));
+const ProductionScaleDashboard = lazy(() => import('./features/analysis/ProductionScaleDashboard').then(module => ({ default: module.ProductionScaleDashboard })));
 const SkillGraphDashboard = lazy(() => import('./features/analysis/SkillGraphDashboard').then(module => ({ default: module.SkillGraphDashboard })));
 const TruthOpsDashboard = lazy(() => import('./features/analysis/TruthOpsDashboard').then(module => ({ default: module.TruthOpsDashboard })));
 const CompanionPanel = lazy(() => import('./features/companion/CompanionPanel').then(module => ({ default: module.CompanionPanel })));
@@ -29,16 +30,11 @@ const TournamentContextLab = lazy(() => import('./features/tournament/Tournament
 
 function RootRouter() {
   const [route, setRoute] = useState(window.location.hash);
-
-  useEffect(() => {
-    const handleHashChange = () => setRoute(window.location.hash);
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
+  useEffect(() => { const handleHashChange = () => setRoute(window.location.hash); window.addEventListener('hashchange', handleHashChange); return () => window.removeEventListener('hashchange', handleHashChange); }, []);
   const exitLab = () => { window.location.hash = ''; };
   if (route === '#hand-history') return <HandHistoryImporter onExit={exitLab} />;
   if (route === '#postflop-truth') return <PostflopTruthLab onExit={exitLab} />;
+  if (route === '#production-ops') return <ProductionScaleDashboard onExit={exitLab} />;
   if (route === '#effectiveness') return <EffectivenessDashboard onExit={exitLab} />;
   if (route === '#experiment') return <ExperimentDashboard onExit={exitLab} />;
   if (route === '#truth-ops') return <TruthOpsDashboard onExit={exitLab} />;
@@ -64,18 +60,6 @@ function RootRouter() {
   return <AppV2 />;
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Suspense fallback={<div data-testid="route-loading" className="grid min-h-screen place-items-center bg-slate-950 text-slate-400">載入「想高龍了 德撲訓練機」…</div>}>
-      <RootRouter />
-    </Suspense>
-  </StrictMode>,
-);
+createRoot(document.getElementById('root')!).render(<StrictMode><Suspense fallback={<div data-testid="route-loading" className="grid min-h-screen place-items-center bg-slate-950 text-slate-400">載入「想高龍了 德撲訓練機」…</div>}><RootRouter /></Suspense></StrictMode>);
 
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`)
-      .then(registration => registration.update())
-      .catch(console.error);
-  });
-}
+if ('serviceWorker' in navigator && import.meta.env.PROD) window.addEventListener('load', () => { navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).then(registration => registration.update()).catch(console.error); });
