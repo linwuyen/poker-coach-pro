@@ -37,26 +37,28 @@ test('effectiveness separates baseline/training/followup and reports observation
   assert.equal(report.holdout.improved, true);
 });
 
-test('pure hand-history exposure never becomes verified leak without solver/exact regret', () => {
+test('effectiveness tracks transfer improvement without external hand evidence', () => {
   const history: HistoryItem[] = [
-    item(20, true, { trainingType: 'real-hand', sessionId: 'a', handsObserved: 1000, spotExposureCount: 40, spotFrequencyPer100Hands: 4, utilityLoss: undefined }),
-    item(220, true, { trainingType: 'real-hand', sessionId: 'b', handsObserved: 1000, spotExposureCount: 40, spotFrequencyPer100Hands: 4, utilityLoss: undefined }),
+    ...Array.from({ length: 6 }, (_, index) => item(20 + index, index < 2, { trainingType: 'transfer', isTransferTest: true })),
+    ...Array.from({ length: 6 }, (_, index) => item(220 + index, index < 5, { trainingType: 'transfer', isTransferTest: true })),
   ];
   const report = evaluateLearningEffectiveness(history, windows);
-  assert.equal(report.realGameLeak.baseline, undefined);
-  assert.equal(report.realGameLeak.followup, undefined);
-  assert.equal(report.windows[0].realGameHands, 1000);
+  assert.equal(report.windows[0].transferAttempts, 6);
+  assert.equal(report.windows[2].transferAttempts, 6);
+  assert.ok((report.transfer.delta || 0) > 0);
+  assert.equal(report.transfer.improved, true);
 });
 
-test('verified cash regret can show falling frequency-weighted real-game leak', () => {
+test('effectiveness tracks delayed retention from truth-backed training history', () => {
   const history: HistoryItem[] = [
-    item(20, false, { trainingType: 'real-hand', sessionId: 'a', handsObserved: 1000, spotExposureCount: 50, spotFrequencyPer100Hands: 5, utilityLoss: 0.2, utilityUnit: 'bb', utilityModel: 'cash-chip-ev', truthTier: 'verified-solver' }),
-    item(220, false, { trainingType: 'real-hand', sessionId: 'b', handsObserved: 1000, spotExposureCount: 30, spotFrequencyPer100Hands: 3, utilityLoss: 0.1, utilityUnit: 'bb', utilityModel: 'cash-chip-ev', truthTier: 'verified-solver' }),
+    ...Array.from({ length: 5 }, (_, index) => item(30 + index, index < 2, { isDelayedReview: true })),
+    ...Array.from({ length: 5 }, (_, index) => item(230 + index, index < 4, { isDelayedReview: true })),
   ];
   const report = evaluateLearningEffectiveness(history, windows);
-  assert.equal(report.realGameLeak.baseline, 1);
-  assert.ok(Math.abs((report.realGameLeak.followup || 0) - 0.3) < 1e-9);
-  assert.equal(report.realGameLeak.improved, true);
+  assert.equal(report.windows[0].delayedAttempts, 5);
+  assert.equal(report.windows[2].delayedAttempts, 5);
+  assert.ok((report.delayedRetention.delta || 0) > 0);
+  assert.equal(report.delayedRetention.improved, true);
 });
 
 test('overlapping effectiveness windows are rejected', () => {
