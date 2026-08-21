@@ -42,6 +42,10 @@ function actionKind(action: ParsedHandAction): PostflopAction | undefined {
   return undefined;
 }
 
+function postflopStreet(value: ParsedHandAction['street']): PostflopStreet | undefined {
+  return value === 'Flop' || value === 'Turn' || value === 'River' ? value : undefined;
+}
+
 function boardForStreet(hand: ParsedHandHistory, street: PostflopStreet): string[] {
   const count = street === 'Flop' ? 3 : street === 'Turn' ? 4 : 5;
   return hand.board.slice(0, count);
@@ -137,9 +141,9 @@ export function extractObservedPostflopDecisions(hand: ParsedHandHistory, option
       state.committedStreet = new Map();
       state.streetLine = [];
     }
-    const isPostflop = action.street === 'Flop' || action.street === 'Turn' || action.street === 'River';
+    const street = postflopStreet(action.street);
     const chosenAction = actionKind(action);
-    if (isPostflop && action.player === hand.heroName && chosenAction && state.active.size === 2) {
+    if (street && action.player === hand.heroName && chosenAction && state.active.size === 2) {
       const villainName = [...state.active].find(name => name !== hand.heroName);
       const villainPosition = villainName ? positionForPlayer(hand, villainName) : undefined;
       const heroRemaining = remainingStackBB(hand, hand.heroName, state);
@@ -148,8 +152,8 @@ export function extractObservedPostflopDecisions(hand: ParsedHandHistory, option
       const maxCommitted = Math.max(0, ...state.committedStreet.values());
       const toCallBB = Math.max(0, maxCommitted - heroCommitted);
       const effectiveStackBB = heroRemaining !== undefined && villainRemaining !== undefined ? Math.min(heroRemaining, villainRemaining) : undefined;
-      const board = boardForStreet(hand, action.street);
-      if (villainPosition && effectiveStackBB !== undefined && state.potBB > 0 && board.length === (action.street === 'Flop' ? 3 : action.street === 'Turn' ? 4 : 5)) {
+      const board = boardForStreet(hand, street);
+      if (villainPosition && effectiveStackBB !== undefined && state.potBB > 0 && board.length === (street === 'Flop' ? 3 : street === 'Turn' ? 4 : 5)) {
         observed.push({
           handId: hand.id,
           actionIndex,
@@ -158,7 +162,7 @@ export function extractObservedPostflopDecisions(hand: ParsedHandHistory, option
             heroCards: [...hand.holeCards],
             format: hand.format === 'Cash' ? 'cash' : 'tournament',
             tableSize: hand.tableSize === 6 ? '6max' : '9max',
-            street: action.street,
+            street,
             heroPosition,
             villainPosition,
             playersInHand: 2,
