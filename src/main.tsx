@@ -5,6 +5,7 @@ import './index.css';
 
 const CalibrationDashboard = lazy(() => import('./features/analysis/CalibrationDashboard').then(module => ({ default: module.CalibrationDashboard })));
 const EffectivenessDashboard = lazy(() => import('./features/analysis/EffectivenessDashboard').then(module => ({ default: module.EffectivenessDashboard })));
+const EvidenceOpsDashboard = lazy(() => import('./features/analysis/EvidenceOpsDashboard').then(module => ({ default: module.EvidenceOpsDashboard })));
 const ExperimentDashboard = lazy(() => import('./features/analysis/ExperimentDashboard').then(module => ({ default: module.ExperimentDashboard })));
 const HandHistoryImporter = lazy(() => import('./features/analysis/HandHistoryImporter').then(module => ({ default: module.HandHistoryImporter })));
 const PostflopTruthLab = lazy(() => import('./features/analysis/PostflopTruthLab').then(module => ({ default: module.PostflopTruthLab })));
@@ -35,6 +36,7 @@ function RootRouter() {
   if (route === '#hand-history') return <HandHistoryImporter onExit={exitLab} />;
   if (route === '#postflop-truth') return <PostflopTruthLab onExit={exitLab} />;
   if (route === '#production-ops') return <ProductionScaleDashboard onExit={exitLab} />;
+  if (route === '#evidence-ops') return <EvidenceOpsDashboard onExit={exitLab} />;
   if (route === '#effectiveness') return <EffectivenessDashboard onExit={exitLab} />;
   if (route === '#experiment') return <ExperimentDashboard onExit={exitLab} />;
   if (route === '#truth-ops') return <TruthOpsDashboard onExit={exitLab} />;
