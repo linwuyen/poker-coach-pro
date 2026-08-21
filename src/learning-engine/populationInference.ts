@@ -17,6 +17,7 @@ export interface PopulationDeviationInput {
 export interface WilsonInterval { rate:number; low:number; high:number; }
 export interface PopulationDeviationResult {
   id:string;
+  strategyContextKey:string;
   status:'insufficient'|'not-replicated'|'validated-deviation';
   direction?:'higher-than-solver'|'lower-than-solver';
   training:WilsonInterval;
@@ -52,5 +53,5 @@ export function evaluatePopulationDeviation(input:PopulationDeviationInput,linke
  let exploitEligible=false,linkedExploitProfileKey:string|undefined;
  if(status==='validated-deviation'&&linkedExploitProfile){const contextMatches=populationContextKey(linkedExploitProfile.context)===input.strategyContextKey;if(isEvidenceBackedPopulationProfile(linkedExploitProfile)&&contextMatches){exploitEligible=true;linkedExploitProfileKey=`${linkedExploitProfile.id}@${linkedExploitProfile.version}`;}else reasons.push('Linked exploit profile is missing population provenance/sample gate or does not match the strategy context.');}
  if(status==='validated-deviation'&&!linkedExploitProfile)reasons.push('Deviation is validated, but no evidence-backed exploit strategy profile is linked; no exploit action is synthesized.');
- return{id:input.id,status,direction:status==='validated-deviation'?direction:undefined,training,holdout,solverBaselineRate:input.solverBaselineRate,trainingDelta,holdoutDelta,exploitEligible,linkedExploitProfileKey,reasons};
+ return{id:input.id,strategyContextKey:input.strategyContextKey,status,direction:status==='validated-deviation'?direction:undefined,training,holdout,solverBaselineRate:input.solverBaselineRate,trainingDelta,holdoutDelta,exploitEligible,linkedExploitProfileKey,reasons};
 }
