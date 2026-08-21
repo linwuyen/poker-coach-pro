@@ -67,6 +67,16 @@ async function waitFor(send, expression, description, attempts = 80) {
   throw new Error(`Timed out waiting for ${description}`);
 }
 
+async function terminate(child) {
+  if (!child || child.exitCode !== null) return;
+  child.kill('SIGTERM');
+  await Promise.race([
+    new Promise(resolve => child.once('exit', resolve)),
+    sleep(1500),
+  ]);
+  if (child.exitCode === null) child.kill('SIGKILL');
+}
+
 const userData = mkdtempSync(join(tmpdir(), 'poker-coach-e2e-'));
 let preview;
 let chrome;
@@ -113,7 +123,7 @@ try {
   console.log('Browser E2E PASS: production build → HH route → controlled input → import → History v6 persistence.');
 } finally {
   try { cdp?.socket?.close(); } catch {}
-  if (chrome && !chrome.killed) chrome.kill('SIGTERM');
-  if (preview && !preview.killed) preview.kill('SIGTERM');
-  rmSync(userData, { recursive: true, force: true });
+  await terminate(chrome);
+  await terminate(preview);
+  try { rmSync(userData, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {}
 }
