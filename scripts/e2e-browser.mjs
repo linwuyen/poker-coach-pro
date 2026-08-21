@@ -7,6 +7,7 @@ const HOST = '127.0.0.1';
 const PREVIEW_PORT = 4173;
 const DEBUG_PORT = 9222;
 const BASE_URL = `http://${HOST}:${PREVIEW_PORT}/poker-coach-pro/`;
+const VITE_BIN = join(process.cwd(), 'node_modules', 'vite', 'bin', 'vite.js');
 const SAMPLE_HAND = `PokerStars Hand #999000111222: Hold'em No Limit ($0.50/$1.00 USD) - 2026/08/20 18:50:25 ET\nTable 'E2E' 3-max Seat #3 is the button\nSeat 1: VillainA ($100 in chips)\nSeat 2: VillainB ($100 in chips)\nSeat 3: Hero ($100 in chips)\nVillainA: posts small blind $0.50\nVillainB: posts big blind $1\n*** HOLE CARDS ***\nDealt to Hero [Ah Kd]\nHero: raises $1.50 to $2.50\nVillainA: folds\nVillainB: folds\nHero collected $2.50 from pot\n*** SUMMARY ***`;
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -69,12 +70,17 @@ async function waitFor(send, expression, description, attempts = 80) {
 
 async function terminate(child) {
   if (!child || child.exitCode !== null) return;
+  const waitForExit = timeoutMs => new Promise(resolve => {
+    if (child.exitCode !== null) return resolve();
+    const timer = setTimeout(resolve, timeoutMs);
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
+  });
   child.kill('SIGTERM');
-  await Promise.race([
-    new Promise(resolve => child.once('exit', resolve)),
-    sleep(1500),
-  ]);
-  if (child.exitCode === null) child.kill('SIGKILL');
+  await waitForExit(1500);
+  if (child.exitCode === null) {
+    child.kill('SIGKILL');
+    await waitForExit(1500);
+  }
 }
 
 const userData = mkdtempSync(join(tmpdir(), 'poker-coach-e2e-'));
@@ -82,12 +88,14 @@ let preview;
 let chrome;
 let cdp;
 try {
-  preview = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['exec', '--', 'vite', 'preview', '--host', HOST, '--port', String(PREVIEW_PORT)], { stdio: ['ignore', 'pipe', 'pipe'] });
+  // Spawn Vite directly instead of `npm exec vite preview`. The npm wrapper creates a grandchild
+  // that can outlive its parent and keep CI pipes open after the assertions have passed.
+  preview = spawn(process.execPath, [VITE_BIN, 'preview', '--host', HOST, '--port', String(PREVIEW_PORT)], { stdio: 'ignore' });
   await waitHttp(BASE_URL);
   chrome = spawn(browserCommand(), [
     '--headless=new', '--no-sandbox', '--disable-gpu', `--remote-debugging-port=${DEBUG_PORT}`,
     `--user-data-dir=${userData}`, '--disable-background-networking', '--disable-default-apps', BASE_URL,
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  ], { stdio: 'ignore' });
   await waitHttp(`http://${HOST}:${DEBUG_PORT}/json/version`);
   let pages = [];
   for (let index = 0; index < 40; index += 1) {
