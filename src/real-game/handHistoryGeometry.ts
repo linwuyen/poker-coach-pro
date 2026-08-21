@@ -86,10 +86,19 @@ export function forcedBetContextKey(hand: ParsedHandHistory): string | undefined
     .sort((a, b) => POSITION_ORDER.indexOf(a.position) - POSITION_ORDER.indexOf(b.position) || a.kind.localeCompare(b.kind) || a.amountBB - b.amountBB));
 }
 
-/** Extra forced contributions missing from the legacy ParsedHandAction stream. */
+/** Extra forced money missing from the legacy ParsedHandAction stream. */
 export function nonstandardForcedContributionMap(hand: ParsedHandHistory): Map<string, number> {
   const map = new Map<string, number>();
   parseNonstandardForcedPosts(hand).forEach(post => map.set(post.player, round((map.get(post.player) || 0) + post.amountBB)));
+  return map;
+}
+
+/** Only live straddles count toward the current preflop commitment; dead blinds are dead pot money. */
+export function nonstandardForcedStreetCommitmentMap(hand: ParsedHandHistory): Map<string, number> {
+  const map = new Map<string, number>();
+  parseNonstandardForcedPosts(hand)
+    .filter(post => post.kind === 'straddle')
+    .forEach(post => map.set(post.player, round((map.get(post.player) || 0) + post.amountBB)));
   return map;
 }
 
