@@ -91,7 +91,11 @@ function effectiveStack(hand: ParsedHandHistory, villainName?: string): number |
   const hero = hand.heroName ? hand.players.find(player => player.name === hand.heroName) : undefined;
   const villain = villainName ? hand.players.find(player => player.name === villainName) : undefined;
   if (!hero) return undefined;
-  return villain ? Math.min(hero.stackBB, villain.stackBB) : hero.stackBB;
+  if (villain) return Math.min(hero.stackBB, villain.stackBB);
+  // Multiway first-in decisions are only safe to match when the profile stack is compatible with
+  // the shortest live effective stack. Using Hero stack alone could misgrade 100BB Hero vs 20BB blind.
+  const liveStacks = hand.players.map(player => player.stackBB).filter(value => Number.isFinite(value) && value > 0);
+  return liveStacks.length ? Math.min(...liveStacks) : hero.stackBB;
 }
 
 function candidateSpots(priorAggressions: ParsedHandAction[], heroPosition?: Position): StrategySpot[] {
@@ -159,6 +163,7 @@ function gradeHand(hand: ParsedHandHistory, profiles: StrategyProfile[], options
     const decisionFamilyId = `solver:${profile.id}:${handClass}`;
     const contextFamilyId = strategyContextCoverageKey(profile);
     const timestamp = hand.timestamp || options.importedAt || Date.now();
+    const isCash = hand.format === 'Cash';
     const item: HistoryItem = {
       schemaVersion: 6,
       trainingType: 'real-hand',
@@ -189,11 +194,11 @@ function gradeHand(hand: ParsedHandHistory, profiles: StrategyProfile[], options
       handsObserved,
       spotExposureCount: 1,
       spotFrequencyPer100Hands: handsObserved > 0 ? 100 / handsObserved : undefined,
-      utilityLoss: regret.evLossBB,
-      utilityUnit: 'bb',
-      utilityModel: hand.format === 'Cash' ? 'cash-chip-ev' : 'priority-only',
+      utilityLoss: isCash ? regret.evLossBB : undefined,
+      utilityUnit: isCash ? 'bb' : undefined,
+      utilityModel: isCash ? 'cash-chip-ev' : 'priority-only',
       realGameSource: hand.source,
-      notes: `Auto-graded only because HH context matched one verified immutable surface exactly. Profile ${profile.id}@${profile.version}.`,
+      notes: `Auto-graded only because HH context matched one verified immutable surface exactly. Profile ${profile.id}@${profile.version}. Tournament chip-EV regret is not relabelled as reportable dollar utility.`,
     };
     graded.push({
       item,
