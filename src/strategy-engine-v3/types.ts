@@ -29,6 +29,8 @@ export interface PostflopTruthContext {
   lastAggressorPosition?: Position;
   rakePercent?: number;
   rakeCapBB?: number;
+  /** P18: canonical non-standard forced-bet geometry (straddle/dead blind). */
+  forcedBetKey?: string;
 }
 
 export type PostflopActionFrequency = Partial<Record<PostflopAction, number>>;
