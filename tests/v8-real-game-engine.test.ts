@@ -166,7 +166,7 @@ test('transfer report separates near context and structural generalization', () 
   assert.equal(report.structural.accuracy, 100);
 });
 
-test('post-session importer emits typed v5 evidence', () => {
+test('post-session importer emits typed v6 evidence', () => {
   const target = scenario('Cash Game');
   const family = scenarioContextFamilyId(target);
   const payload = JSON.stringify({
@@ -175,7 +175,7 @@ test('post-session importer emits typed v5 evidence', () => {
     spots: [{ contextFamilyId: family, label: 'BB vs BTN', skillIds: ['preflop.bb-defense'], exposureCount: 55, mistakeCount: 6, utilityLoss: 0.22, utilityUnit: 'bb', utilityModel: 'cash-chip-ev', truthTier: 'verified-solver' }],
   });
   const [item] = importPostSessionJson(payload, 123);
-  assert.equal(item.schemaVersion, 5);
+  assert.equal(item.schemaVersion, 6);
   assert.equal(item.sessionId, 'import-1');
   assert.equal(item.handsObserved, 1000);
   assert.equal(item.spotExposureCount, 55);
