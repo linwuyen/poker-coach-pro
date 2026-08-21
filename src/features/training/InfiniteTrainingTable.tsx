@@ -9,6 +9,7 @@ import {
   selectNextInfiniteCandidate,
   summarizeInfinitePool,
 } from '../../learning-engine/infiniteHandGenerator';
+import { appendReliabilityEvent } from '../../observability/reliability';
 import { loadPokerBenchSplit, PokerBenchRow } from '../../solver-data/pokerbench';
 import { TrainingSession } from './TrainingSession';
 import { SolverDecisionSession } from './SolverDecisionSession';
@@ -37,21 +38,36 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
 
   useEffect(() => {
     let cancelled = false;
+    const started = performance.now();
     Promise.all([loadPokerBenchSplit('preflop'), loadPokerBenchSplit('postflop')])
       .then(([preflop, postflop]) => {
         if (cancelled) return;
         setPokerBenchRows([...preflop, ...postflop]);
         setPokerBenchState('ready');
+        appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'pokerbench-load', outcome: 'success', durationMs: performance.now() - started, dimension: 'preflop-postflop', value: preflop.length + postflop.length });
       })
       .catch(() => {
-        if (!cancelled) setPokerBenchState('offline');
+        if (cancelled) return;
+        setPokerBenchState('offline');
+        appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'pokerbench-load', outcome: 'error', reasonCode: 'load-failed', durationMs: performance.now() - started });
       });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
+    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'generator-pool', outcome: pool.length ? 'success' : 'unknown', reasonCode: pool.length ? undefined : 'truth-gate-empty', dimension: pokerBenchState, value: pool.length });
+  }, [pool.length, pokerBenchState]);
+
+  function choose(ids: string[], families: string[]) {
+    const started = performance.now();
+    const next = selectNextInfiniteCandidate(pool, history, ids, families);
+    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'candidate-select', outcome: next ? 'success' : 'unknown', reasonCode: next ? undefined : 'empty-pool', durationMs: performance.now() - started, dimension: next ? `${next.street.toLowerCase()}:${next.actionClass}` : 'none' });
+    return next;
+  }
+
+  useEffect(() => {
     if (candidate || !pool.length) return;
-    setCandidate(selectNextInfiniteCandidate(pool, history, recentCandidateIds, recentFamilyIds));
+    setCandidate(choose(recentCandidateIds, recentFamilyIds));
   }, [candidate, pool, history, recentCandidateIds, recentFamilyIds]);
 
   function advance() {
@@ -60,7 +76,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     const nextFamilies = [...recentFamilyIds, candidate.familyId].slice(-12);
     setRecentCandidateIds(nextIds);
     setRecentFamilyIds(nextFamilies);
-    setCandidate(selectNextInfiniteCandidate(pool, history, nextIds, nextFamilies));
+    setCandidate(choose(nextIds, nextFamilies));
   }
 
   if (!candidate) {
@@ -79,9 +95,12 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
         <span className="flex items-center gap-1.5 font-semibold text-emerald-300"><InfinityIcon className="h-4 w-4" />Infinite Hand Generator</span>
         <span data-testid="infinite-source" className="rounded-full border border-slate-700 bg-slate-950/45 px-2.5 py-1">{sourceLabel}</span>
         <span className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />{candidate.truthLabel}</span>
+        <span data-testid="infinite-dimensions" className="font-mono text-[11px] text-slate-500">{candidate.street} · {candidate.position || '?'} · {candidate.actionClass} · {candidate.stackBand}</span>
       </div>
-      <div className="flex items-center gap-3 font-mono text-[11px] text-slate-500">
+      <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-slate-500">
         <span>{summary.usable.toLocaleString()} usable</span>
+        <span>P/F/T/R {summary.byStreet.Preflop}/{summary.byStreet.Flop}/{summary.byStreet.Turn}/{summary.byStreet.River}</span>
+        <span>{summary.distinctPositions} positions</span>
         <span>{summary.deduplicated} deduped</span>
         <span className="flex items-center gap-1"><Database className="h-3.5 w-3.5" />PB {pokerBenchState === 'ready' ? summary.bySource.pokerbench.toLocaleString() : pokerBenchState}</span>
       </div>

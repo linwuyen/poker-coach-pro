@@ -50,6 +50,7 @@ export interface LearningExperimentResult {
 }
 
 const METRICS: LearningExperimentMetric[] = ['holdout-accuracy', 'transfer-accuracy', 'delayed-retention', 'verified-ev-loss'];
+const EV_TRAINING_TYPES = new Set<NonNullable<HistoryItem['trainingType']>>(['scenario', 'solver-corpus', 'counterfactual', 'transfer', 'contrastive', 'strategy-surface']);
 
 function hashSeed(seed: string): number {
   let hash = 2166136261;
@@ -153,9 +154,9 @@ function metricValue(item: HistoryItem, metric: LearningExperimentMetric): numbe
   }
   if (metric === 'transfer-accuracy') return item.isTransferTest && typeof item.correct === 'boolean' ? (item.correct ? 1 : 0) : undefined;
   if (metric === 'delayed-retention') return item.isDelayedReview && typeof item.correct === 'boolean' ? (item.correct ? 1 : 0) : undefined;
-  // P10 never mixes tournament dollar/seat utility with cash BB regret.
-  if (item.trainingType === 'real-hand'
-      && item.truthTier === 'verified-solver'
+  // Verified EV experiments use only sourced cash-BB decisions produced inside this trainer.
+  if (item.trainingType && EV_TRAINING_TYPES.has(item.trainingType)
+      && (item.truthTier === 'verified-solver' || item.truthTier === 'exact-math')
       && item.gameFormat === 'Cash'
       && item.utilityUnit === 'bb'
       && item.utilityModel === 'cash-chip-ev'

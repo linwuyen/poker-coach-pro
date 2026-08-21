@@ -3,6 +3,7 @@ import test from 'node:test';
 import { isHiddenBenchmarkScenario } from '../src/learning-engine/benchmark';
 import {
   buildInfiniteCandidatePool,
+  coverageNoveltyWeight,
   isTruthBackedPokerBenchRow,
   isTruthBackedScenario,
   selectNextInfiniteCandidate,
@@ -47,6 +48,10 @@ test('infinite generator ingests 216 scenarios plus 528 safe variants before tru
   assert.ok(summary.usable > 500);
   assert.ok(summary.usable <= 744);
   assert.equal(new Set(pool.map(item => item.presentationFingerprint)).size, pool.length);
+  assert.ok(summary.byStreet.Preflop > 0);
+  assert.ok(summary.byStreet.Flop + summary.byStreet.Turn + summary.byStreet.River > 0);
+  assert.ok(summary.distinctPositions >= 4);
+  assert.ok(Object.values(summary.byAction).filter(value => value > 0).length >= 3);
 });
 
 test('hidden benchmark scenarios and their generated variants never enter infinite training', () => {
@@ -73,6 +78,8 @@ test('PokerBench enters the infinite pool only with a training-partition exact s
   assert.equal(pool.length, 1);
   assert.equal(pool[0].source, 'pokerbench');
   assert.equal(pool[0].kind, 'solver');
+  assert.equal(pool[0].street, 'Preflop');
+  assert.equal(pool[0].actionClass, 'call');
 });
 
 test('exact duplicate PokerBench presentations are deduplicated even if row ids differ', () => {
@@ -93,4 +100,13 @@ test('next-hand sampling avoids recent exact candidates and recent decision fami
   assert.ok(next);
   assert.notEqual(next!.id, recent.id);
   assert.notEqual(next!.familyId, recent.familyId);
+});
+
+test('coverage novelty rewards a different strategic dimension instead of cosmetic repetition', () => {
+  const pool = buildInfiniteCandidatePool(scenarios, buildGeneratedVariantPool(coreScenarios, 6), []);
+  const preflop = pool.find(item => item.street === 'Preflop');
+  const postflop = pool.find(item => item.street !== 'Preflop' && item.position !== preflop?.position);
+  assert.ok(preflop && postflop);
+  const recent = Array.from({ length: 8 }, () => preflop!);
+  assert.ok(coverageNoveltyWeight(postflop!, recent) > coverageNoveltyWeight(preflop!, recent));
 });

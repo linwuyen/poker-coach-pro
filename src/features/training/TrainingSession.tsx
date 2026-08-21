@@ -1,1 +1,180 @@
-export { TrainingSessionV12 as TrainingSession } from './TrainingSessionV12';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, XCircle } from 'lucide-react';
+import { CardUI } from '../../components/CardUI';
+import { getDifficultyWeight, isDelayedReview, makeMasteryKey, resolveFeedbackQuality } from '../../learning-engine';
+import { inferSituationIdsFromScenario, scenarioContextFamilyId, scenarioDecisionFamilyId } from '../../learning-engine/contextIdentity';
+import { ActionType, Feedback, HistoryItem, Scenario, ScenarioStep } from '../../types';
+import { createAttemptId, getReviewSchedule } from '../../utils/history';
+
+interface TrainingSessionProps {
+  scenarios: Scenario[];
+  history: HistoryItem[];
+  title: string;
+  continuous?: boolean;
+  autoComplete?: boolean;
+  onRecord: (item: HistoryItem) => void;
+  onExit: () => void;
+  onComplete: () => void;
+}
+
+const ACTION_LABELS: Partial<Record<ActionType, string>> = {
+  Fold: '棄牌', Call: '跟注', Raise: '加注', '3-bet': '3-Bet', '4-bet (Raise)': '4-Bet',
+  'All-in': '全下', Check: '過牌', 'Bet small': '小注', 'Bet half pot': '半池', 'Bet big': '大注',
+};
+
+export function TrainingSession({ scenarios, history, title, continuous = false, autoComplete = false, onRecord, onExit, onComplete }: TrainingSessionProps) {
+  const [queue, setQueue] = useState<Scenario[]>(() => shuffled(scenarios));
+  const [scenarioIndex, setScenarioIndex] = useState(0);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [selectedAction, setSelectedAction] = useState<ActionType | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [sessionItems, setSessionItems] = useState<HistoryItem[]>([]);
+  const [showDetails, setShowDetails] = useState(false);
+  const startedAt = useRef(Date.now());
+  const completionSent = useRef(false);
+
+  const scenario = queue[scenarioIndex];
+  const step = scenario?.steps[stepIndex];
+  const familyId = scenario ? scenarioDecisionFamilyId(scenario) : '';
+  const masteryKey = scenario && step ? makeMasteryKey(familyId, step.id) : '';
+  const mergedHistory = useMemo(() => mergeHistory(history, sessionItems), [history, sessionItems]);
+  const latestPrevious = useMemo(() => mergedHistory
+    .filter(item => item.masteryKey === masteryKey)
+    .sort((a, b) => b.timestamp - a.timestamp)[0], [mergedHistory, masteryKey]);
+  const currentItem = sessionItems[sessionItems.length - 1];
+  const decisions = sessionItems.length;
+  const correct = sessionItems.filter(item => item.correct).length;
+  const accuracy = decisions ? Math.round(correct / decisions * 100) : 0;
+  const evLoss = sessionItems.reduce((sum, item) => sum + (typeof item.evLossBB === 'number' ? Math.max(0, item.evLossBB) : 0), 0);
+
+  useEffect(() => {
+    if (!feedback || !currentItem?.correct) return;
+    const timer = window.setTimeout(() => next(), 650);
+    return () => window.clearTimeout(timer);
+  }, [feedback, currentItem?.attemptId]);
+
+  useEffect(() => {
+    if (scenario || !continuous || !scenarios.length) return;
+    const timer = window.setTimeout(() => {
+      setQueue(shuffled(scenarios));
+      setScenarioIndex(0);
+      setStepIndex(0);
+      resetDecision();
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [scenario, continuous, scenarios]);
+
+  useEffect(() => {
+    if (scenario || continuous || !autoComplete || completionSent.current) return;
+    completionSent.current = true;
+    onComplete();
+  }, [scenario, continuous, autoComplete, onComplete]);
+  useEffect(() => { if (scenario) completionSent.current = false; }, [scenario]);
+
+  if (!scenario || !step) {
+    if ((continuous && scenarios.length) || autoComplete) return <div className="grid min-h-[55vh] place-items-center text-sm text-slate-500">正在自動切換下一手…</div>;
+    return <div className="mx-auto max-w-3xl rounded-3xl border border-emerald-500/20 bg-emerald-500/6 p-8 text-center text-slate-100"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 text-2xl font-bold">這批決策完成</h2><p className="mt-2 text-sm text-slate-400">{decisions} 個決策 · 正確率 {accuracy}%</p><div className="mt-6 flex justify-center gap-3"><button type="button" onClick={onComplete} className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">繼續</button><button type="button" onClick={onExit} className="rounded-xl border border-slate-700 px-5 py-3 text-slate-300">離開</button></div></div>;
+  }
+
+  function resetDecision() {
+    setSelectedAction(null);
+    setFeedback(null);
+    setShowDetails(false);
+    startedAt.current = Date.now();
+  }
+
+  function selectAction(action: ActionType) {
+    if (feedback || !scenario || !step) return;
+    const result = step.feedbacks[action];
+    if (!result) return;
+    const now = Date.now();
+    const schedule = getReviewSchedule(result.score, latestPrevious, undefined, now);
+    const item: HistoryItem = {
+      schemaVersion: 6,
+      attemptId: createAttemptId(),
+      trainingType: 'scenario',
+      scenarioId: scenario.id,
+      decisionFamilyId: familyId,
+      stepId: step.id,
+      masteryKey,
+      category: [...(scenario.category || []), ...(step.conceptIds || [])],
+      score: result.score,
+      judgment: result.judgment,
+      timestamp: now,
+      selectedAction: action,
+      bestAction: result.bestAction,
+      street: step.street,
+      position: scenario.position,
+      durationMs: now - startedAt.current,
+      correct: result.score >= 8,
+      feedbackQuality: resolveFeedbackQuality(result),
+      chosenEvBB: result.evidence?.actionEvBB,
+      bestEvBB: result.evidence?.bestEvBB,
+      evLossBB: result.evidence?.evLossBB,
+      truthTier: result.evidence?.sourceConfidence || 'expert-baseline',
+      difficultyWeight: getDifficultyWeight(scenario.difficulty),
+      isReview: Boolean(latestPrevious),
+      isDelayedReview: isDelayedReview(latestPrevious, now),
+      isUnseen: !latestPrevious,
+      questionLabel: scenario.title,
+      gameFormat: scenario.type === 'Tournament' ? 'MTT' : 'Cash',
+      contextFamilyId: scenarioContextFamilyId(scenario),
+      situationIds: inferSituationIdsFromScenario(scenario),
+      ...schedule,
+    };
+    setSelectedAction(action);
+    setFeedback(result);
+    setSessionItems(previous => [...previous, item]);
+    onRecord(item);
+  }
+
+  function next() {
+    if (!scenario) return;
+    const nextStepId = feedback?.nextStepId;
+    if (nextStepId && nextStepId !== 'next_hand') {
+      const nextStepIndex = scenario.steps.findIndex(candidate => candidate.id === nextStepId);
+      if (nextStepIndex >= 0) {
+        setStepIndex(nextStepIndex);
+        resetDecision();
+        return;
+      }
+    }
+    setScenarioIndex(value => value + 1);
+    setStepIndex(0);
+    resetDecision();
+  }
+
+  return <div className="mx-auto max-w-5xl space-y-4 text-slate-100" data-testid="frictionless-training-session">
+    <header className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-3"><div className="flex flex-wrap items-center gap-3"><button type="button" onClick={onExit} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-400 hover:bg-slate-800"><ArrowLeft className="h-4 w-4" />離開</button><div className="min-w-[190px] flex-1"><div className="text-sm font-semibold">{title}</div><div className="mt-1 text-[11px] text-slate-500">{scenario.type} · {scenario.position} · {step.street} · {scenario.userBB}BB</div></div><div className="flex gap-2 text-xs"><Metric label="決策" value={String(decisions)} /><Metric label="正確率" value={decisions ? `${accuracy}%` : '-'} /><Metric label="EV loss" value={`${evLoss.toFixed(2)} BB`} /></div></div></header>
+
+    <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/65 px-5 py-3 text-xs text-slate-400"><div className="flex flex-wrap gap-2"><Pill>{scenario.type}</Pill><Pill>{scenario.tableSize?.toUpperCase() || '9MAX'}</Pill><Pill>{step.street}</Pill>{latestPrevious && <Pill>{isDelayedReview(latestPrevious) ? '自動複習' : '近期重練'}</Pill>}</div><span>{scenario.blinds} · Effective {scenario.effectiveStack}</span></div>
+      <div className="p-5 md:p-7"><div className="rounded-2xl border border-emerald-500/15 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.12),rgba(2,6,23,0.55)_65%)] p-6 text-center"><div className="flex min-h-20 items-center justify-center gap-2">{step.communityCards.length ? step.communityCards.map((card, index) => <CardUI key={`${card.rank}-${card.suit}-${index}`} card={card} size="sm" />) : <span className="rounded-xl border border-dashed border-slate-700 px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-600">Preflop</span>}</div><div className="mt-4 text-xs uppercase tracking-[0.18em] text-emerald-400/70">Pot <span className="ml-1 font-mono text-lg font-black text-emerald-300">{step.potSize} BB</span></div><div className="mt-6 flex items-end justify-center gap-2">{scenario.holeCards.map((card, index) => <CardUI key={`${card.rank}-${card.suit}-${index}`} card={card} size="sm" />)}</div><div className="mt-2 text-xs font-semibold text-emerald-200">Hero · {scenario.position} · {scenario.userBB}BB</div></div><div className="mt-4 grid gap-3 md:grid-cols-[0.8fr_1.2fr]"><Context label="前序行動" value={scenario.preAction} /><Context label="現在的問題" value={step.description} /></div>{(step.spr !== undefined || step.potOdds) && <div className="mt-3 flex flex-wrap gap-2">{step.spr !== undefined && <Pill>SPR {step.spr}</Pill>}{step.potOdds && <Pill>Pot Odds {step.potOdds}</Pill>}</div>}</div>
+    </section>
+
+    <section className="rounded-2xl border border-slate-800 bg-slate-900/65 p-5" data-testid="decision-dock"><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{step.options.map(action => <button data-testid="decision-action" key={action} type="button" disabled={Boolean(feedback)} onClick={() => selectAction(action)} className={`rounded-xl border px-4 py-4 text-left text-sm font-semibold transition ${selectedAction === action ? 'border-emerald-400/60 bg-emerald-500/12 text-emerald-100' : 'border-slate-700 bg-slate-950/35 text-slate-200 hover:border-emerald-500/40'} disabled:cursor-default`}>{ACTION_LABELS[action] || action}</button>)}</div></section>
+
+    {feedback && currentItem && (currentItem.correct
+      ? <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/6 p-4"><div className="flex items-center gap-3"><CheckCircle2 className="h-6 w-6 text-emerald-400" /><div><div className="font-semibold text-emerald-100">正確 · 自動下一個決策</div><div className="mt-1 text-xs text-slate-500">最佳解：{feedback.bestAction}</div></div></div></section>
+      : <section className="rounded-2xl border border-red-500/25 bg-red-500/6 p-5"><div className="flex gap-3"><XCircle className="mt-0.5 h-6 w-6 shrink-0 text-red-400" /><div className="min-w-0 flex-1"><div className="font-semibold text-red-100">這個決策需要修正</div><div className="mt-2 text-sm text-slate-300">你：<b>{selectedAction}</b>　最佳解：<b>{feedback.bestAction}</b></div><p className="mt-3 text-sm leading-6 text-slate-400">{feedback.remember || feedback.why}</p>{typeof currentItem.evLossBB === 'number' && <div className="mt-2 font-mono text-xs text-amber-300">EV loss {Math.max(0, currentItem.evLossBB).toFixed(2)} BB</div>}<button type="button" onClick={() => setShowDetails(value => !value)} className="mt-3 flex items-center gap-1 text-xs text-slate-500">{showDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}詳細原因</button>{showDetails && <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/35 p-4 text-xs leading-6 text-slate-400"><div>{feedback.why}</div>{feedback.conceptualError && <div className="mt-2">核心錯誤：{feedback.conceptualError}</div>}<div className="mt-2 text-slate-500">系統已記錄此 family，後續會自動提高同類與鄰近 truth-backed spot 的權重。</div></div>}<button type="button" onClick={next} className="mt-4 rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">下一個決策</button></div></div></section>)}
+  </div>;
+}
+
+function shuffled<T>(items: T[]): T[] {
+  const copy = [...items];
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [copy[index], copy[swap]] = [copy[swap], copy[index]];
+  }
+  return copy;
+}
+
+function mergeHistory(history: HistoryItem[], sessionItems: HistoryItem[]): HistoryItem[] {
+  const byKey = new Map<string, HistoryItem>();
+  [...history, ...sessionItems].forEach(item => byKey.set(item.attemptId || `${item.scenarioId}:${item.timestamp}:${item.selectedAction || ''}`, item));
+  return [...byKey.values()];
+}
+
+function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2"><span className="text-slate-600">{label}</span><span className="ml-2 font-mono text-slate-200">{value}</span></div>; }
+function Context({ label, value }: { label: string; value: string }) { return <div className="rounded-xl border border-slate-800 bg-slate-900/35 p-4"><div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">{label}</div><div className="mt-2 text-sm leading-6 text-slate-300">{value}</div></div>; }
+function Pill({ children }: { children: ReactNode }) { return <span className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 text-[11px] text-slate-400">{children}</span>; }

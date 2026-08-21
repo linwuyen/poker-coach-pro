@@ -121,7 +121,7 @@ export interface Scenario {
 export interface HistoryItem {
   schemaVersion?: 3 | 4 | 5 | 6;
   attemptId?: string;
-  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range' | 'counterfactual' | 'transfer' | 'real-hand' | 'solver-corpus' | 'solver-benchmark' | 'contrastive' | 'strategy-surface';
+  trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range' | 'counterfactual' | 'transfer' | 'solver-corpus' | 'solver-benchmark' | 'contrastive' | 'strategy-surface';
   scenarioId: string;
   /** Canonical knowledge node. Scenario ids may still identify concrete variants. */
   decisionFamilyId?: string;
@@ -177,21 +177,15 @@ export interface HistoryItem {
   contrastivePairId?: string;
   boardTextureId?: string;
 
-  // v6: structured real-game evidence. Values used by scheduling are typed;
-  // provenance fields make raw HH imports auditable without calling them solver truth.
+  // Generic training context / utility. These fields are produced by the internal trainer,
+  // solver corpus, ICM/FGS or exact-math engines; they are not external-hand provenance.
   gameFormat?: GameFormatTag;
-  sessionId?: string;
-  handsObserved?: number;
-  spotExposureCount?: number;
   contextFamilyId?: string;
   evidenceFamilyId?: string;
   utilityLoss?: number;
   utilityUnit?: UtilityUnit;
   utilityModel?: UtilityModel;
   transferLevel?: TransferLevel;
-  realGameSource?: 'pokerstars' | 'ggpoker' | 'generic' | 'normalized-session';
-  sourceHandId?: string;
-  sourceBatchId?: string;
 }
 
 export type PlayerExperience = 'beginner' | 'intermediate' | 'advanced';

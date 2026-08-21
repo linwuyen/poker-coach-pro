@@ -69,25 +69,30 @@ function profileBoost(row: PokerBenchRow, profile?: PlayerProfile): number {
   return boost;
 }
 
+const TRAINING_TYPES = new Set<NonNullable<HistoryItem['trainingType']>>([
+  'scenario', 'solver-corpus', 'counterfactual', 'transfer', 'contrastive', 'strategy-surface', 'range', 'gto',
+]);
+
 /**
- * Route training toward situations where exact HH↔solver joins observed real cash regret.
- * This is a situation-level priority signal only; it never relabels a PokerBench row as the same solver node.
- * Tournament utility is kept on its own P9-D plane because PokerBench rows do not carry compatible tournament utility units.
+ * Increase solver practice for situations the player actually misses inside this trainer.
+ * This is a scheduling signal only: it never upgrades, relabels or fabricates solver truth.
  */
-export function verifiedRealGameLeakBoost(row: PokerBenchRow, history: HistoryItem[]): number {
+export function trainingLeakBoost(row: PokerBenchRow, history: HistoryItem[]): number {
   const targetStreet = row.split === 'preflop' ? 'Preflop' : row.evaluationAt;
-  const relevant = history.filter(item => item.trainingType === 'real-hand')
-    .filter(item => item.truthTier === 'verified-solver')
-    .filter(item => item.gameFormat === 'Cash' && item.utilityUnit === 'bb' && item.utilityModel === 'cash-chip-ev')
-    .filter(item => typeof item.evLossBB === 'number' && item.evLossBB > 0)
+  const relevant = history
+    .filter(item => item.trainingType && TRAINING_TYPES.has(item.trainingType))
     .filter(item => item.position?.toUpperCase() === row.heroPosition.toUpperCase())
-    .filter(item => item.street === targetStreet);
+    .filter(item => item.street === targetStreet)
+    .filter(item => !isHistoryCorrect(item) || (typeof item.evLossBB === 'number' && item.evLossBB > 0));
   if (!relevant.length) return 1;
-  const pressure = relevant.reduce((sum, item) => {
-    const frequency = typeof item.spotFrequencyPer100Hands === 'number' && item.spotFrequencyPer100Hands > 0 ? item.spotFrequencyPer100Hands : 1;
-    return sum + (item.evLossBB || 0) * frequency;
+  const pressure = relevant.slice(-30).reduce((sum, item) => {
+    const verifiedRegret = (item.truthTier === 'verified-solver' || item.truthTier === 'exact-math') && typeof item.evLossBB === 'number'
+      ? Math.max(0, item.evLossBB) * 2
+      : 0;
+    const miss = isHistoryCorrect(item) ? 0 : 0.35;
+    return sum + verifiedRegret + miss;
   }, 0);
-  return 1 + Math.min(2, pressure / 5);
+  return 1 + Math.min(2, pressure / 4);
 }
 
 function rowPriority(
@@ -114,7 +119,7 @@ function rowPriority(
   const difficultyFit = 1 + Math.max(0, 4 - curriculum) * 0.05;
   const jitter = 0.85 + Math.min(0.999999, Math.max(0, random())) * 0.3;
   return (0.8 + weakness) * novelty * correction * dueBoost * repeatPenalty * difficultyFit
-    * profileBoost(row, profile) * verifiedRealGameLeakBoost(row, history) * jitter;
+    * profileBoost(row, profile) * trainingLeakBoost(row, history) * jitter;
 }
 
 function eligibleTrainingRows(

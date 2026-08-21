@@ -1,11 +1,14 @@
-import { HistoryItem, Scenario } from '../types';
+import { DecisionActionKind, HistoryItem, Scenario, Street } from '../types';
 import { isHiddenBenchmarkScenario } from './benchmark';
 import { scenarioContextFamilyId } from './contextIdentity';
 import { solverDecisionFamilyId } from './semanticPairs';
 import { solverCorpusRole } from './solverCurriculum';
-import { normalizeDecision, PokerBenchRow } from '../solver-data/pokerbench';
+import { normalizeDecision, parsePokerDecision, PokerBenchRow } from '../solver-data/pokerbench';
 
 export type InfiniteHandSource = 'curated' | 'safe-variant' | 'pokerbench';
+export type InfiniteFormat = 'cash' | 'tournament' | 'solver';
+export type InfiniteStackBand = '<15' | '15-25' | '25-50' | '50-80' | '80-125' | '125+' | 'unknown';
+export type InfiniteActionClass = DecisionActionKind | 'unknown';
 
 interface InfiniteCandidateBase {
   id: string;
@@ -13,6 +16,11 @@ interface InfiniteCandidateBase {
   familyId: string;
   presentationFingerprint: string;
   truthLabel: string;
+  street: Street;
+  position: string;
+  format: InfiniteFormat;
+  stackBand: InfiniteStackBand;
+  actionClass: InfiniteActionClass;
 }
 
 export interface InfiniteScenarioCandidate extends InfiniteCandidateBase {
@@ -35,6 +43,10 @@ export interface InfinitePoolSummary {
   heldOut: number;
   deduplicated: number;
   bySource: Record<InfiniteHandSource, number>;
+  byStreet: Record<Street, number>;
+  byAction: Record<InfiniteActionClass, number>;
+  byFormat: Record<InfiniteFormat, number>;
+  distinctPositions: number;
 }
 
 const SOURCE_TARGET: Record<InfiniteHandSource, number> = {
@@ -54,6 +66,27 @@ function fnv1a(value: string): string {
 
 function cardKey(card: Scenario['holeCards'][number]): string {
   return `${card.rank}${card.suit}`;
+}
+
+function stackBand(stackBB: number): InfiniteStackBand {
+  if (!Number.isFinite(stackBB)) return 'unknown';
+  if (stackBB < 15) return '<15';
+  if (stackBB < 25) return '15-25';
+  if (stackBB < 50) return '25-50';
+  if (stackBB < 80) return '50-80';
+  if (stackBB < 125) return '80-125';
+  return '125+';
+}
+
+function scenarioActionClass(action: string | undefined): InfiniteActionClass {
+  if (!action) return 'unknown';
+  if (action === 'Fold') return 'fold';
+  if (action === 'Call') return 'call';
+  if (action === 'Check') return 'check';
+  if (action === 'All-in') return 'all-in';
+  if (action === 'Raise' || action === '3-bet' || action === '4-bet (Raise)') return 'raise';
+  if (action.startsWith('Bet')) return 'bet';
+  return 'unknown';
 }
 
 export function scenarioBestAction(scenario: Scenario, stepIndex = 0): string | undefined {
@@ -119,6 +152,7 @@ export function pokerBenchPresentationFingerprint(row: PokerBenchRow): string {
 }
 
 function scenarioCandidate(scenario: Scenario, source: 'curated' | 'safe-variant'): InfiniteScenarioCandidate {
+  const firstStep = scenario.steps[0];
   return {
     kind: 'scenario',
     id: `${source}:${scenario.id}`,
@@ -126,6 +160,11 @@ function scenarioCandidate(scenario: Scenario, source: 'curated' | 'safe-variant
     familyId: scenarioContextFamilyId(scenario),
     presentationFingerprint: scenarioPresentationFingerprint(scenario),
     truthLabel: source === 'safe-variant' ? 'strategy-equivalent truth' : 'validated teaching truth',
+    street: firstStep.street,
+    position: scenario.position.toUpperCase(),
+    format: scenario.type === 'Tournament' ? 'tournament' : 'cash',
+    stackBand: stackBand(scenario.userBB),
+    actionClass: scenarioActionClass(scenarioBestAction(scenario, 0)),
     scenario,
   };
 }
@@ -138,6 +177,11 @@ function solverCandidate(row: PokerBenchRow): InfiniteSolverCandidate {
     familyId: solverDecisionFamilyId(row),
     presentationFingerprint: pokerBenchPresentationFingerprint(row),
     truthLabel: 'verified solver label',
+    street: row.split === 'preflop' ? 'Preflop' : row.evaluationAt,
+    position: row.heroPosition.toUpperCase(),
+    format: 'solver',
+    stackBand: 'unknown',
+    actionClass: parsePokerDecision(row.correctDecision).action.type,
     row,
   };
 }
@@ -190,6 +234,11 @@ export function summarizeInfinitePool(
   const heldOut = (truthBackedCurated.length - trainingCurated.length)
     + (truthBackedVariants.length - trainingVariants.length)
     + (truthBackedPokerBench.length - trainingPokerBench.length);
+  const byStreet: Record<Street, number> = { Preflop: 0, Flop: 0, Turn: 0, River: 0 };
+  const byAction: Record<InfiniteActionClass, number> = { fold: 0, check: 0, call: 0, bet: 0, raise: 0, 'all-in': 0, unknown: 0 };
+  const byFormat: Record<InfiniteFormat, number> = { cash: 0, tournament: 0, solver: 0 };
+  const positions = new Set<string>();
+  pool.forEach(candidate => { byStreet[candidate.street] += 1; byAction[candidate.actionClass] += 1; byFormat[candidate.format] += 1; if (candidate.position) positions.add(candidate.position); });
   return {
     curatedInput: curated.length,
     safeVariantInput: safeVariants.length,
@@ -202,6 +251,10 @@ export function summarizeInfinitePool(
       'safe-variant': pool.filter(item => item.source === 'safe-variant').length,
       pokerbench: pool.filter(item => item.source === 'pokerbench').length,
     },
+    byStreet,
+    byAction,
+    byFormat,
+    distinctPositions: positions.size,
   };
 }
 
@@ -211,7 +264,7 @@ function historyMatches(candidate: InfiniteHandCandidate, item: HistoryItem): bo
   return item.datasetRowId === candidate.row.id;
 }
 
-function candidateWeight(candidate: InfiniteHandCandidate, history: HistoryItem[], now: number): number {
+function learningWeight(candidate: InfiniteHandCandidate, history: HistoryItem[], now: number): number {
   const relevant = history.filter(item => historyMatches(candidate, item)).slice(-40);
   if (!relevant.length) return 1.35;
   const misses = relevant.filter(item => item.correct === false).length;
@@ -219,6 +272,19 @@ function candidateWeight(candidate: InfiniteHandCandidate, history: HistoryItem[
   const errorBoost = 1 + (misses / relevant.length) * 2.5;
   const dueBoost = 1 + Math.min(2, due) * 0.75;
   return errorBoost * dueBoost;
+}
+
+/** Reward strategic dimensions that have been underrepresented in the recent session. */
+export function coverageNoveltyWeight(candidate: InfiniteHandCandidate, recent: InfiniteHandCandidate[]): number {
+  if (!recent.length) return 1;
+  const window = recent.slice(-12);
+  const count = <T,>(value: T, getter: (item: InfiniteHandCandidate) => T) => window.filter(item => getter(item) === value).length;
+  const scarcity = (matches: number, enabled = true) => !enabled ? 1 : matches === 0 ? 1.75 : matches === 1 ? 1.3 : matches <= 3 ? 1 : Math.max(0.55, 1 - (matches - 3) * 0.08);
+  return scarcity(count(candidate.street, item => item.street))
+    * scarcity(count(candidate.position, item => item.position), Boolean(candidate.position))
+    * scarcity(count(candidate.actionClass, item => item.actionClass), candidate.actionClass !== 'unknown')
+    * scarcity(count(candidate.stackBand, item => item.stackBand), candidate.stackBand !== 'unknown')
+    * scarcity(count(candidate.format, item => item.format), candidate.format !== 'solver');
 }
 
 function weightedPick<T>(items: T[], weightOf: (item: T) => number, random: () => number): T {
@@ -243,15 +309,27 @@ export function selectNextInfiniteCandidate(
   if (!pool.length) return undefined;
   const recentIdSet = new Set(recentCandidateIds.slice(-64));
   const recentFamilySet = new Set(recentFamilyIds.slice(-6));
+  const byId = new Map(pool.map(candidate => [candidate.id, candidate]));
+  const recentCandidates = recentCandidateIds.map(id => byId.get(id)).filter((item): item is InfiniteHandCandidate => Boolean(item));
+
   let eligible = pool.filter(candidate => !recentIdSet.has(candidate.id));
   if (!eligible.length) eligible = [...pool];
   const familyFresh = eligible.filter(candidate => !recentFamilySet.has(candidate.familyId));
   if (familyFresh.length >= Math.min(8, eligible.length)) eligible = familyFresh;
 
+  const noveltyWeights = eligible.map(candidate => coverageNoveltyWeight(candidate, recentCandidates));
+  const maxNovelty = Math.max(...noveltyWeights, 1);
+  const coverageFresh = eligible.filter((candidate, index) => noveltyWeights[index] >= maxNovelty * 0.72);
+  if (coverageFresh.length >= Math.min(6, eligible.length)) eligible = coverageFresh;
+
   const sourceGroups = new Map<InfiniteHandSource, InfiniteHandCandidate[]>();
   eligible.forEach(candidate => sourceGroups.set(candidate.source, [...(sourceGroups.get(candidate.source) || []), candidate]));
   const availableSources = [...sourceGroups.keys()];
-  const source = weightedPick(availableSources, item => SOURCE_TARGET[item], random);
+  const source = weightedPick(availableSources, item => {
+    const group = sourceGroups.get(item) || [];
+    const averageNovelty = group.length ? group.reduce((sum, candidate) => sum + coverageNoveltyWeight(candidate, recentCandidates), 0) / group.length : 1;
+    return SOURCE_TARGET[item] * averageNovelty;
+  }, random);
   const sourcePool = sourceGroups.get(source) || eligible;
-  return weightedPick(sourcePool, candidate => candidateWeight(candidate, history, now), random);
+  return weightedPick(sourcePool, candidate => learningWeight(candidate, history, now) * coverageNoveltyWeight(candidate, recentCandidates), random);
 }
