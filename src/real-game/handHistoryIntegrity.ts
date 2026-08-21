@@ -1,4 +1,5 @@
 import { ParsedHandHistory } from './handHistory';
+import { forcedBetContextKey, hasNonstandardForcedBetMarker, settlementGeometry } from './handHistoryGeometry';
 
 export type HandHistoryIntegrityCode =
   | 'missing-hero'
@@ -29,10 +30,7 @@ function issue(code: HandHistoryIntegrityCode, severity: HandHistoryIntegrityIss
   return { code, severity, detail };
 }
 
-/**
- * Detects HH features that the current deterministic replay does not model exactly. The parser may
- * still retain the hand as exposure evidence, but automatic solver regret must fail closed.
- */
+/** Detects only geometry the current exact replay still cannot prove. Supported P18 geometry no longer blocks merely because a marker exists. */
 export function auditHandHistoryForExactGrading(hand: ParsedHandHistory): HandHistoryIntegrityReport {
   const issues: HandHistoryIntegrityIssue[] = [];
   if (!hand.heroName) issues.push(issue('missing-hero','blocks-all','Hero identity is unavailable.'));
@@ -41,19 +39,30 @@ export function auditHandHistoryForExactGrading(hand: ParsedHandHistory): HandHi
   if (!(hand.bigBlind > 0) || !(hand.smallBlind >= 0)) issues.push(issue('missing-blinds','blocks-all','Blind amounts are invalid or unavailable.'));
   if (hand.tableSize !== 6 && hand.tableSize !== 9) issues.push(issue('unsupported-table-size','blocks-all',`Only 6-max/9-max exact grading is modeled; observed ${hand.tableSize}.`));
 
-  const raw = hand.raw;
-  if (/\bstraddles?\b|posts?\s+(?:a\s+)?dead\s+blind|dead\s+button/i.test(raw)) {
-    issues.push(issue('straddle-or-dead-blind','blocks-all','Straddle/dead-blind geometry is not represented by v2/v3 exact context.'));
+  // P18: straddles/dead blinds are supported only when position/type/amount can be canonicalized.
+  if (hasNonstandardForcedBetMarker(hand) && !forcedBetContextKey(hand)) {
+    issues.push(issue('straddle-or-dead-blind','blocks-all','Non-standard forced bet marker exists, but exact position/type/amount geometry could not be reconstructed.'));
   }
-  if (/run\s+it\s+twice|first\s+(?:flop|turn|river)|second\s+(?:flop|turn|river)|\*\*\*\s+(?:first|second)\s+(?:flop|turn|river)/i.test(raw)) {
-    issues.push(issue('run-it-twice-or-multiple-board','blocks-postflop','Multiple board runouts are not represented by v3 exact board state.'));
-  }
-  if (/cash\s*out|cashout/i.test(raw)) issues.push(issue('cashout','blocks-postflop','Cash-out settlement semantics are not modeled for exact postflop utility.'));
-  if (/\bside\s+pot\b|\bmain\s+pot\b/i.test(raw)) issues.push(issue('side-pot','blocks-postflop','Side-pot ownership is not represented by the heads-up v3 state.'));
 
-  // A raise with no raise-to amount cannot reproduce the material action geometry exactly.
-  if (hand.actions.some(action => action.type === 'raise' && action.toBB === undefined)) {
-    issues.push(issue('unknown-action-geometry','blocks-all','At least one raise lacks an exact raise-to amount.'));
+  const settlement = settlementGeometry(hand);
+  // Multiple runouts/cash-out after all Hero decisions do not change the solver decision state being graded.
+  if (settlement.multipleRunout && settlement.heroActsAfterMultipleRunout) {
+    issues.push(issue('run-it-twice-or-multiple-board','blocks-postflop','Hero acts after multiple-board settlement begins; the decision board cannot be represented as one exact v3/v4 runout.'));
+  }
+  if (settlement.cashout && settlement.heroActsAfterCashout) {
+    issues.push(issue('cashout','blocks-postflop','Hero acts after cash-out settlement begins; post-settlement utility/action geometry is not modeled.'));
+  }
+
+  // P18 side pots are represented decision-by-decision by v4 potStructureKey when an active all-in makes tiers material.
+  // A side-pot marker alone is therefore not a blocker. Impossible two-player side-pot text remains fail-closed.
+  if (settlement.sidePotMarker && hand.players.length < 3) {
+    issues.push(issue('side-pot','blocks-postflop','Side-pot marker exists without enough players to reconstruct a valid side-pot geometry.'));
+  }
+
+  // A raise/all-in with no exact amount cannot reproduce material action geometry exactly.
+  if (hand.actions.some(action => action.type === 'raise' && action.toBB === undefined)
+      || hand.actions.some(action => action.type === 'all-in' && action.toBB === undefined && action.amountBB === undefined)) {
+    issues.push(issue('unknown-action-geometry','blocks-all','At least one raise/all-in lacks an exact amount/raise-to amount.'));
   }
 
   const blocksPreflop = issues.some(item => item.severity === 'blocks-preflop' || item.severity === 'blocks-all');
