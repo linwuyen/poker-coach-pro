@@ -7,25 +7,29 @@ Poker Coach Pro is optimized for reducing future decision loss, not maximizing q
 ```text
 Real-game exposure
   ↓
-Observed decision context
-  ↓
-Exact truth join? ── no ──→ exposure-only / Unknown
-  │ yes
-  ↓
-Verified / exact regret evidence
-  ↓
+HH integrity audit
+  ├─ unsupported geometry → exposure-only / Unknown
+  └─ reconstructable state
+       ↓
+Exact truth router
+  ├─ Preflop → Strategy Engine v2
+  ├─ Heads-up Flop/Turn/River → indexed Strategy Engine v3
+  └─ 3-way+ Flop/Turn/River → indexed Strategy Engine v4
+       ↓
+unique verified truth + sourced action EV?
+  ├─ no → exposure-only / Unknown
+  └─ yes → verified regret evidence
+       ↓
 Context / decision-family identity
-  ↓
+       ↓
 Expected-learning-value + leak-aware scheduling
-  ↓
-Curated explanation + solver-backed transfer
-  ↓
-Delayed retrieval
-  ↓
-Hidden holdout / unseen generalization
-  ↓
-Observational report + preregistered randomized N-of-1
-  ↓
+       ↓
+Teaching / solver transfer / delayed retrieval / holdout
+       ↓
+Observational effectiveness + preregistered randomized N-of-1
+       ↓
+P17 longitudinal real-game recheck + next prescription
+       ↓
 Real-game exposure again
 ```
 
@@ -40,148 +44,182 @@ question instance
        └─ situationIds / contextFamilyId
 ```
 
-Suit-isomorphic variants share a decision family. Semantic exact-math scenarios and verified one-variable solver pairs get distinct families only when their decision boundary is genuinely different.
+Suit-isomorphic variants share a family. Semantic exact-math or solver-backed distinctions become separate families only when the decision boundary is materially different.
 
 ## Real-game evidence planes
 
-### Observation layer
+### Observation
 
-Hand histories always establish observation first: exposure frequency, chosen action, source/hand identity, board/actions and other fields the HH actually contains. Raw HH does not establish optimality.
+HH first proves only what happened. Raw hand history never establishes GTO optimality, population tendency or training causality.
 
-### Preflop exact grading — Strategy Engine v2
+### P13-C integrity gate
+
+Before exact grading, an integrity audit rejects currently unmodeled or incomplete geometry such as straddle/dead blind, multiple runouts, side-pot semantics, cash-out state, missing raise-to geometry, or missing Hero/button/blind/table identity. Rejected hands remain useful as exposure evidence.
+
+### Preflop v2
+
+Observed preflop state must map to exactly one verified immutable v2 profile and sourced action EV.
+
+### Heads-up postflop v3
+
+P12 v3 exact state includes board, positions, effective stack, pot/SPR/to-call, action lines, aggressor, rake/cap and exact Hero combo.
+
+P13 changes the runtime path:
 
 ```text
-HH preflop decision
-  ↓
-derive hand / positions / effective stack / action line
-  ↓
-exactly one immutable verified v2 profile?
-  ├─ no → exposure-only
-  └─ yes
+v3 solver export
+  ↓ validate immutable node
+IndexedDB node store
+  ├─ contextKey index
+  ├─ context metadata
+  └─ pack manifests
        ↓
-chosen action + comparison action have sourced EV?
-  ├─ no → exposure-only
-  └─ yes → verified regret evidence
+HH reconstructed v3 contextKey
+       ↓
+indexed exact candidate lookup
+       ↓
+0 / >1 match → Unknown
+1 verified node + sourced EV → regret
 ```
 
-### Postflop exact grading — Strategy Engine v3
+Large truth lookup is no longer a full-array `filter()` operation. Legacy localStorage truth is migrated once into the indexed store.
 
-P12 adds a separate state model rather than stretching v2.
+### Multiway postflop v4
+
+P14 uses a separate schema rather than weakening v3:
 
 ```text
-HH Flop / Turn / River
-  ↓ replay actions to the instant BEFORE Hero acts
-active players / pot / street commitments / remaining stacks
-  ↓
-require heads-up state
-  ↓
-exact board + Hero/Villain positions
-+ effective stack + pot + SPR + to-call
-+ canonical preflop line + current-street line
-+ last aggressor + rake/cap + exact Hero combo
-  ↓
-exactly one immutable verified v3 node?
-  ├─ no → exposure-only / Unknown
-  └─ yes
-       ↓
-chosen action + comparison action have sourced EV?
-  ├─ no → exposure-only
-  └─ yes → Flop/Turn/River verified regret
+Hero
++ every active opponent {position, remainingStack}
++ player count
++ board / pot / SPR / to-call
++ preflop line / street line
++ aggressor / rake context
++ exact Hero combo
 ```
 
-Automatic v2/v3 grading never uses approximate truth. Multiway postflop is intentionally unsupported until all player ranges/state can be represented.
+Only a unique verified immutable v4 node can grade a 3-way+ decision. Heads-up v3 never acts as fallback.
 
-## Strategy truth
+## Truth ingestion and observability
 
-### v2
+### P13-A
 
-Preflop Strategy Profile v2 contains context, action frequencies, optional per-action EV, source provenance and immutable version/hash.
+- IndexedDB v3 store, context index, pack manifest.
+- streaming NDJSON import.
+- memory fallback for deterministic unit tests.
+- diagnostics use counts/manifests instead of loading all nodes.
 
-### v3
+### P13-B
 
-Postflop Truth Pack v3 contains exact heads-up nodes with:
+A configurable CSV adapter maps explicit solver-export columns into v3 truth. Missing material fields stay unavailable; vendor semantics are not guessed.
 
-- board/street
-- positions
-- pot geometry / SPR / to-call
-- preflop and current-street action lines
-- exact Hero combos
-- mixed action frequencies
-- optional per-action EV and sizing surface
-- verified solver provenance
+### P13-D
 
-Coverage is computed from actually imported data. The engine never treats importer capability as proof that a complete solver database exists.
+`#production-ops` reports bounded v3/v4 node/context/pack diagnostics. Observability never upgrades evidence.
 
-## Population evidence
+## Population evidence and P16
 
-Three objects are distinct:
+The system keeps four concepts separate:
 
-1. **Measured local cohort** — P12 direct HH numerator/denominator aggregation; proves only what was observed.
-2. **External population cohort** — P9-B site/stake/window/sample/provenance registry.
-3. **Population exploit profile** — explicit exploit strategy supported by an evidence source.
+1. measured local HH cohort;
+2. external population cohort;
+3. replicated population deviation;
+4. evidence-backed population exploit profile.
 
-A measured tendency does not automatically synthesize exploit strategy or solver EV.
-
-## Daily curriculum
-
-Default sequence remains:
-
-1. due / high-value curated repair
-2. one-variable solver semantic counterfactual
-3. unseen solver generalization
-
-Verified real-game regret from either preflop v2 or postflop v3 may multiply Training-row priority using same position/street. This is situation-level routing only. Sibling/Holdout remain evaluation-only.
-
-## Tournament reconstruction and utility
+P16 adds independent train/holdout validation:
 
 ```text
-MTT HH
-  ├─ auto-extract hand/tournament identity + table/Hero state
+solver baseline + reference
+training raw counts
+holdout raw counts
   ↓
+sample floor + practical delta + Wilson 95% intervals
+  ↓
+validated-deviation?
+  ├─ no → insufficient / not-replicated
+  └─ yes
+       ↓
+matching evidence-backed population-exploit profile exists?
+       ├─ no → deviation only
+       └─ yes → exploitEligible
+```
+
+The engine never constructs an exploit range from a deviation alone.
+
+## Tournament stack and P15
+
+```text
+Tournament summary
+  └─ explicit finishing-place payouts only
+Full-field lobby/snapshot CSV
+  └─ tournamentId / handId / playersRemaining / every stack / optional bounty
+        ↓
 Tournament metadata registry
-  ├─ payout vector + utility unit
-  └─ handId → full-field stack snapshot
-  ↓
-reconstruction completeness check
-  ├─ missing → incomplete draft, list missing fields
-  └─ complete → reusable tournament state
-       ↓
-explicit decision-specific ICM / PKO / FGS inputs
-       ↓
-exact-math tournament utility evidence
+        ↓
+MTT HH tournamentId + handId join
+        ↓
+full-field completeness check
+        ↓
+explicit ICM / PKO / FGS decision inputs
 ```
 
-P12-E reduces repeated manual state entry, but a table snapshot is never treated as the entire tournament field. Showdown equity, bounty semantics and FGS probabilities remain explicit traceable inputs when ordinary HH cannot prove them.
+A table HH is never promoted to full-field state. Summary payout parsing does not infer stacks. FGS future probabilities remain explicit.
 
-## Effectiveness and experimentation
+## Daily and training routing
 
-P5-C remains observational before/training/follow-up analysis. P10 adds preregistered seeded balanced randomized-block N-of-1 comparisons with washout and sample/block gates. Neither layer permits stronger causal claims than its design supports.
+Default curriculum still preserves due repair, solver semantic transfer and unseen generalization. Verified v2/v3/v4 real-game regret may influence **Training** priority at matching situation level; Sibling/Holdout remain evaluation-only.
+
+## P17 longitudinal loop
+
+P17 closes the multi-month feedback path using only verified-solver/exact-math Cash BB utility:
+
+```text
+verified real-game decisions
+  ↓
+monthly regret / aligned rate / street breakdown
+  ↓
+decision-family early vs recent regret
+  ↓
+join recent training accuracy + delayed retention
+  ↓
+priority = loss signal × frequency signal × repair need × evidence confidence
+  ↓
+next training prescription
+```
+
+These trends are observational. A separate P10 preregistered randomized N-of-1 result is required for a stronger individual intervention-causality statement.
 
 ## Product surfaces
 
 ```text
-#hand-history        real-game observation + strict preflop v2 / postflop v3 grading
-#postflop-truth      v3 truth pack import + coverage + tournament metadata + local cohort status
-#truth-ops           v2 truth coverage + external population cohorts + reviewed explanations
-#strategy-surface    Strategy Profile v2 import/inspection
-#tournament-context  explicit ICM/PKO/FGS context evaluation
-#effectiveness       observational longitudinal report
+#hand-history        HH integrity + Preflop v2 + heads-up v3 + multiway v4 grading
+#postflop-truth      indexed v3 truth + legacy migration
+#production-ops      P13–P17 imports, scale diagnostics, multiway, tournament, population, longitudinal coach
+#truth-ops           v2 coverage + population cohorts + reviewed explanations
+#strategy-surface    v2 profile import/inspection
+#tournament-context  explicit ICM/PKO/FGS evaluation
+#effectiveness       observational windows
 #experiment          preregistered randomized N-of-1
 ```
 
 ## Runtime / performance
 
-P11 route-level `React.lazy` remains the production loading model. P12 adds `#postflop-truth` as another lazy route, and real-Chrome E2E must load it successfully. The 500 KiB minified JavaScript chunk budget remains a hard CI gate.
+- Heavy labs use route-level `React.lazy`.
+- CI keeps a 500 KiB minified JS chunk hard budget.
+- real Chrome E2E must load `#hand-history`, indexed `#postflop-truth`, and `#production-ops` in production build.
+- v3/v4 exact lookup is indexed by material context; diagnostics do not require whole-store scans.
 
 ## Persistence
 
 - History: `poker_training_history_v6`
-- Preflop full solver surfaces: `poker_strategy_profiles_v2`
-- Postflop v3 truth: `poker_postflop_truth_nodes_v3`
+- Preflop v2 profiles: `poker_strategy_profiles_v2`
+- Heads-up v3 truth: IndexedDB `poker-coach-truth-v3`
+- Multiway v4 truth: IndexedDB `poker-coach-truth-v4`
+- Legacy v3 localStorage key is migration-only
 - External population cohorts: `poker_population_cohorts_v1`
 - Measured local HH cohorts: `poker_observed_population_cohorts_v1`
-- Tournament metadata registry: `poker_tournament_metadata_v1`
+- Tournament metadata: `poker_tournament_metadata_v1`
 - Reviewed explanations: `poker_reviewed_explanations_v1`
-- Active N-of-1 spec: `poker_learning_experiment_v1`
+- Active randomized N-of-1: `poker_learning_experiment_v1`
 
 Imported evidence remains local unless explicitly exported/synchronized through supported workflows.

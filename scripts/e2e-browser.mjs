@@ -132,7 +132,7 @@ try {
   await waitFor(cdp.send, `document.readyState === 'complete'`, 'initial page load');
   await waitFor(cdp.send, `document.body.textContent.includes('今天')`, 'Today shell');
 
-  await navigateRoute(cdp.send, '#hand-history', 'Real-game full-street truth join');
+  await navigateRoute(cdp.send, '#hand-history', 'indexed heads-up + exact multiway truth');
   await evaluate(cdp.send, `(() => {
     const textarea = document.querySelector('[data-testid="hh-text"]');
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
@@ -151,6 +151,8 @@ try {
   if (!ids.includes('999000111222')) throw new Error(`Imported hand-id assertion failed: ${JSON.stringify(ids)}`);
 
   await navigateRoute(cdp.send, '#postflop-truth', 'Flop / Turn / River Truth Ops');
+  await navigateRoute(cdp.send, '#production-ops', 'Truth scale、Multiway、Tournament、Population、Longitudinal Coach');
+  await waitFor(cdp.send, `document.querySelector('[data-testid="production-scale-dashboard"]') && document.body.textContent.includes('P17 · Longitudinal Coach')`, 'P13-P17 production ops');
   await navigateRoute(cdp.send, '#truth-ops', 'Truth Operations');
   await navigateRoute(cdp.send, '#strategy-surface', 'Full Strategy Surface');
   await navigateRoute(cdp.send, '#effectiveness', 'Learning Effectiveness');
@@ -161,7 +163,7 @@ try {
   await waitFor(cdp.send, `Boolean(localStorage.getItem('poker_learning_experiment_v1'))`, 'N-of-1 experiment persistence');
   await navigateRoute(cdp.send, '', '今天');
 
-  console.log('Browser E2E PASS: Today → HH persistence → Postflop Truth v3 → Truth Ops → Solver Surface → Effectiveness → Tournament Reconstruction → FGS → randomized N-of-1 → Today.');
+  console.log('Browser E2E PASS: Today → HH persistence/integrity → indexed Postflop v3 → P13-P17 Production Ops → Truth Ops → Solver Surface → Effectiveness → Tournament Reconstruction → FGS → randomized N-of-1 → Today.');
 } finally {
   try { cdp?.socket?.close(); } catch {}
   await terminate(chrome);
