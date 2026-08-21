@@ -51,22 +51,22 @@ test('experiment refuses to announce a winner below sample/block evidence gates'
   assert.equal(result.bestArmId, undefined);
 });
 
-test('verified EV-loss experiment counts only cash BB utility and ignores tournament utility', () => {
+test('verified EV-loss experiment counts only cash BB trainer utility and ignores tournament utility', () => {
   const experiment = createRandomizedBlockExperiment({
     id: 'n1-cash-leak', version: '1', preRegisteredAt: 0, startAt: DAY, blockDurationMs: DAY, blockCount: 4,
-    arms, metric: 'verified-ev-loss', assignmentSeed: 'cash-only', hypothesis: 'Contrastive feedback reduces cash BB regret.', minSamplesPerArm: 2,
+    arms, metric: 'verified-ev-loss', assignmentSeed: 'cash-only', hypothesis: 'Contrastive feedback reduces sourced cash-BB trainer regret.', minSamplesPerArm: 2,
   });
   const history: HistoryItem[] = [];
   experiment.blocks.forEach(block => {
     history.push(
       {
-        scenarioId: `${block.id}-cash`, category: ['real'], score: 5, judgment: 'verified-regret', timestamp: block.startAt + 1000,
-        trainingType: 'real-hand', truthTier: 'verified-solver', gameFormat: 'Cash', evLossBB: block.armId === 'contrastive' ? 0.1 : 0.5,
+        scenarioId: `${block.id}-cash`, category: ['training'], score: 5, judgment: 'verified-regret', timestamp: block.startAt + 1000,
+        trainingType: 'scenario', truthTier: 'verified-solver', gameFormat: 'Cash', evLossBB: block.armId === 'contrastive' ? 0.1 : 0.5,
         utilityLoss: block.armId === 'contrastive' ? 0.1 : 0.5, utilityUnit: 'bb', utilityModel: 'cash-chip-ev',
       },
       {
-        scenarioId: `${block.id}-mtt`, category: ['real'], score: 0, judgment: 'verified-utility-regret', timestamp: block.startAt + 2000,
-        trainingType: 'real-hand', truthTier: 'verified-solver', gameFormat: 'MTT', evLossBB: 99,
+        scenarioId: `${block.id}-mtt`, category: ['training'], score: 0, judgment: 'verified-utility-regret', timestamp: block.startAt + 2000,
+        trainingType: 'scenario', truthTier: 'verified-solver', gameFormat: 'MTT', evLossBB: 99,
         utilityLoss: 99, utilityUnit: 'dollar-ev', utilityModel: 'icm',
       },
     );
