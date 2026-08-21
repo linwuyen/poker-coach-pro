@@ -31,132 +31,105 @@ Not allowed:
 
 ## Solver surface import and coverage
 
-A Strategy Profile marked `verified-solver` requires:
+### Preflop Strategy Profile v2
 
-- solver name
-- source reference
-- generated time
-- frequency data
-- immutable `id@version`
+A v2 Strategy Profile marked `verified-solver` requires solver name, source reference, generated time, frequency data, and immutable `id@version`. Per-action EV values must be finite and source-referenced. If EV is absent, Strategy Distance may still be computed from frequency, but EV regret is unavailable.
 
-Per-action EV values must be finite and source-referenced. If EV is absent, Strategy Distance may still be computed from frequency, but EV regret is unavailable.
+### Postflop Truth Pack v3
 
-P9-A coverage reports count only actually imported `verified-solver` data. A coverage engine is not equivalent to owning a complete solver database.
+P12 v3 nodes represent exact heads-up Flop/Turn/River states. Automatic grading requires all material dimensions to match:
 
-Automated real-game grading uses a stricter contract than interactive lookup: every material context dimension represented by the profile must be present and exact within a narrow tolerance. No approximate profile fallback is permitted for automatic regret attribution.
+- game/table format
+- street
+- Hero/Villain positions
+- heads-up player count
+- effective stack
+- pot / SPR / to-call
+- exact board
+- canonical preflop action line
+- current-street action line and sizing geometry
+- last aggressor
+- rake / rake cap when present
+- exact Hero hole-card combo
+
+A v3 truth node must carry verified solver provenance and strategy frequencies. EV regret is available only when the chosen action and at least one comparison action both have sourced finite EV values.
+
+Coverage reports count only actually imported verified data. A coverage engine or importer is **not** equivalent to owning a complete solver database. If no trustworthy full solver dataset is available, the product must report the coverage gap rather than synthesize missing truth.
+
+For both v2 and v3, automated real-game grading never uses approximate profile fallback. Zero exact matches is Unknown. More than one exact immutable version is also Unknown/Ambiguous until the source/version conflict is resolved.
 
 ## Hand histories and automatic leak grading
 
-Raw PokerStars/GGPoker HH can establish what happened in the observed hand and how often a context appeared.
+Raw PokerStars/GGPoker HH can establish what happened in the observed hand and how often a context appeared. It cannot by itself establish optimal action, GTO EV regret, population tendency, or causal training benefit.
 
-It cannot by itself establish:
+Therefore HH imports always create observation/exposure evidence first.
 
-- optimal action
-- GTO EV regret
-- population tendency
-- causal training benefit
+### Preflop
 
-Therefore HH-only imports create real-game exposure evidence.
+P9-C may add `verified-solver` regret only when the observed decision maps to exactly one verified v2 profile, the hand exists, and sourced action EV exists.
 
-P9-C may add `verified-solver` regret only when all are true:
+### Postflop
 
-1. the observed decision can be represented by Strategy Engine v2;
-2. exactly one immutable verified profile matches the material context exactly;
-3. the observed starting hand exists in that profile;
-4. the chosen action has an actual sourced EV value;
-5. at least one comparison action EV also exists.
+P12-C replays the HH to the exact state **before** each Hero Flop/Turn/River decision. It may add `verified-solver` regret only when:
 
-Cash rake/rake-cap are never guessed. If a profile requires them and the observed/imported context does not provide them, the decision stays exposure-only.
+1. the hand is heads-up at that decision;
+2. board and action state are fully reconstructable;
+3. exactly one verified immutable v3 node matches;
+4. the exact Hero combo exists in that node;
+5. the chosen action has sourced EV;
+6. at least one comparison action has sourced EV.
 
-Current automated HH→solver grading is intentionally preflop-only because Strategy Engine v2 does not yet encode a complete postflop board/action-tree state. Postflop remains Unsupported rather than being graded against a preflop or coarse context.
+Multiway postflop remains Unsupported rather than being projected onto a heads-up node. Cash rake/rake-cap are never guessed. Missing required context leaves the decision exposure-only.
 
-A verified real-game leak may influence Daily **priority** for a matching position/street in the PokerBench Training partition. This routing signal does not claim that a PokerBench row is the same solver node. It never unlocks Sibling/Holdout for training.
+Verified real-game regret may influence Daily **priority** for a matching position/street in the PokerBench Training partition. This is situation-level routing only; it never asserts that a PokerBench row is the same solver node and never unlocks Sibling/Holdout for training.
 
 ## Population evidence
 
-A `population-exploit` profile requires all of:
+A `population-exploit` profile still requires external reference, methodology, named population/pool, generated time, a meaningful sample floor, and explicit exploit strategy supplied by that evidence source.
 
-- external reference
-- methodology
-- named population / pool
-- generated time
-- at least 1,000 observations in the imported profile
-- explicit exploit range supplied by that evidence source
+P9-B population cohort registry preserves site/stake/game/window/sample/reference/methodology/raw numerator/raw denominator and immutable versions.
 
-The built-in Nit/TAG/LAG/Calling Station overlays remain `heuristic-estimate`.
+P12-D adds **measured local population cohorts** from actual imported HH. These cohorts preserve:
 
-If population EV is imported, an EV methodology is additionally required.
+- sample hand count
+- postflop decision opportunities
+- street/facing/action
+- raw numerator/denominator
+- observed rate
+- source hand-id hash
+- direct aggregation methodology
 
-P9-B population cohort registry adds a separate evidence plane. Each measured population metric must preserve:
-
-- site / stake / game / observation window
-- sample size
-- reference / methodology
-- raw numerator and denominator
-- reported rate consistent with those counts
-
-A standalone percentage without those inputs cannot become an evidence-backed cohort. Cohort `id@version` is immutable.
+These records are `measured-local-cohort` observations. They do **not** automatically become `population-exploit`, do not imply a GTO deviation, and do not authorize exploit recommendations by themselves.
 
 ## Reviewed teaching explanations
 
-P9-E human explanations are **not** solver output. They live in a separate immutable registry and require:
-
-- target decision family or profile+hand
-- author
-- at least one reviewer
-- review timestamp
-- reference
-- explicit boundary conditions
-- common mistake and contrastive cue
-- disclaimer that the prose is reviewed interpretation
+P9-E human explanations are not solver output. They live in a separate immutable registry and require target, author, reviewer, review timestamp, reference, boundary conditions, common mistake, contrastive cue, and an interpretation disclaimer.
 
 A solver label or EV table does not authorize the app to fabricate causal rationale.
 
 ## Exact-math teaching
 
-P6 exact-math scenarios are conditional exercises. The scenario explicitly supplies inputs such as equity or fold rate, and the answer is recomputed from those inputs.
-
-Examples:
-
-```text
-Call EV = equity × (pot + call) − call
-Pure bluff EV = fold% × pot − (1 − fold%) × bet
-```
-
-The card artwork is illustrative where the problem directly supplies equity/fold-rate assumptions; the system must not imply that the displayed cards independently generated those inputs.
+P6 exact-math scenarios are conditional exercises. Inputs such as equity or fold rate are explicit and the answer is recomputed from those inputs. Card artwork must not be represented as the source of those supplied assumptions.
 
 ## Tournament HH / ICM / PKO / FGS
 
-Ordinary tournament HH is only an observation and a `handId` join key. It does not reliably contain the full tournament utility state.
+Ordinary tournament HH is an observation and a hand-level join key. It does not reliably contain the complete tournament utility state.
 
-P9-D tournament utility requires an explicit referenced context containing the necessary state:
+P9-D exact tournament utility therefore requires explicit referenced state: all players/stacks, payout vector, declared utility unit, Hero/chosen action, ICM/PKO risk inputs, bounty data when used, and complete FGS trees/probabilities when used.
 
-- all player IDs/stacks
-- payout vector and declared utility unit
-- Hero/chosen action
-- ICM/PKO risk inputs when used
-- bounty data for PKO
-- complete action trees and branch probabilities for FGS
+P12-E reduces manual repetition by adding a tournament metadata registry keyed by tournamentId plus full-field stack snapshots keyed by handId. The system may automatically extract table players/Hero/hand identity from HH and join registered full-field/payout metadata.
 
-The engine then produces `exact-math` evidence conditional on those supplied inputs.
+Critical invariant: **table stacks are never silently treated as the entire tournament field**. If no full-field snapshot exists, the reconstruction draft must remain incomplete and list the missing state.
 
-FGS requires an explicit finite future state tree. Child branch probabilities must be supplied and sum to 1. The engine guarantees exact ICM evaluation of supplied leaf states and probability-weighted backward induction. It does not guarantee that supplied branch probabilities represent equilibrium poker strategy.
+Decision-specific quantities that ordinary HH cannot prove—such as pre-decision showdown equity, bounty semantics, or future branch probabilities—remain explicit inputs from a traceable source.
+
+FGS continues to evaluate only the supplied finite future tree; it does not claim the supplied probabilities are equilibrium strategy.
 
 ## Effectiveness and experiments
 
-P5-C before/after reports are observational. They may support statements such as “follow-up holdout accuracy was higher than baseline in these windows.” They do not by themselves support the causal claim “the training caused the improvement.”
+P5-C before/after reports are observational and do not by themselves prove training causality.
 
-P10 randomized N-of-1 comparisons require:
-
-- preregistration before the first block
-- explicit primary metric
-- seeded randomized balanced blocks
-- non-overlapping blocks
-- declared washout
-- at least two evidence-bearing blocks per arm
-- minimum sample threshold per arm
-
-Below those gates, the result is `Insufficient` and no winner is reported. Above them, the allowed claim is an **individual randomized-block experimental comparison for this player**. It is not a population-wide causal claim.
+P10 randomized N-of-1 comparisons require preregistration, explicit primary metric, seeded balanced blocks, non-overlap, washout, at least two evidence-bearing blocks per arm, and minimum sample thresholds. Below the gates the result is `Insufficient`. Above them the claim is an individual randomized-block comparison, not a population-wide causal claim.
 
 ## UI rule
 
@@ -165,6 +138,7 @@ When required evidence is missing, use one of:
 - `Unavailable`
 - `Unsupported`
 - `Insufficient evidence`
+- `Ambiguous truth version`
 - explicit lower trust tier
 
 Never substitute a plausible-looking number.
