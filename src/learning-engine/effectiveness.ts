@@ -19,10 +19,6 @@ export interface EffectivenessWindowMetrics {
   transferAccuracy?: number;
   delayedAttempts: number;
   delayedRetention?: number;
-  realGameSessions: number;
-  realGameHands: number;
-  verifiedRealGameLeakBB100?: number;
-  verifiedLeakObservations: number;
 }
 
 export interface MetricDelta {
@@ -39,7 +35,6 @@ export interface EffectivenessReport {
   holdout: MetricDelta;
   transfer: MetricDelta;
   delayedRetention: MetricDelta;
-  realGameLeak: MetricDelta;
   evidenceLevel: 'insufficient' | 'emerging' | 'usable';
   caveats: string[];
 }
@@ -69,51 +64,24 @@ function isTransfer(item: HistoryItem): boolean {
 }
 
 function isTrainingDecision(item: HistoryItem): boolean {
-  return item.trainingType !== 'real-hand' && item.trainingType !== 'custom' && !isHoldout(item);
-}
-
-function realGameMetrics(items: HistoryItem[]): Pick<EffectivenessWindowMetrics, 'realGameSessions' | 'realGameHands' | 'verifiedRealGameLeakBB100' | 'verifiedLeakObservations'> {
-  const real = items.filter(item => item.trainingType === 'real-hand');
-  const sessions = new Map<string, number>();
-  real.forEach(item => {
-    if (!item.sessionId || !item.handsObserved) return;
-    sessions.set(item.sessionId, Math.max(sessions.get(item.sessionId) || 0, item.handsObserved));
-  });
-  const verified = real.filter(item =>
-    item.utilityUnit === 'bb'
-    && item.utilityModel === 'cash-chip-ev'
-    && typeof item.utilityLoss === 'number'
-    && Number.isFinite(item.utilityLoss)
-    && typeof item.spotFrequencyPer100Hands === 'number'
-    && Number.isFinite(item.spotFrequencyPer100Hands)
-    && (item.truthTier === 'verified-solver' || item.truthTier === 'exact-math'),
-  );
-  const weighted = verified.map(item => Math.max(0, item.utilityLoss || 0) * Math.max(0, item.spotFrequencyPer100Hands || 0));
-  return {
-    realGameSessions: sessions.size,
-    realGameHands: [...sessions.values()].reduce((sum, value) => sum + value, 0),
-    verifiedRealGameLeakBB100: weighted.length ? weighted.reduce((sum, value) => sum + value, 0) / weighted.length : undefined,
-    verifiedLeakObservations: verified.length,
-  };
+  return item.trainingType !== 'custom' && !isHoldout(item);
 }
 
 export function effectivenessWindowMetrics(history: HistoryItem[], window: EffectivenessWindow): EffectivenessWindowMetrics {
-  const items = history.filter(item => item.timestamp >= window.start && item.timestamp < window.end);
-  const decisions = items.filter(item => item.trainingType !== 'real-hand' && item.trainingType !== 'custom');
-  const holdout = decisions.filter(isHoldout);
-  const transfer = decisions.filter(isTransfer);
-  const delayed = decisions.filter(item => item.isDelayedReview);
+  const items = history.filter(item => item.timestamp >= window.start && item.timestamp < window.end && item.trainingType !== 'custom');
+  const holdout = items.filter(isHoldout);
+  const transfer = items.filter(isTransfer);
+  const delayed = items.filter(item => item.isDelayedReview);
   return {
     window,
-    decisions: decisions.length,
-    trainingDecisions: decisions.filter(isTrainingDecision).length,
+    decisions: items.length,
+    trainingDecisions: items.filter(isTrainingDecision).length,
     holdoutAttempts: holdout.length,
     holdoutAccuracy: accuracy(holdout),
     transferAttempts: transfer.length,
     transferAccuracy: accuracy(transfer),
     delayedAttempts: delayed.length,
     delayedRetention: accuracy(delayed),
-    ...realGameMetrics(items),
   };
 }
 
@@ -143,16 +111,15 @@ export function evaluateLearningEffectiveness(
   const baseline = metrics[0];
   const followup = metrics[2];
   const evaluationEvidence = baseline.holdoutAttempts + followup.holdoutAttempts + baseline.transferAttempts + followup.transferAttempts;
-  const realEvidence = baseline.verifiedLeakObservations + followup.verifiedLeakObservations;
   const evidenceLevel: EffectivenessReport['evidenceLevel'] = evaluationEvidence >= 30 && (baseline.holdoutAttempts >= 5 || baseline.transferAttempts >= 8) && (followup.holdoutAttempts >= 5 || followup.transferAttempts >= 8)
     ? 'usable'
-    : evaluationEvidence >= 10 || realEvidence >= 4
+    : evaluationEvidence >= 10
       ? 'emerging'
       : 'insufficient';
   const caveats = [
-    '這是個人內部的 observational before/after report，不是隨機對照實驗，不能單獨證明訓練造成改善。',
-    'Holdout 只有在未洩漏且兩個時窗都有足夠樣本時才適合比較；樣本太少時應視為方向訊號。',
-    '真實牌局 BB/100 leak 只使用帶 verified-solver / exact-math regret 的 real-hand evidence；純 HH exposure 不會被當成錯誤。',
+    '這是單一玩家的 observational before/after report，不是隨機對照實驗，不能單獨證明訓練造成改善。',
+    'Holdout 必須保持未洩漏；兩個時窗都有足夠樣本時才適合比較，樣本太少只視為方向訊號。',
+    'Transfer 與 delayed retention 只來自訓練機 History；外部真實牌局資料不再是此產品的證據來源。',
   ];
   return {
     observationalOnly: true,
@@ -160,7 +127,6 @@ export function evaluateLearningEffectiveness(
     holdout: delta(baseline.holdoutAccuracy, followup.holdoutAccuracy, 'higher-is-better'),
     transfer: delta(baseline.transferAccuracy, followup.transferAccuracy, 'higher-is-better'),
     delayedRetention: delta(baseline.delayedRetention, followup.delayedRetention, 'higher-is-better'),
-    realGameLeak: delta(baseline.verifiedRealGameLeakBB100, followup.verifiedRealGameLeakBB100, 'lower-is-better'),
     evidenceLevel,
     caveats,
   };
