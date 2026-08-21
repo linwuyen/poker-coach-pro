@@ -13,7 +13,7 @@ import {
   solverCsvToPostflopPack,
   textFileLines,
 } from '../../strategy-engine-v3';
-import { MultiwayTruthPackV4, getMultiwayTruthStore, multiwayCoverage } from '../../strategy-engine-v4';
+import { MultiwayTruthPackV4, getMultiwayTruthStore } from '../../strategy-engine-v4';
 import { loadHistory } from '../../utils/history';
 
 function loadCustomProfiles():StrategyProfile[]{try{const parsed=JSON.parse(localStorage.getItem('poker_strategy_profiles_v2')||'[]');return Array.isArray(parsed)?parsed:[];}catch{return[];}}
@@ -23,7 +23,7 @@ export function ProductionScaleDashboard({onExit}:{onExit:()=>void}){
  const [status,setStatus]=useState('');const [v3Diag,setV3Diag]=useState<{backend:string;nodes:number;contexts:number;packs:number;approximateBytes:number}>({backend:v3.backend,nodes:0,contexts:0,packs:0,approximateBytes:0});const [v4Diag,setV4Diag]=useState<{backend:string;nodes:number;contexts:number}>({backend:v4.backend,nodes:0,contexts:0});
  const [v3Json,setV3Json]=useState('');const [v3Csv,setV3Csv]=useState('');const [v4Json,setV4Json]=useState('');const [lobbyCsv,setLobbyCsv]=useState('');const [populationJson,setPopulationJson]=useState('');const [populationResult,setPopulationResult]=useState('');
  const [ndMeta,setNdMeta]=useState({packId:'stream-pack',version:'1',sourceReference:'file://solver-export'});const report=useMemo(()=>buildLongitudinalPokerReport(loadHistory()),[status]);
- const refresh=async()=>{setV3Diag(await v3.diagnostics());const d4=await v4.diagnostics();setV4Diag(d4);};
+ const refresh=async()=>{setV3Diag(await v3.diagnostics());setV4Diag(await v4.diagnostics());};
  useEffect(()=>{void(async()=>{const migration=await migrateLegacyPostflopTruthStorage(v3);await refresh();if(!migration.alreadyDone&&migration.migrated)setStatus(`Migrated ${migration.migrated} legacy v3 nodes into indexed truth store.`);})();},[]);
  const importV3Json=async()=>{try{const pack=JSON.parse(v3Json) as PostflopTruthPackV3;const r=await v3.putPack(pack);await refresh();setStatus(`v3 JSON: imported ${r.imported}, skipped ${r.skipped}.`);}catch(e){setStatus(e instanceof Error?e.message:'v3 import failed');}};
  const importV3Csv=async()=>{try{const pack=solverCsvToPostflopPack(v3Csv,undefined,{packId:`csv-${Date.now()}`,version:'1'});const r=await v3.putPack(pack);await refresh();setStatus(`v3 mapped CSV: imported ${r.imported}, skipped ${r.skipped}.`);}catch(e){setStatus(e instanceof Error?e.message:'CSV import failed');}};
@@ -31,7 +31,6 @@ export function ProductionScaleDashboard({onExit}:{onExit:()=>void}){
  const importLobby=()=>{try{const incoming=tournamentLobbyCsvToMetadata(lobbyCsv),byId=new Map(loadTournamentMetadata().map(item=>[item.tournamentId,item]));incoming.forEach(item=>byId.set(item.tournamentId,item));saveTournamentMetadata([...byId.values()]);setStatus(`P15 tournament registry: ${incoming.length} tournament(s) imported; ${byId.size} total.`);}catch(e){setStatus(e instanceof Error?e.message:'Tournament import failed');}};
  const evaluatePopulation=()=>{try{const envelope=JSON.parse(populationJson) as {input:PopulationDeviationInput;linkedProfileKey?:string};const linked=envelope.linkedProfileKey?loadCustomProfiles().find(p=>`${p.id}@${p.version}`===envelope.linkedProfileKey):undefined;const result=evaluatePopulationDeviation(envelope.input,linked);setPopulationResult(JSON.stringify(result,null,2));setStatus(`P16 population evidence: ${result.status}${result.exploitEligible?' · exploit profile linked':''}.`);}catch(e){setStatus(e instanceof Error?e.message:'Population evaluation failed');}};
  const importNdjson=async(event:ChangeEvent<HTMLInputElement>)=>{const file=event.target.files?.[0];if(!file)return;try{const r=await importPostflopTruthNdjson(textFileLines(file),v3,ndMeta);await refresh();setStatus(`NDJSON stream: imported ${r.imported}, skipped ${r.skipped}.`);}catch(e){setStatus(e instanceof Error?e.message:'NDJSON import failed');}event.currentTarget.value='';};
- const v4Nodes=useMemo(async()=>multiwayCoverage(await v4.listNodes(10000)),[v4Diag.nodes]);void v4Nodes;
  return <div data-testid="production-scale-dashboard" className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8"><div className="mx-auto max-w-7xl">
   <button type="button" onClick={onExit} className="flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm"><ArrowLeft className="h-4 w-4"/>返回</button>
   <section className="mt-6 rounded-3xl border border-cyan-500/20 bg-cyan-500/6 p-6"><div className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">P13 → P17 · production scale</div><h1 className="mt-3 text-3xl font-bold">Truth scale、Multiway、Tournament、Population、Longitudinal Coach</h1><p className="mt-3 max-w-5xl text-sm leading-7 text-slate-300">所有升級都維持 fail-toward-Unknown：大資料用 index，不用全量 filter；multiway 只吃 v4 truth；牌池偏差要 holdout replication；長期改善預設仍是 observational。</p></section>
