@@ -1,6 +1,6 @@
 # ♠️ 想高龍了 德撲訓練機
 
-**History v6 · Closed-loop Decision Tutor · Strategy Engine v2/v3/v4 · P0→P23**
+**History v6 · Closed-loop Decision Tutor · Strategy Engine v2/v3/v4 · P0→P30**
 
 繁體中文德州撲克決策學習系統。North star 不是刷題數，而是降低未來 decision loss：
 
@@ -28,144 +28,156 @@
 - **P5–P8**：PokerStars/GGPoker HH、Strategy Profile v2 full surface、observational effectiveness、real Chrome E2E、64 exact-math semantic families、evidence-backed population profile、explicit FGS tree。
 - **P9–P12**：solver coverage、population cohort、HH→truth→leak→Daily、reviewed explanation、randomized N-of-1、route lazy chunks/bundle budget、Strategy Engine v3 heads-up postflop、tournament reconstruction。
 - **P13**：v3 IndexedDB/context index/pack manifests/NDJSON streaming、explicit solver CSV mapping、HH integrity guard、truth observability。
-- **P14**：獨立 Strategy Engine v4；3-way+ 必須保存每個 active opponent position + remaining stack，v3 不 fallback 到 multiway。
+- **P14**：獨立 Strategy Engine v4；3-way+ 保存每個 active opponent position + remaining stack，v3 不 fallback 到 multiway。
 - **P15**：full-field tournament lobby/snapshot ingestion + conservative tournament summary payout extraction。
 - **P16**：train/holdout population deviation validation、Wilson 95% intervals、sample/practical-delta gate；deviation 不自動生成 exploit。
 - **P17**：verified real-game regret longitudinal outcomes + leak-priority prescriptions；observational trend 不冒充 causal result。
 
-## P18 · Real-world HH completeness + v4 scale parity
+## P18–P23 · Real-world Evidence Loop
 
 入口：`#hand-history`、`#evidence-ops`
 
-P18 不再用「看到特殊字樣就全部封鎖」；它先問：**決策當下的 material geometry 能不能唯一重建？**
+- **P18-A**：straddle / dead blind → canonical `forcedBetKey`；straddle 是 live commitment，dead blind 是 dead money。
+- **P18-B**：active all-in side-pot eligibility → contribution tiers + `potStructureKey`；只有同 tier geometry 的 v4 node 可 exact grade。
+- **P18-C/D**：run-it-twice / cash-out 若只發生在 Hero 所有下注決策之後，不污染先前 grading；settlement 後仍有 Hero decision 則 Unsupported。
+- **P18-E**：v4 IndexedDB/context metadata/manifests/NDJSON/paged iteration 與 v3 scale parity；v3/v4 streaming manifest 保存真實 counts/bytes。
+- **P19**：v2/v3/v4 unified truth portfolio；unique usable combos、full-EV combos、ambiguous overlap。Coverage 百分比只能對 versioned `TruthCoverageTargetEnvelope` 計算。
+- **P20**：explicit tournament range → equity；exact enumeration 才 `exact-eligible`，Monte Carlo 永遠 `simulation-only`。FGS probability 必須完整 referenced edges。
+- **P21**：外部 `population-exploit` candidate + independent paired EV holdout；N≥200、practical gain、95% interval > 0 才 validated。
+- **P22**：P10 preregistered randomized result 可掛回對應 P17 leak family 的 `recommendedIntervention`，不改 solver truth / leak magnitude。
+- **P23**：大型 v3/v4 truth NDJSON portable workspace；stream export、validate-first、additive immutable restore。
 
-### P18-A · Straddle / dead blind
+完整契約：[`docs/REAL_WORLD_EVIDENCE_LOOP.md`](docs/REAL_WORLD_EVIDENCE_LOOP.md)
 
-- non-standard forced bet 轉成 canonical `forcedBetKey = position + kind + BB amount`。
-- straddle 是 live commitment：會影響 preflop to-call / pot。
-- dead blind 是 dead money：進 pot，但不抵後續 call commitment。
-- v2/v3/v4 exact context 都包含這個 optional key；特殊牌局永遠不會誤撞標準 solver node。
-- marker 存在但位置/金額/類型不能證明 → `Unsupported`。
+## P24 · Solver Truth Acquisition Control Plane
 
-### P18-B · Side pot / all-in geometry
+入口：`#production-intelligence`
 
-v4 multiway replay 在 active all-in 使 eligibility material 時，建立 canonical `potStructureKey`：
-
-- contribution tiers
-- main / side tier amount
-- 每 tier eligible positions
-- folded money保留在 pot amount，但 folded player 不具 eligibility
-
-只有同一 pot-tier geometry 的 v4 truth 才能 exact grade。
-
-### P18-C/D · Run-it-twice / cash-out
-
-- 若 multiple runout / cash-out **只在所有 Hero 決策完成後**發生，settlement 不會反向污染先前 solver decision state，因此既有決策仍可 grading。
-- 若 Hero 在 multiple-board / cash-out settlement 開始後仍有決策，目前仍 fail-closed。
-
-### P18-E · v4 large-data parity
-
-v4 truth store 現在與 v3 同級：
-
-- IndexedDB nodes + context index
-- context metadata
-- pack manifests
-- true nodeCount / skippedCount / contentBytes
-- NDJSON streaming import
-- cursor/paged node iteration
-- deterministic memory fallback for tests
-
-P18 同時修正 v3 NDJSON manifest：streaming pack 現在記錄實際 counts/bytes，不再把空 final batch 誤記成 0。
-
-## P19 · Real Solver Truth Coverage
-
-入口：`#evidence-ops`
-
-Unified truth portfolio 同時檢視 v2 / v3 / v4：
-
-- verified nodes
-- unique exact contexts
-- **unique usable combos**
-- **full per-action-EV combos**
-- ambiguous combos / overlapping versions
-- source references
-- IndexedDB pack manifests / approximate bytes
-
-一個 combo 若同時被多個 exact truth versions 覆蓋，會算 `ambiguous`，**不算可自動 grading coverage**。
-
-若需要「80% coverage」這種百分比，必須先匯入 versioned `TruthCoverageTargetEnvelope`，明確列出 target contexts、weight、minimum unique/full-EV combos。沒有 target universe 時只報實際 coverage，不製造分母。
-
-## P20 · Tournament Range / Equity automation
-
-入口：`#evidence-ops`、`#tournament-context`
-
-`TournamentRangeEvidence` 要求：
-
-- handId
-- exact Hero cards / board
-- explicit weighted villain range
-- reference / generatedAt / methodology
-
-系統使用既有 equity engine 重算：
-
-- exact enumeration → `exact-eligible`，可補進 ICM/PKO `showdownEquity`
-- seeded Monte Carlo → `simulation-only`，可重現但**不升級成 exact-math tournament utility**
-
-FGS probability automation同樣只接受明確來源的 parent→child edge probabilities；每個 tree edge 必須完整覆蓋、每個 parent children sum=1。HH 本身不會被拿來猜 future branch probability。
-
-## P21 · Population → exploit validation loop
-
-入口：`#evidence-ops`
-
-P21 把兩件事拆開：
-
-1. P16：population deviation 是否在 independent holdout 重現？
-2. P21：**一個外部已提供的 exploit candidate** 是否真的在另一組 paired holdout EV evidence 上改善 utility？
-
-Candidate 必須：
-
-- 已是 evidence-backed `population-exploit` Strategy Profile
-- exact strategy context 相符
-- 連到通過 P16 的 deviation
-- paired candidate-minus-baseline utility deltas 有 provenance
-- holdout ≥ 200 opportunities
-- mean improvement ≥ declared practical threshold（default 0.01 BB/opportunity）
-- 95% mean-delta interval lower bound > 0
-
-通過才是 `validated-exploit`。系統**永遠不從「pool fold 太多」自行生成 bluff range**。
-
-## P22 · P10 ↔ P17 causal learning loop
-
-入口：`#experiment`、`#evidence-ops`
-
-P17 告訴你「哪個 leak 值得修」，P10 randomized N-of-1 告訴你「對你本人哪個 intervention 比較有效」。P22 把兩者安全接起來：
-
-- decision-family target 必須在 experiment preregistration 之前/當下登記
-- experiment 必須真的通過 P10 sample/block/washout gates，得到 `randomized-n-of-1` + winning arm
-- 只有 target family 的 prescription 會得到 `recommendedIntervention`
-- 原本的 real-game leak priority 不被實驗改寫
-- solver truth 不被實驗改寫
-- claim 只限這位玩家的 preregistered randomized comparison，不外推 population
-
-## P23 · Portable Truth Workspace
-
-入口：`#evidence-ops`
-
-大型 v3/v4 truth 不再依賴一般 JSON backup。P23 提供 NDJSON workspace：
+P24 把 P19 的 target universe 轉成真正的 acquisition backlog：
 
 ```text
-workspace header
-v3/v4 pack manifests
-v3 nodes (stream)
-v4 nodes (stream)
-workspace footer + counts
+actual v2/v3/v4 coverage
++ versioned target envelope
++ solver source inventory
+  ↓
+license gate + content-hash dedupe
+  ↓
+missing-context / insufficient-combos / insufficient-full-EV / ambiguous gaps
+  ↓
+installable candidate sources
 ```
 
-- export 透過 `iterateNodes()` streaming，不建立 combined node array。
-- 支援 caller-owned writable stream；Chrome File System Access 可直接串流到檔案。
-- import 建議先跑完整 `validateOnly`，再重開 file stream 做 additive restore。
-- restore 永遠走 immutable node checks，不清空或覆寫現有 truth。
-- footer counts 必須與實際 streamed records 一致；截斷/錯誤 workspace 不會被宣稱 valid。
+Source inventory 必須有 solver/version/reference/content hash/license status。`unknown` license 只能列 inventory，不會被推薦安裝。P24 **不會憑空產生 solver truth**；實際 coverage 仍取決於使用者合法取得並匯入的資料。
+
+## P25 · Multi-site Hand History
+
+入口：`#hand-history`、`#production-intelligence`
+
+支援同一條 conservative normalization / replay path：
+
+- PokerStars
+- GGPoker
+- Winamax
+- WPN
+- PartyPoker
+- iPoker
+
+External adapter 只正規化可證明的 header / table / button / seat / action syntax，並保留站點 provenance。正規化後仍走同一套 P18 integrity、v2/v3/v4 grading、population、tournament join 與 History pipeline；不能證明的 geometry 保持 Unknown/Unsupported。
+
+## P26 · Tournament Evidence Providers
+
+入口：`#production-intelligence`
+
+Provider descriptor 有 identity/version/kind/reference/methodology/capabilities。Range response 必須對 exact hand + Hero cards + board；FGS response 必須對 exact tree edge set。
+
+```text
+0 provider matches  → unavailable
+1 provider matches  → P20 evidence validation
+>1 providers match  → ambiguous
+explicit selection  → selected provider only
+```
+
+Array order / provider priority 永遠不偷偷決定 material tournament input。
+
+## P27 · Exploit Candidate Discovery
+
+入口：`#production-intelligence`
+
+P27 可以**找 candidate，但不能跳過 validation**：
+
+```text
+verified-solver baseline
++ P16 validated population deviation
++ explicit response model (sample ≥ 1000)
++ bounded search constraints
+  ↓
+derived-interpolation proposal
+  ↓
+independent paired holdout (different reference)
+  ↓
+N ≥ 200 + practical gain + positive 95% lower bound?
+  ├─ no  → remains derived proposal
+  └─ yes → promote exact proposal to population-exploit
+```
+
+預設每手最大 frequency shift 0.20，hard limit 0.50。Training-model EV 正值本身不構成 exploit truth。
+
+## P28 · Personal Intervention Model
+
+入口：`#production-intelligence`
+
+P22 是單次 randomized evidence；P28 只從**重複**實驗學個人化 intervention：
+
+```text
+decisionFamilyId + primary metric + intervention
+  ↓
+dedupe experiment key
+  ↓
+≥ 2 distinct randomized experiments
+  ↓
+personal intervention recommendation
+```
+
+不同 primary metric 不會合併成一個 effect。P28 只影響「這個 leak 用什麼方法練」，不改 P17 leak priority、solver truth 或 population claim。
+
+## P29 · Full Workspace / Cross-device Revision
+
+入口：`#production-intelligence`
+
+P29 把 `poker_*` 可攜 local state 與 P23 v3/v4 truth 放進同一個 streaming full workspace：
+
+```text
+full header
+portable local-state
+embedded P23 truth stream
+full footer + rolling hash
+```
+
+- API key / token / secret / password / credential / authorization 類 key 永遠排除。
+- import 先驗證 full envelope，再驗證 embedded P23 truth。
+- local state conflict 預設不 overwrite。
+- truth 仍 additive + immutable。
+- File System Access 可直接 streaming export，大型 truth 不需 combined node array。
+- Cross-device revision 只在 direct ancestry 時 fast-forward；分叉一律 `conflict`，不做 silent last-write-wins。
+
+## P30 · Production Reliability
+
+入口：`#production-intelligence`，`#hand-history` 會寫本機 content-free events。
+
+只記：operation / outcome / machine reason / short dimension / duration / numeric value。**不記 raw HH、cards、player names、chat、token、credential 或 free-form payload。**
+
+30-day report 提供：
+
+- HH parse / reconstruct success & Unsupported rate
+- truth lookup Unknown rate + p50/p95
+- IndexedDB / workspace / sync / experiment failures
+- storage quota signal
+- top machine reason codes
+- actionable engineering priorities
+
+如果 truth Unknown 過高，建議回 P24/P19 補資料，**不是放寬 exact matcher**。
+
+完整 P24–P30 契約：[`docs/PRODUCTION_INTELLIGENCE_LOOP.md`](docs/PRODUCTION_INTELLIGENCE_LOOP.md)
 
 ## Truth hierarchy
 
@@ -182,31 +194,34 @@ verified-solver
 
 - PokerBench 是 optimal decision labels，不是完整 mixed-frequency/per-action-EV surface。
 - Raw HH 是 observation，不是 solver truth。
-- straddle/dead-blind/side-pot 只有 material geometry 被 exact-key 表示後才允許相符 truth grading。
-- post-decision run-it-twice/cash-out 不會污染較早決策；settlement 後仍有 decision 則 Unsupported。
-- v3 是 exact heads-up；v4 是 exact multiway；兩者不互相做 approximate fallback。
-- P19 coverage 沒有 explicit target universe 就沒有虛構百分比分母。
+- v3 是 exact heads-up；v4 是 exact multiway；兩者不 approximate fallback。
+- P19 沒有 explicit target universe 就沒有 coverage 百分比分母。
+- P24 source advertisement 不等於 verified truth；unknown license 不安裝。
+- P25 site adapter 不降低 P18 exact geometry 規則。
+- P26 multiple provider matches 是 Ambiguous，不偷選。
 - Monte Carlo tournament equity 是 simulation evidence，不是 exact-math。
-- P16 validated deviation 不生成 exploit；P21 只驗證外部 candidate。
-- P17 observational trend 不冒充 causal；P22 只接受 preregistered P10 randomized evidence。
+- P27 discovered proposal 先是 derived；只有獨立 holdout 通過才 promotion。
+- P17 observational trend 不冒充 causal；P28 只聚合同 family + 同 primary metric 的 repeated randomized evidence。
+- P29 divergent workspace revision 不 last-write-wins。
+- P30 telemetry 不改 truth tier，也不保存 raw poker/user content。
 
 完整邊界：[`docs/DATA_TRUST_CONTRACT.md`](docs/DATA_TRUST_CONTRACT.md)  
-閉環架構：[`docs/CLOSED_LOOP_ARCHITECTURE.md`](docs/CLOSED_LOOP_ARCHITECTURE.md)  
-P18–P23：[`docs/REAL_WORLD_EVIDENCE_LOOP.md`](docs/REAL_WORLD_EVIDENCE_LOOP.md)
+閉環架構：[`docs/CLOSED_LOOP_ARCHITECTURE.md`](docs/CLOSED_LOOP_ARCHITECTURE.md)
 
 ## 主要入口
 
 ```text
-#hand-history          HH exposure + exact geometry audit + v2/v3/v4 strict grading
-#postflop-truth        indexed v3 truth + legacy migration + explicit tournament metadata
-#production-ops        P13–P17 scale/multiway/tournament/population/longitudinal operations
-#evidence-ops          P18–P23 geometry/coverage/tournament/exploit/causal/workspace operations
-#truth-ops             v2 solver coverage / population cohort / reviewed explanation
-#strategy-surface      Strategy Profile v2 inspection/import
-#solver-corpus         PokerBench training corpus
-#effectiveness         observational before/training/follow-up
-#experiment            preregistered randomized N-of-1
-#tournament-context    HH ↔ explicit ICM/PKO/FGS state join
+#hand-history             P25 multi-site HH → P18 geometry → v2/v3/v4 strict grading
+#postflop-truth           indexed v3 truth + legacy migration
+#production-ops           P13–P17 scale/multiway/tournament/population/longitudinal operations
+#evidence-ops             P18–P23 geometry/coverage/tournament/exploit validation/causal/truth workspace
+#production-intelligence  P24–P30 acquisition/providers/candidate discovery/personal model/full workspace/reliability
+#truth-ops                v2 solver coverage / population cohort / reviewed explanation
+#strategy-surface         Strategy Profile v2 inspection/import
+#solver-corpus            PokerBench training corpus
+#effectiveness            observational before/training/follow-up
+#experiment               preregistered randomized N-of-1
+#tournament-context       HH ↔ explicit ICM/PKO/FGS state join
 #icm-workbench
 #fgs-workbench
 #exploit-workbench
@@ -227,15 +242,17 @@ npm run e2e:browser
 npm run build
 ```
 
-PR merge 前必須讓**最新 head**的 GitHub Actions 全綠。
+PR merge 前必須讓**最新 exact head**的 GitHub Actions 全綠。
 
 ## 資料與隱私
 
 - Training history / HH-derived evidence / small metadata registries 預設在 browser local storage。
 - v3/v4 大型 postflop truth 使用 browser IndexedDB。
-- P23 workspace 讓大型 truth 可由使用者明確 export/import；不會自動上傳。
+- P23 truth workspace 與 P29 full workspace 都是使用者明確 export/import；不會自動上傳。
+- P29 永遠排除 credential-like localStorage keys。
 - 原始 HH 不會自動上傳第三方。
 - measured-local-cohort 保存 aggregate counts + hand-id hash，不冒充公開 population dataset。
+- P30 reliability telemetry 是本機 machine labels / numeric metrics，不含 raw HH/cards/player names/secrets。
 - 外部 solver / population data 的授權與 provenance 必須由匯入來源本身成立；repo 不製造缺失資料。
-- 既有遠端同步仍使用使用者自己的 HTTPS endpoint 與 AES-GCM 流程。
+- 既有遠端同步仍使用使用者自己的 HTTPS endpoint 與 AES-GCM 流程；P29 revision model 不允許 divergent last-write-wins。
 - GitHub Pages 主訓練不需要 API key；Gemini server mode 的 key 僅留在 server environment。
