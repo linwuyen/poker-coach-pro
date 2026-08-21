@@ -1,6 +1,7 @@
 import { Position } from '../strategy-engine-v2/types';
 import { PostflopAction, PostflopLineAction, PostflopStreet, PostflopTruthQuery } from '../strategy-engine-v3';
 import { ParsedHandAction, ParsedHandHistory } from './handHistory';
+import { forcedBetContextKey, nonstandardForcedContributionMap, nonstandardForcedStreetCommitmentMap } from './handHistoryGeometry';
 
 export interface ObservedPostflopDecision {
   handId: string;
@@ -82,7 +83,6 @@ function lineAction(hand: ParsedHandHistory, action: ParsedHandAction, potBefore
   return {
     actor,
     action: kind,
-    // Preflop truth uses raise-to BB. Postflop truth uses pot geometry.
     sizePot: !isPreflop && aggressive && potBefore > 0 ? round(added / potBefore) : undefined,
     toBB: isPreflop && action.toBB !== undefined ? round(action.toBB) : undefined,
   };
@@ -117,20 +117,20 @@ function remainingStackBB(hand: ParsedHandHistory, player: string, state: Replay
   return Math.max(0, starting - (state.contributedTotal.get(player) || 0));
 }
 
-/**
- * Replays the observed hand to each Hero postflop decision. Automatic v3 grading is deliberately
- * heads-up only: multiway states remain exposure evidence until a future schema models all ranges.
- */
+/** Replays each exact Hero heads-up postflop decision, including P18 non-standard forced money. */
 export function extractObservedPostflopDecisions(hand: ParsedHandHistory, options: { rakePercent?: number; rakeCapBB?: number } = {}): ObservedPostflopDecision[] {
   if (!hand.heroName || !hand.holeCards || hand.holeCards.length !== 2 || !hand.heroPosition) return [];
   if (hand.tableSize !== 6 && hand.tableSize !== 9) return [];
   const heroPosition = positionForPlayer(hand, hand.heroName);
   if (!heroPosition) return [];
+  const forcedTotal = nonstandardForcedContributionMap(hand);
+  const forcedLive = nonstandardForcedStreetCommitmentMap(hand);
+  const forcedBetKey = forcedBetContextKey(hand);
   const state: ReplayState = {
-    potBB: 0,
+    potBB: [...forcedTotal.values()].reduce((sum, value) => sum + value, 0),
     street: 'Preflop',
-    committedStreet: new Map(),
-    contributedTotal: new Map(),
+    committedStreet: new Map(forcedLive),
+    contributedTotal: new Map(forcedTotal),
     active: new Set(hand.players.map(player => player.name)),
     preflopLine: [],
     streetLine: [],
@@ -178,6 +178,7 @@ export function extractObservedPostflopDecisions(hand: ParsedHandHistory, option
             lastAggressorPosition: state.lastAggressorPosition,
             rakePercent: hand.format === 'Cash' ? options.rakePercent : undefined,
             rakeCapBB: hand.format === 'Cash' ? options.rakeCapBB : undefined,
+            forcedBetKey,
           },
         });
       }
