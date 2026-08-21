@@ -11,12 +11,14 @@ export function canonicalMultiwayContext(input: MultiwayTruthContext): MultiwayT
     heroRemainingStackBB:round(input.heroRemainingStackBB), potBB:round(input.potBB), spr:round(input.spr), toCallBB:round(input.toCallBB),
     board:canonicalBoard(input.board), preflopLine:canonicalLine(input.preflopLine), streetLine:canonicalLine(input.streetLine),
     opponents:[...(input.opponents||[])].map(item=>({position:item.position,remainingStackBB:round(item.remainingStackBB)})).sort((a,b)=>POSITION_ORDER.indexOf(a.position)-POSITION_ORDER.indexOf(b.position)),
+    forcedBetKey:input.forcedBetKey||undefined,
+    potStructureKey:input.potStructureKey||undefined,
   };
 }
 
 export function multiwayContextKey(input: MultiwayTruthContext): string {
   const c = canonicalMultiwayContext(input);
-  return JSON.stringify([c.format,c.tableSize,c.street,c.heroPosition,c.heroRemainingStackBB,c.opponents,c.playersInHand,c.potBB,c.spr,c.toCallBB,c.board,c.preflopLine,c.streetLine,c.lastAggressorPosition||'-',c.rakePercent??'-',c.rakeCapBB??'-']);
+  return JSON.stringify([c.format,c.tableSize,c.street,c.heroPosition,c.heroRemainingStackBB,c.opponents,c.playersInHand,c.potBB,c.spr,c.toCallBB,c.board,c.preflopLine,c.streetLine,c.lastAggressorPosition||'-',c.rakePercent??'-',c.rakeCapBB??'-',c.forcedBetKey||'-',c.potStructureKey||'-']);
 }
 
 function completeQuery(query: MultiwayTruthQuery): MultiwayTruthContext | undefined {
