@@ -78,11 +78,13 @@ function lineAction(hand: ParsedHandHistory, action: ParsedHandAction, potBefore
   if (!actor || !kind || action.type === 'post') return undefined;
   const added = amountAdded(action, committedBefore);
   const aggressive = kind === 'bet' || kind === 'raise' || kind === 'allIn';
+  const isPreflop = action.street === 'Preflop';
   return {
     actor,
     action: kind,
-    sizePot: aggressive && potBefore > 0 ? round(added / potBefore) : undefined,
-    toBB: action.street === 'Preflop' && action.toBB !== undefined ? round(action.toBB) : undefined,
+    // Preflop truth uses raise-to BB. Postflop truth uses pot geometry.
+    sizePot: !isPreflop && aggressive && potBefore > 0 ? round(added / potBefore) : undefined,
+    toBB: isPreflop && action.toBB !== undefined ? round(action.toBB) : undefined,
   };
 }
 
