@@ -69,6 +69,27 @@ function profileBoost(row: PokerBenchRow, profile?: PlayerProfile): number {
   return boost;
 }
 
+/**
+ * Route training toward situations where exact HH↔solver joins observed real cash regret.
+ * This is a situation-level priority signal only; it never relabels a PokerBench row as the same solver node.
+ * Tournament utility is kept on its own P9-D plane because PokerBench rows do not carry compatible tournament utility units.
+ */
+export function verifiedRealGameLeakBoost(row: PokerBenchRow, history: HistoryItem[]): number {
+  const targetStreet = row.split === 'preflop' ? 'Preflop' : row.evaluationAt;
+  const relevant = history.filter(item => item.trainingType === 'real-hand')
+    .filter(item => item.truthTier === 'verified-solver')
+    .filter(item => item.gameFormat === 'Cash' && item.utilityUnit === 'bb' && item.utilityModel === 'cash-chip-ev')
+    .filter(item => typeof item.evLossBB === 'number' && item.evLossBB > 0)
+    .filter(item => item.position?.toUpperCase() === row.heroPosition.toUpperCase())
+    .filter(item => item.street === targetStreet);
+  if (!relevant.length) return 1;
+  const pressure = relevant.reduce((sum, item) => {
+    const frequency = typeof item.spotFrequencyPer100Hands === 'number' && item.spotFrequencyPer100Hands > 0 ? item.spotFrequencyPer100Hands : 1;
+    return sum + (item.evLossBB || 0) * frequency;
+  }, 0);
+  return 1 + Math.min(2, pressure / 5);
+}
+
 function rowPriority(
   row: PokerBenchRow,
   history: HistoryItem[],
@@ -92,7 +113,8 @@ function rowPriority(
   const repeatPenalty = recent && !due ? 0.25 : 1;
   const difficultyFit = 1 + Math.max(0, 4 - curriculum) * 0.05;
   const jitter = 0.85 + Math.min(0.999999, Math.max(0, random())) * 0.3;
-  return (0.8 + weakness) * novelty * correction * dueBoost * repeatPenalty * difficultyFit * profileBoost(row, profile) * jitter;
+  return (0.8 + weakness) * novelty * correction * dueBoost * repeatPenalty * difficultyFit
+    * profileBoost(row, profile) * verifiedRealGameLeakBoost(row, history) * jitter;
 }
 
 function eligibleTrainingRows(

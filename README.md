@@ -1,157 +1,138 @@
 # ♠️ 想高龍了 德撲訓練機
 
-**v6 Closed-loop Decision Tutor · Strategy Engine v2**
+**History v6 · Closed-loop Decision Tutor · Strategy Engine v2 · P0→P11**
 
-繁體中文德州撲克決策學習系統。目標不是把「刷題數」做大，而是建立可追溯的改善閉環：
+繁體中文德州撲克決策學習系統。North star 不是刷題數，而是降低未來 decision loss：
 
-> 真實牌局 exposure → 找高價值漏點 → 教學 / Solver transfer → 延遲提取 → Holdout → 回到真實牌局驗證
+> 真實牌局 exposure → exact truth join → 找高價值漏點 → 教學 / Solver transfer → 延遲提取 → Holdout → randomized N-of-1 / 實戰再驗證
 
 線上版本：**https://linwuyen.github.io/poker-coach-pro/**
 
-## 現在的 production baseline
+## Production baseline
 
 - Production source：`main`
 - Web：GitHub Pages / PWA
 - Runtime：Node.js 24+ / npm 11
-- History：schema **v6**，自動讀取並遷移 v5/v4/v3/v2
-- Teaching bank：**152 個 genuine decision families**
-  - 88 個原始人工 curated families
-  - 64 個 P6 exact-math semantic families
-- Cosmetic retrieval instances：64 個 suit-isomorphic variants
+- History：schema **v6**，讀取並遷移 v5/v4/v3/v2
+- Teaching bank：**152 genuine decision families**
+  - 88 原始人工 curated families
+  - 64 P6 exact-math semantic families
+- Cosmetic retrieval：64 suit-isomorphic instances
 - Production scenario instances：**216**
-- P2 generated isomorphic transfer pool：528 nodes，全部共享 canonical mastery family，不膨脹知識節點
+- P2 generated isomorphic transfer pool：528 nodes，共享 canonical mastery family
 - PokerBench pinned corpus：1,000 Preflop + 10,000 Postflop solver-labelled rows
+- Full solver truth：**外部 immutable Strategy Profile v2 surfaces**；coverage 依實際已匯入 verified data 計算，不宣稱 repo 內建完整 EV database
 
-## P0 → P8 已完成能力
+## 已完成能力
 
-### P0 — 隨機但不亂選
+### P0–P4 · 教學、隨機化、transfer、canonical mastery、Solver Daily
 
-Daily planner 保留 Expected Learning Value / spaced review，加入 weighted sampling、recent-family repeat penalty、上一題首題迴避與 profile anchor。到期複習永遠不為了「看起來隨機」被丟掉。
+- Daily：Expected Learning Value + spaced review + weighted sampling + repeat penalty + profile anchor。
+- V12 progressive disclosure：Confidence → Action → 10 秒懂 → Why → Transfer/Boundary → Advanced evidence。
+- Suit-isomorphism 只當 retrieval instance，不膨脹 knowledge node。
+- PokerBench semantic counterfactual 只有在單一可觀測維度改變且 solver label 翻轉時成立。
+- Daily 預設：Curated repair → semantic counterfactual → unseen solver generalization。
+- PokerBench Training / Sibling / Holdout 分區隔離；Daily 永不使用 Sibling/Holdout。
 
-### P1 — Progressive disclosure 教學
+### P5–P8 · Closed-loop data foundation
 
-V12 主教學流程：
+- **P5-A HH ingestion**：PokerStars / GGPoker text HH → hand/source/format/blinds/table/Hero/position/stack/street/actions/board/exposure；duplicate hand ID 防重複。Raw HH 本身不判 GTO。
+- **P5-B Full Solver Surface**：immutable Strategy Profile v2，支援 action frequencies、mixed strategy、optional per-action EV、action sizes、solver provenance/content hash。沒有 EV 就不算 EV regret。
+- **P5-C Effectiveness**：Baseline / Training / Follow-up observational report，分離 holdout、transfer、delayed retention、verified real-game leak。
+- **P5-D Real Chrome E2E**：production build + headless Chrome + CDP，不額外依賴 Playwright/Cypress。
+- **P6 Semantic teaching bank**：64 個可重算 exact-math decision-boundary families，讓 genuine families 總數到 152。
+- **P7 Population exploit profile**：只有 provenance + methodology + population + generatedAt + sampleSize≥1000 + explicit exploit range 才能標 `population-exploit`。
+- **P8 FGS**：explicit finite future-state tree + exact ICM leaves + probability-weighted backward induction；不自行猜 future action probability。
 
-1. Confidence
-2. Action
-3. 10 秒懂
-4. Why / conceptual error
-5. Transfer / boundary check
-6. Advanced evidence 按需展開
+### P9-A · Full Solver Truth Coverage
 
-V11 保留可 rollback。
+入口：`#truth-ops`、`#strategy-surface`
 
-### P2 — 安全 transfer variants
+- 對已匯入 profiles 建立 verified coverage index：contexts / frequency hands / mixed hands / EV hands / full per-action-EV hands。
+- 自動 real-game grading 使用比互動查詢更嚴格的 matcher：format / table / spot / Hero/Villain position / stack / ante / open size / rake / cap / ICM model 必須完整 exact-match。
+- 只有 `verified-solver` 且 chosen action 真有 per-action EV 時才產生 reportable regret。
+- **這完成的是 full-truth ingestion/index/matching 能力，不是憑空附送一份完整 solver database。**
 
-Suit-isomorphism 只改花色身份，不改 strategic truth。這些題是 retrieval instance，不是新的 knowledge node。
+### P9-B · Real Population Cohort Registry
 
-### P3 — 真正 semantic counterfactual + canonical mastery
+入口：`#truth-ops`
 
-- `decisionFamilyId` 把 concrete question instance 與 knowledge node 分離。
-- 舊 `teach-*-iso-*` / `gen-*-iso-*` history 會收斂回 canonical family。
-- PokerBench semantic pairs 只有在**一個可觀測語義維度改變且 solver label 真正翻轉**時才成立。
-- A/B 都鎖定後才 reveal，避免第一題答案污染第二題。
+Population cohort 會保存：
 
-### P4 — Solver-backed Daily curriculum
+- site / stake / game / table size / named population
+- observedFrom / observedTo / generatedAt
+- sampleSize / reference / methodology
+- 每個 metric 的 raw numerator / denominator / rate
+- 可選 linked exploit profile keys
 
-Today 的主流程：
+`id@version` immutable；rate 必須和 numerator/denominator 一致。只有「72%」沒有 raw counts/provenance 的漂亮數字不算 evidence-backed cohort。
 
-> Curated repair → Semantic counterfactual → Unseen solver generalization
-
-PokerBench Training / Sibling / Holdout 分區保持隔離；Daily 只使用 Training partition。Solver corpus 無法載入時，降級為完整 curated plan，不以 heuristic 冒充 solver。
-
-### P5-A — Real Hand History ingestion
-
-支援貼上或載入 PokerStars / GGPoker text hand histories：
-
-- Hand ID / source
-- Cash / MTT
-- blinds / table size
-- Hero / seat / position / stack BB
-- street / actions / action depth
-- board
-- real spot exposure frequency
-- duplicate hand-id protection
-
-匯入後寫成 `trainingType: real-hand` 的 v6 evidence。**純 hand history 只證明 exposure 與實際動作；沒有 solver/exact regret 時，不會自行判斷你打錯，也不會製造 EV loss。**
+### P9-C · HH → Truth → Leak → Daily
 
 入口：`#hand-history`
 
-### P5-B — Full Solver Surface import
+1. Raw HH 先照常寫 exposure evidence。
+2. Preflop decision 只有在唯一 exact verified Strategy Profile v2 node 對上時才進 grading。
+3. Chosen action 必須有真實 per-action EV 才寫 `evLossBB`。
+4. Verified real-game regret 會提升相同 position/street 的 PokerBench **Training** priority。
+5. 這只是 situation-level routing，不宣稱 PokerBench row 等於外部 solver node；Sibling/Holdout 完全不變。
 
-Strategy Engine 可匯入 immutable solver surface JSON：
+目前 automated HH→solver grading 明確只涵蓋 Strategy Engine v2 能完整表達的 **preflop nodes**。Postflop board/action tree 尚未有等價完整 context model，因此保持 Unsupported，不拿 preflop truth 硬套。
 
-- action frequencies
-- mixed strategy
-- optional per-action EV
-- action sizes
-- solver name / version / reference / generatedAt
-- content hash + immutable `id@version`
+Cash solver profile 若有 rake/rake-cap 維度，HH 匯入頁必須由使用者明確提供，留白就不允許 exact grading。
 
-有 frequency 才算 Strategy Distance；有真實 per-action EV 才算 EV regret。PokerBench 公開資料只有 optimal decision labels，因此仍不會被當成完整 EV surface。
+### P9-D · Tournament HH → ICM / PKO / FGS
 
-入口：`#strategy-surface`
+入口：`#tournament-context`
 
-### P5-C — Learning effectiveness
+一般 MTT HH 只當 `handId` join key。Tournament Context Envelope 必須另外明確提供：
 
-固定 Baseline / Training / Follow-up 時窗，比較：
+- all player IDs / stacks
+- payouts + utility unit
+- Hero / chosen action
+- ICM/PKO：villain、amount at risk、showdown equity；PKO 再提供 bounty
+- FGS：完整 action trees + 每條 branch probability
+- reference / methodology / generatedAt
 
-- Holdout accuracy
-- Transfer accuracy
-- Delayed retention
-- 已驗證的 real-game frequency-weighted cash leak
+輸出寫成 `exact-math` tournament utility evidence。結果語義永遠是 **conditional on supplied tournament state/tree**。
 
-報表永遠標記為 **observational before/after evidence**；不是隨機對照試驗，不把相關性冒充因果。
+### P9-E · Human-reviewed Solver Teaching
 
-入口：`#effectiveness`
+入口：`#truth-ops`
 
-### P5-D — Real Chrome E2E
+Reviewed Explanation Registry 和 solver truth 分開：
 
-CI 除了 TypeScript / validation / unit tests / production build，還會啟動 production Vite preview 與真正 headless Chrome，透過 Chrome DevTools Protocol 執行：
+- target decisionFamily 或 profile+hand
+- why
+- explicit boundary conditions
+- common mistake
+- contrastive cue
+- author / reviewer(s) / reviewedAt / reference / version
 
-> 開頁 → HH importer → controlled textarea input → 匯入 → History v6 localStorage assertion
+沒有 review provenance 的文字不能進 registry；human interpretation 不會被標成 raw solver output。
 
-不額外加入 Playwright/Cypress 依賴。
+### P10 · Preregistered Randomized N-of-1
 
-### P6 — 64 個真正 semantic exact-math families
+入口：`#experiment`
 
-新增 32 個 Pot Odds Call/Fold 邊界 + 32 個 Pure Bluff break-even 邊界。每題答案都可從題目給定的 pot / call cost / equity / fold rate 重新算出，不是把舊答案貼到改過的 stack/position/board 上。
+- balanced deterministic random block assignment
+- preregistration 必須早於第一 block
+- explicit primary metric
+- block-start washout
+- 每個 arm 至少兩個有 evidence blocks
+- minimum sample gate
+- 支援 holdout accuracy / transfer accuracy / delayed retention / verified real-game EV loss
 
-因此現在是 **152 個 genuine decision families**，而非「88 題 + 64 換花色」假裝 152 個概念。
+不足門檻顯示 `Insufficient`，不選 winner。通過時只宣稱「這位玩家在這個 preregistered randomized N-of-1 experiment 中」的比較，不外推成 population-wide causal claim。
 
-### P7 — Population exploit evidence database
+### P11 · Browser E2E + Performance Hardening
 
-Heuristic archetype overlay 與 population evidence 分離。
+- 所有 heavyweight labs 改為 route-level `React.lazy` chunks，避免首屏把 solver/analysis/tournament 全部載入同一 bundle。
+- Real Chrome production smoke 現在走完整 critical journey：
 
-只有外部匯入 profile 同時具備：
+> Today → HH controlled input + History v6 persistence → Truth Ops → Solver Surface → Effectiveness → Tournament Join → FGS → randomized N-of-1 persistence → Today
 
-- reference
-- methodology
-- population label
-- generatedAt
-- **sampleSize ≥ 1,000**
-- explicit exploit ranges
-
-才能標成 `population-exploit`。否則維持 `heuristic-estimate`。若 population profile 帶 EV，還必須額外聲明 EV methodology。
-
-入口：`#exploit-workbench`
-
-### P8 — Finite Game Simulation
-
-FGS 使用**明確提供的未來 state tree**：
-
-- 每個 child edge 必須有 probability
-- 同一父節點的 probability 必須加總為 1
-- eliminated player 仍以 stack 0 留在 state
-- 每個 leaf 跑 exact ICM
-- 再依 branch probabilities backward induction
-- 可比較多個 action trees 的 Hero $EV
-
-系統不自行猜未來對手 action frequency；結果的語義是：
-
-> **conditional on the supplied future game tree**
-
-入口：`#fgs-workbench`
+Lazy chunk 本身載不進來就會直接讓 E2E 失敗。
 
 ## Truth hierarchy
 
@@ -164,36 +145,48 @@ verified-solver
   > heuristic-estimate
 ```
 
-資料可信度是產品契約：缺資料時顯示 unavailable / unsupported，而不是補一個漂亮但不存在的數字。
+核心規則：**fail toward Unknown, not fabricated precision**。
 
-更完整的資料邊界見 [`docs/DATA_TRUST_CONTRACT.md`](docs/DATA_TRUST_CONTRACT.md)。閉環架構見 [`docs/CLOSED_LOOP_ARCHITECTURE.md`](docs/CLOSED_LOOP_ARCHITECTURE.md)。
+- PokerBench 公開資料是 optimal decision labels，不是完整 mixed-frequency/per-action-EV surface。
+- Raw HH 是 observation，不是 solver truth。
+- Population rate 沒有 provenance/raw counts 不升級。
+- Tournament payout/state/FGS probability 不從普通 HH 猜。
+- Reviewed explanation 是 human interpretation，不是 raw solver rationale。
 
-## Tournament models
+完整邊界：[`docs/DATA_TRUST_CONTRACT.md`](docs/DATA_TRUST_CONTRACT.md)  
+閉環架構：[`docs/CLOSED_LOOP_ARCHITECTURE.md`](docs/CLOSED_LOOP_ARCHITECTURE.md)
 
-- ICM：exact recursive payout equity
-- PKO：ICM + 可立即取得的 bounty EV
-- Satellite：等值席位 payout
-- FGS：explicit finite future-state tree + exact ICM leaves
+## 主要入口
 
-FGS 不等於「自動求出 Nash future game tree」。未來 branch probability / state transition 必須由使用者、外部 simulator 或其他可追溯模型提供。
+```text
+#hand-history          HH exposure + strict verified leak grading
+#truth-ops             solver coverage / population cohort / reviewed explanation
+#strategy-surface      full Strategy Profile v2 inspection/import
+#solver-corpus         PokerBench training corpus
+#semantic-counterfactual
+#effectiveness         observational before/training/follow-up
+#experiment            preregistered randomized N-of-1
+#tournament-context    HH ↔ explicit ICM/PKO/FGS state join
+#icm-workbench
+#fgs-workbench
+#exploit-workbench
+```
 
 ## 品質閘門
 
 ```bash
 npm ci
-npm run audit        # high 以上 vulnerability 不接受
+npm run audit        # high+ vulnerability 不接受
 npm run lint         # tsc --noEmit
-npm run validate     # production scenario + range contracts
-npm test             # learning / solver / HH / FGS / scheduler / strategy tests
+npm run validate     # scenario + range contracts
+npm test             # learning / solver / HH / population / tournament / experiment / scheduler tests
 npm run check        # lint + validate + test
-npm run build:web    # production GitHub Pages build
-npm run e2e:browser  # real Chrome production smoke
+npm run build:web    # production GitHub Pages build + lazy chunks
+npm run e2e:browser  # real Chrome critical-route smoke
 npm run build        # web + Node server bundle
 ```
 
-Pull Request 必須先通過 GitHub Actions。正式部署只有一條路：
-
-> merge `main` → validate / test / build → GitHub Pages
+PR merge 前必須讓最新 head 的 GitHub Actions 全綠。
 
 ## 本地開發
 
@@ -206,11 +199,7 @@ npm run dev
 
 ## 資料與隱私
 
-- Training history / imported HH-derived evidence 預設存在瀏覽器 localStorage。
-- JSON backup 支援完整匯出 / 匯入。
-- 遠端同步若啟用，仍使用使用者自己的 HTTPS endpoint 與既有 AES-GCM 流程。
-- Hand History parser 不會把原始 HH 自動上傳到第三方服務。
-
-## AI 分析
-
-GitHub Pages 主訓練不需要 API key。Gemini server mode 僅在本地 Node server `/api` 使用，key 留在 server environment，不進前端 bundle。
+- Training history / HH-derived evidence / imported truth registries 預設存在瀏覽器 localStorage。
+- 原始 HH 不會自動上傳第三方。
+- JSON backup 支援完整 History 匯出/匯入；既有遠端同步仍使用使用者自己的 HTTPS endpoint 與 AES-GCM 流程。
+- GitHub Pages 主訓練不需要 API key；Gemini server mode 的 key 僅留在 server environment。

@@ -32,9 +32,7 @@ function browserCommand() {
 async function waitForChrome(child, stderr, attempts = 160) {
   const url = `http://${HOST}:${DEBUG_PORT}/json/version`;
   for (let index = 0; index < attempts; index += 1) {
-    if (child.exitCode !== null) {
-      throw new Error(`Chrome exited before CDP was ready (exit=${child.exitCode}). ${stderr().trim()}`);
-    }
+    if (child.exitCode !== null) throw new Error(`Chrome exited before CDP was ready (exit=${child.exitCode}). ${stderr().trim()}`);
     try { const response = await fetch(url); if (response.ok) return response; } catch {}
     await sleep(125);
   }
@@ -72,12 +70,17 @@ async function evaluate(send, expression, returnByValue = true) {
   return result.result?.value;
 }
 
-async function waitFor(send, expression, description, attempts = 80) {
+async function waitFor(send, expression, description, attempts = 120) {
   for (let index = 0; index < attempts; index += 1) {
     if (await evaluate(send, expression)) return;
     await sleep(125);
   }
   throw new Error(`Timed out waiting for ${description}`);
+}
+
+async function navigateRoute(send, hash, expectedText) {
+  await evaluate(send, `location.hash = ${JSON.stringify(hash)}; true`);
+  await waitFor(send, `!document.querySelector('[data-testid="route-loading"]') && document.body.textContent.includes(${JSON.stringify(expectedText)})`, `${hash || 'root'} lazy route: ${expectedText}`);
 }
 
 async function terminate(child) {
@@ -101,8 +104,6 @@ let chrome;
 let cdp;
 let chromeStderr = '';
 try {
-  // Spawn Vite directly instead of `npm exec vite preview`. The npm wrapper creates a grandchild
-  // that can outlive its parent and keep CI pipes open after the assertions have passed.
   preview = spawn(process.execPath, [VITE_BIN, 'preview', '--host', HOST, '--port', String(PREVIEW_PORT)], { stdio: ['ignore', 'pipe', 'pipe'] });
   await waitHttp(BASE_URL);
 
@@ -129,9 +130,10 @@ try {
   await cdp.send('Runtime.enable');
   await cdp.send('Page.enable');
   await waitFor(cdp.send, `document.readyState === 'complete'`, 'initial page load');
+  await waitFor(cdp.send, `document.body.textContent.includes('今天')`, 'Today shell');
 
-  await evaluate(cdp.send, `location.hash = '#hand-history'; true`);
-  await waitFor(cdp.send, `Boolean(document.querySelector('[data-testid="hh-text"]'))`, 'Hand History importer');
+  // P9-C: exercise a real controlled React input and persistence, not just route rendering.
+  await navigateRoute(cdp.send, '#hand-history', 'Real-game truth join');
   await evaluate(cdp.send, `(() => {
     const textarea = document.querySelector('[data-testid="hh-text"]');
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
@@ -148,7 +150,19 @@ try {
   }
   const ids = await evaluate(cdp.send, `JSON.parse(localStorage.getItem('poker_imported_hand_ids_v1') || '[]')`);
   if (!ids.includes('999000111222')) throw new Error(`Imported hand-id assertion failed: ${JSON.stringify(ids)}`);
-  console.log('Browser E2E PASS: production build → HH route → controlled input → import → History v6 persistence.');
+
+  // P9/P10/P11: every heavyweight route must load its split chunk successfully in production.
+  await navigateRoute(cdp.send, '#truth-ops', 'Truth Operations');
+  await navigateRoute(cdp.send, '#strategy-surface', 'Full Strategy Surface');
+  await navigateRoute(cdp.send, '#effectiveness', 'Learning Effectiveness');
+  await navigateRoute(cdp.send, '#tournament-context', 'Tournament truth join');
+  await navigateRoute(cdp.send, '#fgs-workbench', 'Finite Game Simulation');
+  await navigateRoute(cdp.send, '#experiment', 'Randomized N-of-1');
+  await evaluate(cdp.send, `document.querySelector('[data-testid="experiment-create"]').click(); true`);
+  await waitFor(cdp.send, `Boolean(localStorage.getItem('poker_learning_experiment_v1'))`, 'N-of-1 experiment persistence');
+  await navigateRoute(cdp.send, '', '今天');
+
+  console.log('Browser E2E PASS: Today → HH persistence → Truth Ops → Solver Surface → Effectiveness → Tournament Join → FGS → randomized N-of-1 → Today, all through production lazy chunks.');
 } finally {
   try { cdp?.socket?.close(); } catch {}
   await terminate(chrome);
