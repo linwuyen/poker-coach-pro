@@ -31,6 +31,8 @@ export async function* exportFullWorkspaceLines(storage:StorageLike,v3:PostflopT
  yield encode({kind:'full-workspace-footer',localRecords,truthLines,contentHash:hashLabel(hash)});
 }
 
+export async function streamFullWorkspaceToWritable(storage:StorageLike,v3:PostflopTruthStore,v4:MultiwayTruthStore,writable:WritableStream<Uint8Array>,workspaceId?:string):Promise<void>{const writer=writable.getWriter(),encoder=new TextEncoder();try{for await(const line of exportFullWorkspaceLines(storage,v3,v4,workspaceId))await writer.write(encoder.encode(`${line}\n`));}finally{await writer.close();}}
+
 export async function validateFullWorkspaceLines(lines:AsyncIterable<string>):Promise<FullWorkspaceValidation>{
  let header:FullWorkspaceHeader|undefined,footer:FullWorkspaceFooter|undefined,localRecords=0,truthLines=0,hash=2166136261,seenTruthHeader=false,seenTruthFooter=false;
  for await(const raw of lines){const line=raw.trim();if(!line)continue;const record=parse(line);if(record.kind==='full-workspace-footer'){if(footer)throw new Error('Full workspace contains multiple footers.');footer=record;continue;}if(footer)throw new Error('No records are allowed after the full workspace footer.');hash=hashText(hash,line);
