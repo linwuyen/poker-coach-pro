@@ -8,7 +8,7 @@ function node(version = '1'): PostflopTruthNode {
   return {
     schemaVersion:3,id:'solver-v3:cash-btn-bb-a84r',version,name:'BTN vs BB A84r',description:'fixture',
     context:{format:'cash',tableSize:'6max',street:'Flop',heroPosition:'btn',villainPosition:'bb',playersInHand:2,effectiveStackBB:97.5,potBB:5.5,spr:17.727,toCallBB:0,board:['Ah','8c','4d'],preflopLine:[{actor:'btn',action:'raise',toBB:2.5},{actor:'bb',action:'call'}],streetLine:[{actor:'bb',action:'check'}],lastAggressorPosition:'btn',rakePercent:5,rakeCapBB:2},
-    source:{type:'solver',trustTier:'verified-solver',label:'fixture',reference:'fixture://postflop',solverName:'FixtureSolver',solverVersion:version,generatedAt:'2026-08-21T00:00:00Z'},
+    source:{type:'solver',trustTier:'verified-solver',label:'fixture',reference:'fixture://postflop',solverName:'FixtureSolver',solverVersion:version,generatedAt:'2026-08-21T00:00:00Z',disclaimer:'Synthetic test fixture only.'},
     strategyByCombo:{AsKd:{check:0.35,bet:0.65}},evByCombo:{AsKd:{check:1.12,bet:1.31}},tags:['test'],
   };
 }
