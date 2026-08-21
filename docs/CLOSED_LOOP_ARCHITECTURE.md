@@ -42,79 +42,85 @@ question instance
 
 Suit-isomorphic variants share a decision family. Semantic exact-math scenarios and verified one-variable solver pairs get distinct families only when their decision boundary is genuinely different.
 
-## Evidence planes
+## Real-game evidence planes
 
-### Training evidence
+### Observation layer
 
-Scenario, transfer, counterfactual, solver-corpus and benchmark attempts carry correctness, confidence, review interval and optional regret.
+Hand histories always establish observation first: exposure frequency, chosen action, source/hand identity, board/actions and other fields the HH actually contains. Raw HH does not establish optimality.
 
-### Real-game observation
-
-Hand histories and normalized post-session imports create `trainingType: real-hand` records that can establish:
-
-- exposure frequency
-- observed context
-- chosen action / action pattern
-- session/hand provenance
-
-Raw HH does not establish optimality.
-
-### Exact real-game grading
-
-P9-C adds a second real-game layer. For automated HH grading:
+### Preflop exact grading — Strategy Engine v2
 
 ```text
 HH preflop decision
   ↓
 derive hand / positions / effective stack / action line
   ↓
-require every material Strategy Profile v2 dimension
-  ↓
-exactly one immutable verified-solver profile?
-  ├─ no → stop at exposure
+exactly one immutable verified v2 profile?
+  ├─ no → exposure-only
   └─ yes
        ↓
-chosen action has sourced per-action EV?
-  ├─ no → stop at exposure
-  └─ yes → write verified regret evidence
+chosen action + comparison action have sourced EV?
+  ├─ no → exposure-only
+  └─ yes → verified regret evidence
 ```
 
-Interactive approximate lookup and automated grading are intentionally different contracts. Automated grading never uses approximate solver nodes.
+### Postflop exact grading — Strategy Engine v3
 
-Current automatic grading is preflop-only because the current Strategy Context does not fully encode postflop board + action tree state.
-
-### Strategy truth
-
-Full solver surfaces use immutable Strategy Profile v2 records. Frequency and EV are independent capabilities.
-
-P9-A coverage is computed from the profiles actually present in storage/runtime:
+P12 adds a separate state model rather than stretching v2.
 
 ```text
-verified contexts
-frequency hand rows
-mixed hand rows
-EV hand rows
-full per-action-EV hand rows
+HH Flop / Turn / River
+  ↓ replay actions to the instant BEFORE Hero acts
+active players / pot / street commitments / remaining stacks
+  ↓
+require heads-up state
+  ↓
+exact board + Hero/Villain positions
++ effective stack + pot + SPR + to-call
++ canonical preflop line + current-street line
++ last aggressor + rake/cap + exact Hero combo
+  ↓
+exactly one immutable verified v3 node?
+  ├─ no → exposure-only / Unknown
+  └─ yes
+       ↓
+chosen action + comparison action have sourced EV?
+  ├─ no → exposure-only
+  └─ yes → Flop/Turn/River verified regret
 ```
 
-The coverage layer does not imply bundled complete solver data.
+Automatic v2/v3 grading never uses approximate truth. Multiway postflop is intentionally unsupported until all player ranges/state can be represented.
 
-### Population evidence
+## Strategy truth
 
-There are two related but separate objects:
+### v2
 
-1. **Population cohort** — site/stake/window/sample/raw measured counts/provenance.
-2. **Population exploit profile** — explicit exploit ranges and optional modeled EV.
+Preflop Strategy Profile v2 contains context, action frequencies, optional per-action EV, source provenance and immutable version/hash.
 
-Cohorts may link to exploit profiles, but a measured tendency does not automatically synthesize an exploit strategy.
+### v3
 
-Heuristic archetypes remain separate.
+Postflop Truth Pack v3 contains exact heads-up nodes with:
 
-### Reviewed explanation evidence
+- board/street
+- positions
+- pot geometry / SPR / to-call
+- preflop and current-street action lines
+- exact Hero combos
+- mixed action frequencies
+- optional per-action EV and sizing surface
+- verified solver provenance
 
-Human-reviewed teaching explanations are immutable interpretation records linked to a decision family or profile+hand. They contain why/boundaries/common mistake/contrastive cue plus author/reviewer/reference.
+Coverage is computed from actually imported data. The engine never treats importer capability as proof that a complete solver database exists.
 
-They can explain a solver-backed decision without being relabelled as solver output.
+## Population evidence
+
+Three objects are distinct:
+
+1. **Measured local cohort** — P12 direct HH numerator/denominator aggregation; proves only what was observed.
+2. **External population cohort** — P9-B site/stake/window/sample/provenance registry.
+3. **Population exploit profile** — explicit exploit strategy supported by an evidence source.
+
+A measured tendency does not automatically synthesize exploit strategy or solver EV.
 
 ## Daily curriculum
 
@@ -124,72 +130,58 @@ Default sequence remains:
 2. one-variable solver semantic counterfactual
 3. unseen solver generalization
 
-Due reviews consume the budget first. Solver Daily selection only reads PokerBench Training partition.
+Verified real-game regret from either preflop v2 or postflop v3 may multiply Training-row priority using same position/street. This is situation-level routing only. Sibling/Holdout remain evaluation-only.
 
-P9-C may multiply Training-row priority using verified real-game regret from the same position/street. This is a routing heuristic grounded in verified regret, not an identity claim between two solver datasets. Sibling and Holdout remain evaluation-only.
+## Tournament reconstruction and utility
+
+```text
+MTT HH
+  ├─ auto-extract hand/tournament identity + table/Hero state
+  ↓
+Tournament metadata registry
+  ├─ payout vector + utility unit
+  └─ handId → full-field stack snapshot
+  ↓
+reconstruction completeness check
+  ├─ missing → incomplete draft, list missing fields
+  └─ complete → reusable tournament state
+       ↓
+explicit decision-specific ICM / PKO / FGS inputs
+       ↓
+exact-math tournament utility evidence
+```
+
+P12-E reduces repeated manual state entry, but a table snapshot is never treated as the entire tournament field. Showdown equity, bounty semantics and FGS probabilities remain explicit traceable inputs when ordinary HH cannot prove them.
 
 ## Effectiveness and experimentation
 
-### Observational plane
-
-P5-C compares fixed baseline/training/follow-up windows for holdout, transfer, delayed retention and verified real-game leak. This remains observational.
-
-### Randomized N-of-1 plane
-
-P10 adds a separate preregistered design:
-
-```text
-preregister hypothesis + primary metric
-  ↓
-seeded balanced randomized blocks
-  ↓
-washout at each block start
-  ↓
-collect only primary-metric evidence
-  ↓
-require >=2 evidence blocks per arm + sample floor
-  ↓
-individual randomized-block comparison
-```
-
-An N-of-1 result can strengthen an intervention comparison for this player. It is not a population-wide causal result.
-
-## Tournament stack
-
-```text
-Tournament HH (observation / handId)
-  ↓ join explicit referenced state
-ICM
-  ├─ PKO bounty extension
-  ├─ Satellite equal-seat payouts
-  └─ FGS explicit future-state trees
-```
-
-Tournament utility context is never reconstructed from ordinary HH when payouts/stacks/bounties/probabilities are absent. FGS evaluates supplied action trees; it does not infer equilibrium future strategy.
+P5-C remains observational before/training/follow-up analysis. P10 adds preregistered seeded balanced randomized-block N-of-1 comparisons with washout and sample/block gates. Neither layer permits stronger causal claims than its design supports.
 
 ## Product surfaces
 
 ```text
-#hand-history        real-game observation + strict verified preflop grading
-#truth-ops           solver coverage + population cohorts + reviewed explanations
+#hand-history        real-game observation + strict preflop v2 / postflop v3 grading
+#postflop-truth      v3 truth pack import + coverage + tournament metadata + local cohort status
+#truth-ops           v2 truth coverage + external population cohorts + reviewed explanations
 #strategy-surface    Strategy Profile v2 import/inspection
-#tournament-context  HH handId + explicit ICM/PKO/FGS context join
+#tournament-context  explicit ICM/PKO/FGS context evaluation
 #effectiveness       observational longitudinal report
 #experiment          preregistered randomized N-of-1
 ```
 
 ## Runtime / performance
 
-P11 uses route-level `React.lazy` for heavyweight analysis, solver, training and tournament labs. The default application shell no longer imports every workbench into the entry chunk.
-
-Real Chrome E2E validates production lazy-chunk navigation across the critical surfaces as well as HH controlled input/history persistence and randomized-experiment persistence.
+P11 route-level `React.lazy` remains the production loading model. P12 adds `#postflop-truth` as another lazy route, and real-Chrome E2E must load it successfully. The 500 KiB minified JavaScript chunk budget remains a hard CI gate.
 
 ## Persistence
 
-- History schema v6 is the current browser history format; v5/v4/v3/v2 migrate on read.
-- Full solver surfaces: `poker_strategy_profiles_v2`.
-- Population cohorts: `poker_population_cohorts_v1`.
-- Reviewed explanations: `poker_reviewed_explanations_v1`.
-- Active randomized N-of-1 spec: `poker_learning_experiment_v1`.
+- History: `poker_training_history_v6`
+- Preflop full solver surfaces: `poker_strategy_profiles_v2`
+- Postflop v3 truth: `poker_postflop_truth_nodes_v3`
+- External population cohorts: `poker_population_cohorts_v1`
+- Measured local HH cohorts: `poker_observed_population_cohorts_v1`
+- Tournament metadata registry: `poker_tournament_metadata_v1`
+- Reviewed explanations: `poker_reviewed_explanations_v1`
+- Active N-of-1 spec: `poker_learning_experiment_v1`
 
-Imported evidence registries remain local unless the user explicitly exports/synchronizes them through supported data workflows.
+Imported evidence remains local unless explicitly exported/synchronized through supported workflows.
