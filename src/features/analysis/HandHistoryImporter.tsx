@@ -2,7 +2,12 @@ import { ChangeEvent, useRef, useState } from 'react';
 import { ArrowLeft, FileUp, ShieldCheck, Upload, WandSparkles } from 'lucide-react';
 import { importHandHistoryText, parseHandHistoryText } from '../../real-game/handHistory';
 import { buildVerifiedLeakEvidence } from '../../real-game/leakPipeline';
+import { buildVerifiedPostflopLeakEvidence } from '../../real-game/postflopLeakPipeline';
+import { buildObservedPopulationCohort } from '../../real-game/populationObservation';
+import { loadTournamentMetadata, saveObservedPopulationCohort } from '../../real-game/p12Storage';
+import { reconstructTournamentContextDrafts } from '../../real-game/tournamentReconstruction';
 import { STRATEGY_PROFILES_V2, StrategyProfile, mergeImmutableProfiles } from '../../strategy-engine-v2';
+import { loadPostflopTruthNodes } from '../../strategy-engine-v3';
 import { loadHistory, saveHistory } from '../../utils/history';
 
 const IMPORTED_HAND_IDS_KEY = 'poker_imported_hand_ids_v1';
@@ -73,20 +78,33 @@ export function HandHistoryImporter({ onExit }: { onExit: () => void }) {
         setMessage('已解析手牌，但找不到 Hero。請輸入 Hero 名稱後再匯入。');
         return;
       }
-      const profiles = mergeImmutableProfiles(STRATEGY_PROFILES_V2, loadCustomProfiles());
-      const graded = buildVerifiedLeakEvidence(result.hands, profiles, {
+      const truthOptions = {
         importedAt,
         rakePercent: optionalNumber(rakePercent),
         rakeCapBB: optionalNumber(rakeCapBB),
-      });
+      };
+      const preflopProfiles = mergeImmutableProfiles(STRATEGY_PROFILES_V2, loadCustomProfiles());
+      const preflop = buildVerifiedLeakEvidence(result.hands, preflopProfiles, truthOptions);
+      const postflopNodes = loadPostflopTruthNodes();
+      const postflop = buildVerifiedPostflopLeakEvidence(result.hands, postflopNodes, truthOptions);
+      const population = buildObservedPopulationCohort(result.hands, importedAt);
+      if (population.decisionOpportunities > 0) saveObservedPopulationCohort(population);
+      const tournamentDrafts = reconstructTournamentContextDrafts(result.hands, loadTournamentMetadata());
+      const completeTournamentDrafts = tournamentDrafts.filter(draft => draft.completeFieldState).length;
+
       const current = loadHistory();
-      saveHistory([...current, ...result.history, ...graded.history]);
+      saveHistory([...current, ...result.history, ...preflop.history, ...postflop.history]);
       saveImportedIds([...importedIds, ...result.parsedHandIds]);
       setPreview(result.hands);
-      const totalLoss = graded.findings.reduce((sum, finding) => sum + finding.totalEvLossBB, 0);
-      setGradingSummary(graded.gradedDecisions
-        ? `Verified grading：${graded.gradedDecisions}/${graded.heroDecisions} 個 Hero preflop decisions 有 exact solver+EV；觀測 regret 合計 ${totalLoss.toFixed(3)}BB。`
-        : `Verified grading：0/${graded.heroDecisions}。沒有唯一 exact verified surface + chosen-action EV 的 decision 保持 exposure-only。Postflop HH 目前也不會用 preflop profile 硬套。`);
+
+      const preflopLoss = preflop.findings.reduce((sum, finding) => sum + finding.totalEvLossBB, 0);
+      const postflopLoss = postflop.findings.reduce((sum, finding) => sum + finding.totalEvLossBB, 0);
+      setGradingSummary(
+        `Verified grading：Preflop ${preflop.gradedDecisions}/${preflop.heroDecisions}；Postflop ${postflop.gradedDecisions}/${postflop.heroDecisions}。`
+        + ` Verified cash regret 合計 ${(preflopLoss + postflopLoss).toFixed(3)}BB。`
+        + ` Population：${population.sampleHands} hands / ${population.decisionOpportunities} postflop decisions 已用 raw counts 聚合。`
+        + (tournamentDrafts.length ? ` MTT metadata join：${completeTournamentDrafts}/${tournamentDrafts.length} hands 有完整 field state。` : ''),
+      );
       setMessage(`已匯入 ${result.hands.length} 手牌 → ${result.contexts} 個實戰 context evidence${result.skippedHandIds.length ? `；跳過 ${result.skippedHandIds.length} 個重複 hand ID` : ''}。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '匯入失敗');
@@ -112,21 +130,21 @@ export function HandHistoryImporter({ onExit }: { onExit: () => void }) {
     <div className="mx-auto max-w-6xl">
       <button type="button" onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4" />返回主訓練機</button>
       <section className="pc-hero-glow mt-6 rounded-3xl border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.13),rgba(15,23,42,0.78))] p-6 md:p-8">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300"><FileUp className="h-4 w-4" />P9-C · Real-game truth join</div>
-        <h1 className="mt-3 text-3xl font-bold">Hand History → exposure → exact verified truth → regret → Daily</h1>
-        <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">每手仍先寫 exposure evidence。只有 preflop context 唯一且完整對上 immutable `verified-solver` surface，而且該 chosen action 真有 per-action EV，才會多寫 verified regret evidence。缺資料就停在 Unknown。</p>
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300"><FileUp className="h-4 w-4" />P12-C · Real-game full-street truth join</div>
+        <h1 className="mt-3 text-3xl font-bold">Hand History → Preflop + Postflop exact truth → regret → Daily</h1>
+        <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">每手永遠先寫 exposure evidence。Preflop 用 Strategy Engine v2；Flop/Turn/River 用 v3 exact heads-up context。沒有唯一 verified node 或 chosen-action EV，就保持 Unknown，不用近似 node 補答案。</p>
       </section>
 
       <section className="mt-6 grid gap-5 lg:grid-cols-[1fr_300px]">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/55 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">貼上或載入 .txt Hand History</h2><button type="button" onClick={() => fileRef.current?.click()} className="flex items-center gap-2 rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300"><Upload className="h-4 w-4" />選擇檔案</button></div>
           <input ref={fileRef} type="file" accept=".txt,text/plain" multiple className="hidden" onChange={loadFiles} />
-          <label className="mt-4 block text-xs text-slate-500">Hero 名稱（通常可從 Dealt to 自動辨識；匿名/匯出格式不同時可覆寫）<input data-testid="hh-hero" value={heroName} onChange={event => setHeroName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100" placeholder="Hero" /></label>
+          <label className="mt-4 block text-xs text-slate-500">Hero 名稱（通常可從 Dealt to 自動辨識）<input data-testid="hh-hero" value={heroName} onChange={event => setHeroName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100" placeholder="Hero" /></label>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="text-xs text-slate-500">Cash rake %（只在你知道實際值時填）<input data-testid="hh-rake" type="number" min="0" step="0.1" value={rakePercent} onChange={event => setRakePercent(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm" placeholder="例如 5" /></label>
             <label className="text-xs text-slate-500">Cash rake cap BB<input data-testid="hh-rake-cap" type="number" min="0" step="0.1" value={rakeCapBB} onChange={event => setRakeCapBB(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm" placeholder="例如 2" /></label>
           </div>
-          <p className="mt-2 text-[11px] leading-5 text-slate-600">留白不會猜值；如果 solver surface 有 rake/cap 維度，缺少這兩個觀測 context 就不允許 exact grading。</p>
+          <p className="mt-2 text-[11px] leading-5 text-slate-600">留白不會猜值；solver node 有 rake/cap 維度時，缺少觀測 context 就不允許 exact grading。</p>
           <textarea data-testid="hh-text" value={text} onChange={event => setText(event.target.value)} className="mt-4 min-h-80 w-full rounded-xl border border-slate-700 bg-slate-950/60 p-4 font-mono text-xs leading-5 text-slate-200 outline-none focus:border-emerald-500" placeholder="PokerStars Hand #... 或 Poker Hand #..." />
           <div className="mt-4 flex flex-wrap gap-2"><button data-testid="hh-preview" type="button" onClick={() => inspect()} className="flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold"><WandSparkles className="h-4 w-4" />先解析</button><button data-testid="hh-import" type="button" onClick={importNow} disabled={!text.trim()} className="rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-emerald-950 disabled:opacity-40">解析並匯入 History</button></div>
           {message && <div data-testid="hh-message" className="mt-4 rounded-xl border border-emerald-500/15 bg-emerald-500/6 px-4 py-3 text-sm text-emerald-100">{message}</div>}
@@ -138,11 +156,11 @@ export function HandHistoryImporter({ onExit }: { onExit: () => void }) {
           <Metric label="Hero 已辨識" value={`${heroDetected}/${preview.length}`} />
           <Metric label="Cash / MTT" value={`${cash} / ${mtt}`} />
           <Metric label="來源" value={sources.join(' / ') || '-'} />
-          <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/6 p-4 text-xs leading-6 text-cyan-100/80"><ShieldCheck className="mb-2 h-5 w-5 text-cyan-300" /><b>資料邊界</b><br />Raw HH 只證明 exposure/observed action。自動 regret 必須 exact-match verified surface；目前自動 join 僅支援 Strategy Engine v2 可完整表達的 preflop nodes。Postflop board/action tree 未完整建模前保持 Unsupported。</div>
+          <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/6 p-4 text-xs leading-6 text-cyan-100/80"><ShieldCheck className="mb-2 h-5 w-5 text-cyan-300" /><b>資料邊界</b><br />Raw HH 只證明 observation。Postflop auto-grading 目前只允許 heads-up exact v3 state；multiway、缺 rake、缺 exact node、缺 per-action EV 都維持 Unknown。Population cohort 只保存 raw numerator/denominator，不直接宣稱 exploit。</div>
         </aside>
       </section>
 
-      {preview.length > 0 && <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/55 p-5"><h2 className="font-semibold">解析預覽</h2><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-slate-500"><tr><th className="pb-2">Hand</th><th>Source</th><th>Format</th><th>Hero</th><th>Position</th><th>Stack</th><th>Actions</th><th>Net BB*</th></tr></thead><tbody className="divide-y divide-slate-800">{preview.slice(0, 30).map(hand => <tr key={hand.id}><td className="py-3 font-mono">{hand.id}</td><td>{hand.source}</td><td>{hand.format}</td><td>{hand.heroName || '-'}</td><td>{hand.heroPosition || '-'}</td><td>{hand.heroStackBB?.toFixed(1) || '-'}</td><td>{hand.actions.filter(action => action.player === hand.heroName && action.type !== 'post').length}</td><td>{hand.netWonBB?.toFixed(2) ?? '-'}</td></tr>)}</tbody></table></div><p className="mt-3 text-[11px] text-slate-600">* Net BB 僅由 hand history 的 contribution / collected / returned 重建，用來稽核匯入，不直接當作 decision EV regret。</p></section>}
+      {preview.length > 0 && <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/55 p-5"><h2 className="font-semibold">解析預覽</h2><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-slate-500"><tr><th className="pb-2">Hand</th><th>Source</th><th>Format</th><th>Hero</th><th>Position</th><th>Stack</th><th>Actions</th><th>Net BB*</th></tr></thead><tbody className="divide-y divide-slate-800">{preview.slice(0, 30).map(hand => <tr key={hand.id}><td className="py-3 font-mono">{hand.id}</td><td>{hand.source}</td><td>{hand.format}</td><td>{hand.heroName || '-'}</td><td>{hand.heroPosition || '-'}</td><td>{hand.heroStackBB?.toFixed(1) || '-'}</td><td>{hand.actions.filter(action => action.player === hand.heroName && action.type !== 'post').length}</td><td>{hand.netWonBB?.toFixed(2) ?? '-'}</td></tr>)}</tbody></table></div><p className="mt-3 text-[11px] text-slate-600">* Net BB 只用來稽核 HH 金流，不等於 decision EV regret。</p></section>}
     </div>
   </div>;
 }

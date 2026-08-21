@@ -132,8 +132,7 @@ try {
   await waitFor(cdp.send, `document.readyState === 'complete'`, 'initial page load');
   await waitFor(cdp.send, `document.body.textContent.includes('今天')`, 'Today shell');
 
-  // P9-C: exercise a real controlled React input and persistence, not just route rendering.
-  await navigateRoute(cdp.send, '#hand-history', 'Real-game truth join');
+  await navigateRoute(cdp.send, '#hand-history', 'Real-game full-street truth join');
   await evaluate(cdp.send, `(() => {
     const textarea = document.querySelector('[data-testid="hh-text"]');
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
@@ -151,18 +150,18 @@ try {
   const ids = await evaluate(cdp.send, `JSON.parse(localStorage.getItem('poker_imported_hand_ids_v1') || '[]')`);
   if (!ids.includes('999000111222')) throw new Error(`Imported hand-id assertion failed: ${JSON.stringify(ids)}`);
 
-  // P9/P10/P11: every heavyweight route must load its split chunk successfully in production.
+  await navigateRoute(cdp.send, '#postflop-truth', 'Flop / Turn / River Truth Ops');
   await navigateRoute(cdp.send, '#truth-ops', 'Truth Operations');
   await navigateRoute(cdp.send, '#strategy-surface', 'Full Strategy Surface');
   await navigateRoute(cdp.send, '#effectiveness', 'Learning Effectiveness');
-  await navigateRoute(cdp.send, '#tournament-context', 'Tournament truth join');
+  await navigateRoute(cdp.send, '#tournament-context', 'Tournament reconstruction');
   await navigateRoute(cdp.send, '#fgs-workbench', 'Finite Game Simulation');
   await navigateRoute(cdp.send, '#experiment', 'Randomized N-of-1');
   await evaluate(cdp.send, `document.querySelector('[data-testid="experiment-create"]').click(); true`);
   await waitFor(cdp.send, `Boolean(localStorage.getItem('poker_learning_experiment_v1'))`, 'N-of-1 experiment persistence');
   await navigateRoute(cdp.send, '', '今天');
 
-  console.log('Browser E2E PASS: Today → HH persistence → Truth Ops → Solver Surface → Effectiveness → Tournament Join → FGS → randomized N-of-1 → Today, all through production lazy chunks.');
+  console.log('Browser E2E PASS: Today → HH persistence → Postflop Truth v3 → Truth Ops → Solver Surface → Effectiveness → Tournament Reconstruction → FGS → randomized N-of-1 → Today.');
 } finally {
   try { cdp?.socket?.close(); } catch {}
   await terminate(chrome);
