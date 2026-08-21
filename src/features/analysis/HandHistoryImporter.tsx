@@ -1,170 +1,44 @@
 import { ChangeEvent, useRef, useState } from 'react';
 import { ArrowLeft, FileUp, ShieldCheck, Upload, WandSparkles } from 'lucide-react';
 import { importHandHistoryText, parseHandHistoryText } from '../../real-game/handHistory';
+import { auditHandHistoryForExactGrading, summarizeIntegrity } from '../../real-game/handHistoryIntegrity';
 import { buildVerifiedLeakEvidence } from '../../real-game/leakPipeline';
-import { buildVerifiedPostflopLeakEvidence } from '../../real-game/postflopLeakPipeline';
+import { buildVerifiedPostflopLeakEvidenceIndexed } from '../../real-game/indexedPostflopLeakPipeline';
+import { buildVerifiedMultiwayLeakEvidence } from '../../real-game/multiwayLeakPipeline';
 import { buildObservedPopulationCohort } from '../../real-game/populationObservation';
 import { loadTournamentMetadata, saveObservedPopulationCohort } from '../../real-game/p12Storage';
 import { reconstructTournamentContextDrafts } from '../../real-game/tournamentReconstruction';
 import { STRATEGY_PROFILES_V2, StrategyProfile, mergeImmutableProfiles } from '../../strategy-engine-v2';
-import { loadPostflopTruthNodes } from '../../strategy-engine-v3';
+import { getPostflopTruthStore, migrateLegacyPostflopTruthStorage } from '../../strategy-engine-v3';
+import { getMultiwayTruthStore } from '../../strategy-engine-v4';
 import { loadHistory, saveHistory } from '../../utils/history';
 
-const IMPORTED_HAND_IDS_KEY = 'poker_imported_hand_ids_v1';
-const CUSTOM_PROFILES_KEY = 'poker_strategy_profiles_v2';
+const IMPORTED_HAND_IDS_KEY='poker_imported_hand_ids_v1',CUSTOM_PROFILES_KEY='poker_strategy_profiles_v2';
+function loadImportedIds():string[]{try{const parsed=JSON.parse(localStorage.getItem(IMPORTED_HAND_IDS_KEY)||'[]');return Array.isArray(parsed)?parsed.filter((v):v is string=>typeof v==='string'):[];}catch{return[];}}
+function saveImportedIds(ids:string[]){localStorage.setItem(IMPORTED_HAND_IDS_KEY,JSON.stringify([...new Set(ids)].slice(-100000)));}
+function loadCustomProfiles():StrategyProfile[]{try{const parsed=JSON.parse(localStorage.getItem(CUSTOM_PROFILES_KEY)||'[]');return Array.isArray(parsed)?parsed:[];}catch{return[];}}
+function optionalNumber(value:string):number|undefined{if(!value.trim())return;const parsed=Number(value);return Number.isFinite(parsed)?parsed:undefined;}
 
-function loadImportedIds(): string[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(IMPORTED_HAND_IDS_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
-  } catch { return []; }
+export function HandHistoryImporter({onExit}:{onExit:()=>void}){
+ const [text,setText]=useState(''),[heroName,setHeroName]=useState(''),[rakePercent,setRakePercent]=useState(''),[rakeCapBB,setRakeCapBB]=useState(''),[message,setMessage]=useState(''),[gradingSummary,setGradingSummary]=useState('');const [preview,setPreview]=useState<ReturnType<typeof parseHandHistoryText>>([]);const fileRef=useRef<HTMLInputElement>(null);
+ const inspect=(nextText=text)=>{try{const parsed=parseHandHistoryText(nextText,heroName||undefined);setPreview(parsed);const heroes=[...new Set(parsed.map(h=>h.heroName).filter(Boolean))];const integrity=summarizeIntegrity(parsed.map(auditHandHistoryForExactGrading));setMessage(parsed.length?`解析到 ${parsed.length} 手牌 · Hero ${heroes.join(', ')||'尚未辨識'} · exact guard：preflop blocked ${integrity.preflopBlocked} / postflop blocked ${integrity.postflopBlocked}`:'沒有找到支援的 hand history。');}catch(error){setPreview([]);setMessage(error instanceof Error?error.message:'解析失敗');}};
+ const importNow=async()=>{try{const importedAt=Date.now(),importedIds=loadImportedIds();const result=importHandHistoryText(text,{heroName:heroName||undefined,alreadyImportedIds:importedIds,batchId:`hh-${importedAt}`,importedAt});if(!result.hands.length&&result.skippedHandIds.length){setMessage(`沒有新增手牌；${result.skippedHandIds.length} 手牌已匯入過。`);return;}if(result.hands.length&&result.hands.every(hand=>!hand.heroName)){setMessage('已解析手牌，但找不到 Hero。請輸入 Hero 名稱後再匯入。');return;}
+  const truthOptions={importedAt,rakePercent:optionalNumber(rakePercent),rakeCapBB:optionalNumber(rakeCapBB)},audits=result.hands.map(auditHandHistoryForExactGrading),integrity=summarizeIntegrity(audits),preflopHands=result.hands.filter((_,index)=>audits[index].gradeablePreflop),preflopProfiles=mergeImmutableProfiles(STRATEGY_PROFILES_V2,loadCustomProfiles());
+  const preflop=buildVerifiedLeakEvidence(preflopHands,preflopProfiles,truthOptions);const v3Store=getPostflopTruthStore();await migrateLegacyPostflopTruthStorage(v3Store);const postflop=await buildVerifiedPostflopLeakEvidenceIndexed(result.hands,v3Store,truthOptions);const multiway=await buildVerifiedMultiwayLeakEvidence(result.hands,getMultiwayTruthStore(),truthOptions);
+  const population=buildObservedPopulationCohort(result.hands,importedAt);if(population.decisionOpportunities>0)saveObservedPopulationCohort(population);const tournamentDrafts=reconstructTournamentContextDrafts(result.hands,loadTournamentMetadata()),completeTournamentDrafts=tournamentDrafts.filter(d=>d.completeFieldState).length;
+  saveHistory([...loadHistory(),...result.history,...preflop.history,...postflop.history,...multiway.history]);saveImportedIds([...importedIds,...result.parsedHandIds]);setPreview(result.hands);
+  const loss=[...preflop.findings,...postflop.findings,...multiway.findings].reduce((sum,f)=>sum+f.totalEvLossBB,0);setGradingSummary(`Verified grading：Preflop ${preflop.gradedDecisions}/${preflop.heroDecisions}；Heads-up postflop ${postflop.gradedDecisions}/${postflop.heroDecisions}；Multiway ${multiway.gradedDecisions}/${multiway.heroDecisions}。 Verified cash regret 合計 ${loss.toFixed(3)}BB。 Integrity blocked：preflop ${integrity.preflopBlocked} hands / postflop ${integrity.postflopBlocked} hands。 Population：${population.sampleHands} hands / ${population.decisionOpportunities} decisions。${tournamentDrafts.length?` MTT metadata join：${completeTournamentDrafts}/${tournamentDrafts.length} complete。`:''}`);
+  setMessage(`已匯入 ${result.hands.length} 手牌 → ${result.contexts} 個實戰 context evidence${result.skippedHandIds.length?`；跳過 ${result.skippedHandIds.length} 個重複 hand ID`:''}。`);
+ }catch(error){setMessage(error instanceof Error?error.message:'匯入失敗');}};
+ const loadFiles=async(event:ChangeEvent<HTMLInputElement>)=>{const files=[...(event.target.files||[])];if(!files.length)return;const merged=(await Promise.all(files.map(file=>file.text()))).join('\n\n');setText(merged);inspect(merged);event.currentTarget.value='';};
+ const heroDetected=preview.filter(h=>h.heroName).length,sources=[...new Set(preview.map(h=>h.source))],cash=preview.filter(h=>h.format==='Cash').length,mtt=preview.filter(h=>h.format==='MTT').length;
+ return <div data-testid="hand-history-lab" className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8"><div className="mx-auto max-w-6xl"><button type="button" onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4"/>返回主訓練機</button>
+  <section className="pc-hero-glow mt-6 rounded-3xl border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.13),rgba(15,23,42,0.78))] p-6 md:p-8"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300"><FileUp className="h-4 w-4"/>P13/P14 · Real-game truth join</div><h1 className="mt-3 text-3xl font-bold">Hand History → indexed heads-up + exact multiway truth → regret → Daily</h1><p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">每手先寫 exposure。Preflop v2、heads-up postflop v3 IndexedDB、3-way+ v4。Straddle、multiple runout、side pot、缺 action geometry 等未建模狀態會 fail closed。</p></section>
+  <section className="mt-6 grid gap-5 lg:grid-cols-[1fr_300px]"><div className="rounded-2xl border border-slate-800 bg-slate-900/55 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">貼上或載入 .txt Hand History</h2><button type="button" onClick={()=>fileRef.current?.click()} className="flex items-center gap-2 rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300"><Upload className="h-4 w-4"/>選擇檔案</button></div><input ref={fileRef} type="file" accept=".txt,text/plain" multiple className="hidden" onChange={loadFiles}/>
+   <label className="mt-4 block text-xs text-slate-500">Hero 名稱<input data-testid="hh-hero" value={heroName} onChange={e=>setHeroName(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100" placeholder="Hero"/></label><div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs text-slate-500">Cash rake %<input data-testid="hh-rake" type="number" min="0" step="0.1" value={rakePercent} onChange={e=>setRakePercent(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm"/></label><label className="text-xs text-slate-500">Cash rake cap BB<input data-testid="hh-rake-cap" type="number" min="0" step="0.1" value={rakeCapBB} onChange={e=>setRakeCapBB(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm"/></label></div>
+   <textarea data-testid="hh-text" value={text} onChange={e=>setText(e.target.value)} className="mt-4 min-h-80 w-full rounded-xl border border-slate-700 bg-slate-950/60 p-4 font-mono text-xs leading-5 text-slate-200" placeholder="PokerStars Hand #... 或 Poker Hand #..."/><div className="mt-4 flex flex-wrap gap-2"><button data-testid="hh-preview" type="button" onClick={()=>inspect()} className="flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold"><WandSparkles className="h-4 w-4"/>先解析</button><button data-testid="hh-import" type="button" onClick={importNow} disabled={!text.trim()} className="rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-emerald-950 disabled:opacity-40">解析並匯入 History</button></div>{message&&<div data-testid="hh-message" className="mt-4 rounded-xl border border-emerald-500/15 bg-emerald-500/6 px-4 py-3 text-sm text-emerald-100">{message}</div>}{gradingSummary&&<div data-testid="hh-grading-summary" className="mt-3 rounded-xl border border-blue-500/15 bg-blue-500/6 px-4 py-3 text-sm leading-6 text-blue-100">{gradingSummary}</div>}</div>
+   <aside className="space-y-4"><Metric label="解析手牌" value={String(preview.length)}/><Metric label="Hero 已辨識" value={`${heroDetected}/${preview.length}`}/><Metric label="Cash / MTT" value={`${cash} / ${mtt}`}/><Metric label="來源" value={sources.join(' / ')||'-'}/><div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/6 p-4 text-xs leading-6 text-cyan-100/80"><ShieldCheck className="mb-2 h-5 w-5 text-cyan-300"/><b>資料邊界</b><br/>Unknown 優先。v3 只 heads-up；v4 只在完整 multiway context + verified node 才 grading；未建模 HH geometry 一律 exposure-only。</div></aside></section>
+  {preview.length>0&&<section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/55 p-5"><h2 className="font-semibold">解析預覽</h2><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-slate-500"><tr><th className="pb-2">Hand</th><th>Source</th><th>Format</th><th>Hero</th><th>Position</th><th>Stack</th><th>Actions</th><th>Net BB*</th></tr></thead><tbody className="divide-y divide-slate-800">{preview.slice(0,30).map(hand=><tr key={hand.id}><td className="py-3 font-mono">{hand.id}</td><td>{hand.source}</td><td>{hand.format}</td><td>{hand.heroName||'-'}</td><td>{hand.heroPosition||'-'}</td><td>{hand.heroStackBB?.toFixed(1)||'-'}</td><td>{hand.actions.filter(a=>a.player===hand.heroName&&a.type!=='post').length}</td><td>{hand.netWonBB?.toFixed(2)??'-'}</td></tr>)}</tbody></table></div><p className="mt-3 text-[11px] text-slate-600">* Net BB 只稽核 HH 金流，不等於 decision EV regret。</p></section>}
+ </div></div>;
 }
-
-function saveImportedIds(ids: string[]): void {
-  localStorage.setItem(IMPORTED_HAND_IDS_KEY, JSON.stringify([...new Set(ids)].slice(-100000)));
-}
-
-function loadCustomProfiles(): StrategyProfile[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(CUSTOM_PROFILES_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
-}
-
-function optionalNumber(value: string): number | undefined {
-  if (!value.trim()) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-export function HandHistoryImporter({ onExit }: { onExit: () => void }) {
-  const [text, setText] = useState('');
-  const [heroName, setHeroName] = useState('');
-  const [rakePercent, setRakePercent] = useState('');
-  const [rakeCapBB, setRakeCapBB] = useState('');
-  const [message, setMessage] = useState('');
-  const [gradingSummary, setGradingSummary] = useState('');
-  const [preview, setPreview] = useState<ReturnType<typeof parseHandHistoryText>>([]);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const inspect = (nextText = text) => {
-    try {
-      const parsed = parseHandHistoryText(nextText, heroName || undefined);
-      setPreview(parsed);
-      const heroes = [...new Set(parsed.map(hand => hand.heroName).filter(Boolean))];
-      setMessage(parsed.length ? `解析到 ${parsed.length} 手牌 · Hero ${heroes.join(', ') || '尚未辨識'}` : '沒有找到支援的 hand history。');
-    } catch (error) {
-      setPreview([]);
-      setMessage(error instanceof Error ? error.message : '解析失敗');
-    }
-  };
-
-  const importNow = () => {
-    try {
-      const importedAt = Date.now();
-      const importedIds = loadImportedIds();
-      const result = importHandHistoryText(text, {
-        heroName: heroName || undefined,
-        alreadyImportedIds: importedIds,
-        batchId: `hh-${importedAt}`,
-        importedAt,
-      });
-      if (!result.hands.length && result.skippedHandIds.length) {
-        setMessage(`沒有新增手牌；${result.skippedHandIds.length} 手牌已匯入過。`);
-        return;
-      }
-      const withoutHero = result.hands.filter(hand => !hand.heroName).length;
-      if (withoutHero === result.hands.length && result.hands.length) {
-        setMessage('已解析手牌，但找不到 Hero。請輸入 Hero 名稱後再匯入。');
-        return;
-      }
-      const truthOptions = {
-        importedAt,
-        rakePercent: optionalNumber(rakePercent),
-        rakeCapBB: optionalNumber(rakeCapBB),
-      };
-      const preflopProfiles = mergeImmutableProfiles(STRATEGY_PROFILES_V2, loadCustomProfiles());
-      const preflop = buildVerifiedLeakEvidence(result.hands, preflopProfiles, truthOptions);
-      const postflopNodes = loadPostflopTruthNodes();
-      const postflop = buildVerifiedPostflopLeakEvidence(result.hands, postflopNodes, truthOptions);
-      const population = buildObservedPopulationCohort(result.hands, importedAt);
-      if (population.decisionOpportunities > 0) saveObservedPopulationCohort(population);
-      const tournamentDrafts = reconstructTournamentContextDrafts(result.hands, loadTournamentMetadata());
-      const completeTournamentDrafts = tournamentDrafts.filter(draft => draft.completeFieldState).length;
-
-      const current = loadHistory();
-      saveHistory([...current, ...result.history, ...preflop.history, ...postflop.history]);
-      saveImportedIds([...importedIds, ...result.parsedHandIds]);
-      setPreview(result.hands);
-
-      const preflopLoss = preflop.findings.reduce((sum, finding) => sum + finding.totalEvLossBB, 0);
-      const postflopLoss = postflop.findings.reduce((sum, finding) => sum + finding.totalEvLossBB, 0);
-      setGradingSummary(
-        `Verified grading：Preflop ${preflop.gradedDecisions}/${preflop.heroDecisions}；Postflop ${postflop.gradedDecisions}/${postflop.heroDecisions}。`
-        + ` Verified cash regret 合計 ${(preflopLoss + postflopLoss).toFixed(3)}BB。`
-        + ` Population：${population.sampleHands} hands / ${population.decisionOpportunities} postflop decisions 已用 raw counts 聚合。`
-        + (tournamentDrafts.length ? ` MTT metadata join：${completeTournamentDrafts}/${tournamentDrafts.length} hands 有完整 field state。` : ''),
-      );
-      setMessage(`已匯入 ${result.hands.length} 手牌 → ${result.contexts} 個實戰 context evidence${result.skippedHandIds.length ? `；跳過 ${result.skippedHandIds.length} 個重複 hand ID` : ''}。`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '匯入失敗');
-    }
-  };
-
-  const loadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = [...(event.target.files || [])];
-    if (!files.length) return;
-    const contents = await Promise.all(files.map(file => file.text()));
-    const merged = contents.join('\n\n');
-    setText(merged);
-    inspect(merged);
-    event.currentTarget.value = '';
-  };
-
-  const heroDetected = preview.filter(hand => hand.heroName).length;
-  const sources = [...new Set(preview.map(hand => hand.source))];
-  const cash = preview.filter(hand => hand.format === 'Cash').length;
-  const mtt = preview.filter(hand => hand.format === 'MTT').length;
-
-  return <div data-testid="hand-history-lab" className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8">
-    <div className="mx-auto max-w-6xl">
-      <button type="button" onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4" />返回主訓練機</button>
-      <section className="pc-hero-glow mt-6 rounded-3xl border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.13),rgba(15,23,42,0.78))] p-6 md:p-8">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300"><FileUp className="h-4 w-4" />P12-C · Real-game full-street truth join</div>
-        <h1 className="mt-3 text-3xl font-bold">Hand History → Preflop + Postflop exact truth → regret → Daily</h1>
-        <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">每手永遠先寫 exposure evidence。Preflop 用 Strategy Engine v2；Flop/Turn/River 用 v3 exact heads-up context。沒有唯一 verified node 或 chosen-action EV，就保持 Unknown，不用近似 node 補答案。</p>
-      </section>
-
-      <section className="mt-6 grid gap-5 lg:grid-cols-[1fr_300px]">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/55 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">貼上或載入 .txt Hand History</h2><button type="button" onClick={() => fileRef.current?.click()} className="flex items-center gap-2 rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300"><Upload className="h-4 w-4" />選擇檔案</button></div>
-          <input ref={fileRef} type="file" accept=".txt,text/plain" multiple className="hidden" onChange={loadFiles} />
-          <label className="mt-4 block text-xs text-slate-500">Hero 名稱（通常可從 Dealt to 自動辨識）<input data-testid="hh-hero" value={heroName} onChange={event => setHeroName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-100" placeholder="Hero" /></label>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-slate-500">Cash rake %（只在你知道實際值時填）<input data-testid="hh-rake" type="number" min="0" step="0.1" value={rakePercent} onChange={event => setRakePercent(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm" placeholder="例如 5" /></label>
-            <label className="text-xs text-slate-500">Cash rake cap BB<input data-testid="hh-rake-cap" type="number" min="0" step="0.1" value={rakeCapBB} onChange={event => setRakeCapBB(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm" placeholder="例如 2" /></label>
-          </div>
-          <p className="mt-2 text-[11px] leading-5 text-slate-600">留白不會猜值；solver node 有 rake/cap 維度時，缺少觀測 context 就不允許 exact grading。</p>
-          <textarea data-testid="hh-text" value={text} onChange={event => setText(event.target.value)} className="mt-4 min-h-80 w-full rounded-xl border border-slate-700 bg-slate-950/60 p-4 font-mono text-xs leading-5 text-slate-200 outline-none focus:border-emerald-500" placeholder="PokerStars Hand #... 或 Poker Hand #..." />
-          <div className="mt-4 flex flex-wrap gap-2"><button data-testid="hh-preview" type="button" onClick={() => inspect()} className="flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold"><WandSparkles className="h-4 w-4" />先解析</button><button data-testid="hh-import" type="button" onClick={importNow} disabled={!text.trim()} className="rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-bold text-emerald-950 disabled:opacity-40">解析並匯入 History</button></div>
-          {message && <div data-testid="hh-message" className="mt-4 rounded-xl border border-emerald-500/15 bg-emerald-500/6 px-4 py-3 text-sm text-emerald-100">{message}</div>}
-          {gradingSummary && <div data-testid="hh-grading-summary" className="mt-3 rounded-xl border border-blue-500/15 bg-blue-500/6 px-4 py-3 text-sm leading-6 text-blue-100">{gradingSummary}</div>}
-        </div>
-
-        <aside className="space-y-4">
-          <Metric label="解析手牌" value={String(preview.length)} />
-          <Metric label="Hero 已辨識" value={`${heroDetected}/${preview.length}`} />
-          <Metric label="Cash / MTT" value={`${cash} / ${mtt}`} />
-          <Metric label="來源" value={sources.join(' / ') || '-'} />
-          <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/6 p-4 text-xs leading-6 text-cyan-100/80"><ShieldCheck className="mb-2 h-5 w-5 text-cyan-300" /><b>資料邊界</b><br />Raw HH 只證明 observation。Postflop auto-grading 目前只允許 heads-up exact v3 state；multiway、缺 rake、缺 exact node、缺 per-action EV 都維持 Unknown。Population cohort 只保存 raw numerator/denominator，不直接宣稱 exploit。</div>
-        </aside>
-      </section>
-
-      {preview.length > 0 && <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/55 p-5"><h2 className="font-semibold">解析預覽</h2><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="text-slate-500"><tr><th className="pb-2">Hand</th><th>Source</th><th>Format</th><th>Hero</th><th>Position</th><th>Stack</th><th>Actions</th><th>Net BB*</th></tr></thead><tbody className="divide-y divide-slate-800">{preview.slice(0, 30).map(hand => <tr key={hand.id}><td className="py-3 font-mono">{hand.id}</td><td>{hand.source}</td><td>{hand.format}</td><td>{hand.heroName || '-'}</td><td>{hand.heroPosition || '-'}</td><td>{hand.heroStackBB?.toFixed(1) || '-'}</td><td>{hand.actions.filter(action => action.player === hand.heroName && action.type !== 'post').length}</td><td>{hand.netWonBB?.toFixed(2) ?? '-'}</td></tr>)}</tbody></table></div><p className="mt-3 text-[11px] text-slate-600">* Net BB 只用來稽核 HH 金流，不等於 decision EV regret。</p></section>}
-    </div>
-  </div>;
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-2xl border border-slate-800 bg-slate-900/55 p-4"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 break-words font-mono text-lg font-bold">{value}</div></div>;
-}
+function Metric({label,value}:{label:string;value:string}){return<div className="rounded-2xl border border-slate-800 bg-slate-900/55 p-4"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 break-words font-mono text-lg font-bold">{value}</div></div>}
