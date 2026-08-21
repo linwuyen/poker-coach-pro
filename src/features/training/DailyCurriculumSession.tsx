@@ -35,7 +35,7 @@ export function DailyCurriculumSession({ scenarios, history, profile, onRecord, 
     setLoading(true); setSolverError('');
     Promise.all([loadPokerBenchSplit('preflop'), loadPokerBenchSplit('postflop')])
       .then(([preflop, postflop]) => { if (alive) setRows([...preflop, ...postflop]); })
-      .catch(reason => { if (alive) setSolverError(reason instanceof Error ? reason.message : 'PokerBench 載入失敗'); })
+      .catch(reason => { if (alive) setSolverError(reason instanceof Error ? reason.message : '策略資料載入失敗'); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
@@ -49,10 +49,7 @@ export function DailyCurriculumSession({ scenarios, history, profile, onRecord, 
     const missingSemanticDecisions = Math.max(0, quota.semanticDecisions - selectedPairs.length * 2);
     setPairs(selectedPairs);
     setGeneralizationTarget(quota.generalization + missingSemanticDecisions);
-    if (selectedPairs.length) {
-      setPhase('semantic');
-      return;
-    }
+    if (selectedPairs.length) { setPhase('semantic'); return; }
     startSolver([], quota.generalization + missingSemanticDecisions);
   };
 
@@ -64,12 +61,12 @@ export function DailyCurriculumSession({ scenarios, history, profile, onRecord, 
     setPhase('solver');
   };
 
-  if (loading) return <div className="grid min-h-[60vh] place-items-center text-slate-300"><div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-5"><Loader2 className="h-5 w-5 animate-spin" />載入今日 verified-solver curriculum…</div></div>;
+  if (loading) return <div className="grid min-h-[60vh] place-items-center text-slate-300"><div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-5"><Loader2 className="h-5 w-5 animate-spin" />準備下一批牌局…</div></div>;
 
-  if (solverError && phase === 'curated') return <div className="space-y-4"><div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/7 p-4 text-sm leading-6 text-amber-100"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><b>Solver corpus 暫時不可用，今日自動降級成完整 curated plan。</b><div className="mt-1 text-amber-200/70">{solverError}。不會用 heuristic 題冒充 solver-backed transfer。</div></div></div><TrainingSession title="今日自動教練 · Curated fallback" scenarios={curatedPlan.items.map(item => item.scenario)} history={history} onRecord={onRecord} onExit={onExit} onComplete={onComplete} /></div>;
+  if (solverError && phase === 'curated') return <div className="space-y-4"><div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/7 p-4 text-sm leading-6 text-amber-100"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><b>部分外部策略資料暫時不可用。</b><div className="mt-1 text-amber-200/70">系統已自動降級，只使用目前能證明的題目；不需要你補資料。</div></div></div><TrainingSession title="自動訓練桌" scenarios={curatedPlan.items.map(item => item.scenario)} history={history} autoComplete onRecord={onRecord} onExit={onExit} onComplete={onComplete} /></div>;
 
-  if (phase === 'semantic') return <SemanticCounterfactualSession pairs={pairs} history={history} onRecord={onRecord} onExit={onExit} onComplete={() => startSolver(pairs)} title="今日訓練 · Solver 語義反事實" />;
-  if (phase === 'solver') return <SolverDecisionSession rows={generalizationRows} history={history} onRecord={onRecord} onExit={onExit} onComplete={onComplete} title="今日訓練 · Unseen Solver 泛化" />;
+  if (phase === 'semantic') return <SemanticCounterfactualSession pairs={pairs} history={history} autoComplete onRecord={onRecord} onExit={onExit} onComplete={() => startSolver(pairs)} title="自動訓練桌" />;
+  if (phase === 'solver') return <SolverDecisionSession rows={generalizationRows} history={history} autoComplete onRecord={onRecord} onExit={onExit} onComplete={onComplete} title="自動訓練桌" />;
 
-  return <div className="space-y-4"><div className="rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-4 py-3 text-xs leading-5 text-slate-400"><span className="font-semibold text-cyan-200">今日 {quota.total} 決策：</span> curated / due {quota.curated} + semantic counterfactual {quota.semanticDecisions} + unseen solver {quota.generalization}。到期 curated 複習先吃 quota；Sibling / Holdout 永不進 Daily。</div><TrainingSession title="今日訓練 · Curated 修復" scenarios={curatedPlan.items.map(item => item.scenario)} history={history} onRecord={onRecord} onExit={onExit} onComplete={afterCurated} /></div>;
+  return <div className="space-y-4"><div className="rounded-xl border border-emerald-500/15 bg-emerald-500/5 px-4 py-3 text-xs leading-5 text-slate-400">系統正在背景混合近期錯誤、到期複習、相近決策邊界與陌生 spot。你只需要繼續做決策。</div><TrainingSession title="自動訓練桌" scenarios={curatedPlan.items.map(item => item.scenario)} history={history} autoComplete onRecord={onRecord} onExit={onExit} onComplete={afterCurated} /></div>;
 }
