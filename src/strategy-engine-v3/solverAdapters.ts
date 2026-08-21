@@ -113,7 +113,7 @@ export function solverCsvToPostflopPack(
     if (!current) {
       const node: PostflopTruthNode = {
         schemaVersion:3, id:nodeId, version:pack.version, name: optional(row,mapping.nodeName) || nodeId, description:'Imported through P13-B explicit solver CSV mapping.', context,
-        source:{ type:'solver', trustTier:'verified-solver', label:solverName, solverName, solverVersion:optional(row,mapping.solverVersion), reference:sourceReference, generatedAt },
+        source:{ type:'solver', trustTier:'verified-solver', label:solverName, solverName, solverVersion:optional(row,mapping.solverVersion), reference:sourceReference, generatedAt, disclaimer:'Imported from an explicit solver export mapping. Frequencies/EV remain valid only for the exact exported game tree and context.' },
         strategyByCombo:{}, evByCombo:{}, tags:['p13-solver-csv-adapter'], immutable:true,
       };
       current = { node, contextKey:postflopContextKey(context) }; nodes.set(key,current);
