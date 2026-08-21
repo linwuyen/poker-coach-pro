@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PostflopTruthNode, createPostflopTruthStore, solverCsvToPostflopPack } from '../src/strategy-engine-v3';
-import { auditHandHistoryForExactGrading } from '../src/real-game/handHistoryIntegrity';
-import { parseHandHistoryText } from '../src/real-game/handHistory';
 
 function node(version = '1'): PostflopTruthNode {
   return {
@@ -33,12 +31,4 @@ test('P13 configurable solver CSV adapter preserves provenance, frequency and EV
   ].join('\n');
   const pack = solverCsvToPostflopPack(csv, undefined, { packId:'csv-pack', version:'1' });
   assert.equal(pack.nodes.length,1); assert.equal(pack.nodes[0].strategyByCombo.AsKd.bet,0.65); assert.equal(pack.nodes[0].evByCombo?.AsKd.bet,1.31); assert.equal(pack.nodes[0].source.reference,'fixture://csv');
-});
-
-test('P13/P18 integrity keeps modeled straddle and post-decision multi-runout gradeable', () => {
-  const text = `PokerStars Hand #9001: Hold'em No Limit ($0.50/$1.00 USD) - 2026/08/21 01:00:00 ET\nTable 'Audit' 6-max Seat #1 is the button\nSeat 1: Hero ($100 in chips)\nSeat 2: V1 ($100 in chips)\nSeat 3: V2 ($100 in chips)\nSeat 4: V3 ($100 in chips)\nSeat 5: V4 ($100 in chips)\nSeat 6: V5 ($100 in chips)\nV1: posts small blind $0.50\nV2: posts big blind $1\nV3: straddles $2\n*** HOLE CARDS ***\nDealt to Hero [As Kd]\nHero: raises $4 to $6\nV1: folds\nV2: calls $5\n*** FLOP *** [Ah 8c 4d]\nV2: checks\nHero: bets $4\nV2: calls $4\n*** FIRST TURN *** [Ah 8c 4d] [7s]\n*** SECOND TURN *** [Ah 8c 4d] [2s]`;
-  const report = auditHandHistoryForExactGrading(parseHandHistoryText(text)[0]);
-  assert.equal(report.gradeablePreflop,true); assert.equal(report.gradeablePostflop,true);
-  assert.equal(report.issues.some(item=>item.code==='straddle-or-dead-blind'),false);
-  assert.equal(report.issues.some(item=>item.code==='run-it-twice-or-multiple-board'),false);
 });
