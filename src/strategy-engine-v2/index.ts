@@ -4,6 +4,7 @@ export * from './importer';
 export * from './truth';
 export * from './exploit';
 export * from './population';
+export * from './coverage';
 
 import { STRATEGY_PROFILES_V2 as RFI_PROFILES } from './data';
 import { ADVANCED_STRATEGY_PROFILES } from './advancedData';
