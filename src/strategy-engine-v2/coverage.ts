@@ -80,15 +80,15 @@ export function buildTruthCoverageReport(profiles: StrategyProfile[]): TruthCove
   };
 }
 
-function sameOptionalNumber(actual: number | undefined, expected: number | undefined, tolerance: number): boolean {
-  if (expected === undefined) return actual === undefined;
-  return actual !== undefined && Math.abs(actual - expected) <= tolerance;
+function sameOptionalNumber(actual: number | undefined, observed: number | undefined, tolerance: number): boolean {
+  if (actual === undefined) return observed === undefined;
+  return observed !== undefined && Math.abs(actual - observed) <= tolerance;
 }
 
 /**
  * Strict truth lookup for automated real-game grading.
  * Unlike the interactive query engine, this never falls back to approximate profiles and requires
- * every material numeric dimension present in the profile to be supplied by the observed context.
+ * every material dimension present in the profile to be supplied by the observed context.
  */
 export function findExactVerifiedTruthProfile(profiles: StrategyProfile[], query: StrategyQuery): StrategyProfile | undefined {
   if (!query.hand) return undefined;
@@ -97,17 +97,17 @@ export function findExactVerifiedTruthProfile(profiles: StrategyProfile[], query
   return profiles.find(profile => {
     if (profile.source.trustTier !== 'verified-solver') return false;
     const c = profile.context;
-    if (query.format !== undefined && c.format !== query.format) return false;
-    if (query.tableSize !== undefined && c.tableSize !== query.tableSize) return false;
-    if (query.spot !== undefined && c.spot !== query.spot) return false;
-    if (query.position !== undefined && c.position !== query.position) return false;
-    if ((query.villainPosition ?? c.villainPosition) !== c.villainPosition) return false;
+    if (query.format !== c.format) return false;
+    if (query.tableSize !== c.tableSize) return false;
+    if (query.spot !== c.spot) return false;
+    if (query.position !== c.position) return false;
+    if (query.villainPosition !== c.villainPosition) return false;
     if (!sameOptionalNumber(c.stackDepthBB, query.stackDepthBB, 1)) return false;
     if (!sameOptionalNumber(c.anteBB, query.anteBB, 0.01)) return false;
     if (!sameOptionalNumber(c.openSizeBB, query.openSizeBB, 0.1)) return false;
     if (!sameOptionalNumber(c.rakePercent, query.rakePercent, 0.1)) return false;
     if (!sameOptionalNumber(c.rakeCapBB, query.rakeCapBB, 0.1)) return false;
-    if ((query.icm?.model ?? c.icm?.model) !== c.icm?.model) return false;
+    if (query.icm?.model !== c.icm?.model) return false;
     return Boolean(profile.ranges[hand]);
   });
 }
