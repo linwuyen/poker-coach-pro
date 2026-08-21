@@ -3,15 +3,20 @@ import { getTrainingScenarios } from '../learning-engine/benchmark';
 
 export const PLAYER_PROFILE_KEY = 'poker_player_profile_v1';
 
+/**
+ * Frictionless first-run profile. It is intentionally broad rather than pretending
+ * the player supplied preferences that were never asked for. More specific choices
+ * remain optional in Settings and are persisted only after explicit edits.
+ */
 export const DEFAULT_PLAYER_PROFILE: PlayerProfile = {
   schemaVersion: 1,
-  formats: ['tournament'],
-  tableSizes: ['9max'],
-  stackBands: ['20-40', '40-100'],
+  formats: ['cash', 'tournament'],
+  tableSizes: ['6max', '9max'],
+  stackBands: ['10-20', '20-40', '40-100', '100+'],
   experience: 'intermediate',
   focusAreas: ['mixed'],
   dailyQuestions: 12,
-  onboardingComplete: false,
+  onboardingComplete: true,
   updatedAt: Date.now(),
 };
 
