@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { expectedLearningValue } from '../src/learning-engine/trainingValue';
 import { improvementProbabilityFromHistory } from '../src/learning-engine/errorModel';
 import { solverContextFamilyId, solverCorpusRole } from '../src/learning-engine/solverCurriculum';
-import { scenarioContextFamilyId } from '../src/learning-engine/contextIdentity';
+import { scenarioContextFamilyId, scenarioDecisionFamilyId } from '../src/learning-engine/contextIdentity';
 import { HistoryItem, Scenario } from '../src/types';
 import { PokerBenchPreflopRow } from '../src/solver-data/pokerbench';
 
@@ -26,25 +26,23 @@ function cashScenario(): Scenario {
   };
 }
 
-function observedLeak(scenario: Scenario, format: 'Cash' | 'MTT' = 'Cash'): HistoryItem {
+function trainingLeak(scenario: Scenario, format: 'Cash' | 'MTT' = 'Cash'): HistoryItem {
   return {
-    schemaVersion: 5,
-    trainingType: 'real-hand',
-    scenarioId: 'real-1',
-    skillIds: ['preflop.bb-defense'],
-    category: ['BB 防守', format],
+    schemaVersion: 6,
+    trainingType: 'scenario',
+    scenarioId: scenario.id,
+    decisionFamilyId: scenarioDecisionFamilyId(scenario),
+    category: ['Training', format],
     gameFormat: format,
     contextFamilyId: scenarioContextFamilyId(scenario),
-    sessionId: 'session-1',
-    handsObserved: 100,
-    spotExposureCount: 6,
     score: 0,
     judgment: '錯誤',
     timestamp: 1,
     correct: false,
-    truthTier: 'exact-math',
+    truthTier: 'verified-solver',
     evLossBB: 0.4,
-    spotFrequencyPer100Hands: 6,
+    street: 'Preflop',
+    position: 'BB',
   };
 }
 
@@ -63,7 +61,7 @@ function preflop(id: string, holding: string): PokerBenchPreflopRow {
   };
 }
 
-test('estimated priority does not masquerade as reportable EV gain', () => {
+test('curriculum frequency prior never masquerades as reportable bankroll EV gain', () => {
   const value = expectedLearningValue(cashScenario(), []);
   assert.equal(value.evGainEvidence, 'estimated');
   assert.equal(value.reportableExpectedEvGainPer100Hands, undefined);
@@ -71,29 +69,22 @@ test('estimated priority does not masquerade as reportable EV gain', () => {
   assert.ok(value.expectedEvGainPer100Hands > 0);
 });
 
-test('context-matched real-hand frequency plus verified regret unlocks reportable cash EV gain', () => {
+test('verified trainer regret increases internal learning priority without creating real-play claims', () => {
   const scenario = cashScenario();
-  const value = expectedLearningValue(scenario, [observedLeak(scenario, 'Cash')]);
+  const baseline = expectedLearningValue(scenario, []);
+  const value = expectedLearningValue(scenario, [trainingLeak(scenario)]);
   assert.equal(value.evGainEvidence, 'verified');
-  assert.equal(value.spotFrequencySource, 'observed-real-hand');
-  assert.equal(value.spotFrequencyPer100Hands, 6);
-  assert.ok((value.reportableExpectedEvGainPer100Hands || 0) > 0);
+  assert.equal(value.reportableExpectedEvGainPer100Hands, undefined);
+  assert.ok(value.observedEvRegretBB > 0);
+  assert.ok(value.expectedLossPer100Hands > baseline.expectedLossPer100Hands);
 });
 
-test('real-hand frequency does not cross-contaminate cash and tournament formats', () => {
+test('cash BB trainer regret does not become tournament dollar utility', () => {
   const cash = cashScenario();
   const scenario = { ...cash, id: 'mtt-bb-defense', type: 'Tournament' as const };
-  const value = expectedLearningValue(scenario, [observedLeak(cash, 'Cash')]);
-  assert.equal(value.spotFrequencySource, 'heuristic-prior');
-  assert.equal(value.evGainEvidence, 'estimated');
-});
-
-test('tournament scheduler does not present chip BB/100 as tournament dollar EV', () => {
-  const scenario = { ...cashScenario(), id: 'mtt-bb-defense', type: 'Tournament' as const };
-  const leak = observedLeak(scenario, 'MTT');
-  const value = expectedLearningValue(scenario, [leak]);
+  const value = expectedLearningValue(scenario, [trainingLeak(cash, 'Cash')]);
   assert.equal(value.utilityMode, 'tournament-priority');
-  assert.equal(value.reportableExpectedEvGainPer100Hands, undefined);
+  assert.equal(value.reportableExpectedUtilityGainPer100Hands, undefined);
 });
 
 test('solver train and holdout split is stable at context-family level', () => {
