@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { isHiddenBenchmarkScenario } from '../src/learning-engine/benchmark';
 import {
   buildInfiniteCandidatePool,
   isTruthBackedPokerBenchRow,
@@ -31,7 +32,7 @@ function trainingRow(seed = 1): PokerBenchPreflopRow {
   throw new Error('Could not construct a PokerBench training row.');
 }
 
-test('infinite generator ingests 216 scenarios plus 528 safe variants before dedupe', () => {
+test('infinite generator ingests 216 scenarios plus 528 safe variants before truth/holdout gates', () => {
   const variants = buildGeneratedVariantPool(coreScenarios, 6);
   assert.equal(scenarios.length, 216);
   assert.equal(variants.length, 528);
@@ -42,9 +43,24 @@ test('infinite generator ingests 216 scenarios plus 528 safe variants before ded
   const summary = summarizeInfinitePool(scenarios, variants, [], pool);
   assert.equal(summary.curatedInput, 216);
   assert.equal(summary.safeVariantInput, 528);
+  assert.ok(summary.heldOut > 0);
   assert.ok(summary.usable > 500);
   assert.ok(summary.usable <= 744);
   assert.equal(new Set(pool.map(item => item.presentationFingerprint)).size, pool.length);
+});
+
+test('hidden benchmark scenarios and their generated variants never enter infinite training', () => {
+  const variants = buildGeneratedVariantPool(coreScenarios, 6);
+  const hiddenIds = new Set(scenarios.filter(isHiddenBenchmarkScenario).map(item => item.id));
+  assert.ok(hiddenIds.size > 0);
+  const pool = buildInfiniteCandidatePool(scenarios, variants, []);
+  for (const candidate of pool) {
+    if (candidate.kind !== 'scenario') continue;
+    assert.equal(hiddenIds.has(candidate.scenario.id), false);
+    if (candidate.source === 'safe-variant' && candidate.scenario.reviewSourceId) {
+      assert.equal(hiddenIds.has(candidate.scenario.reviewSourceId), false);
+    }
+  }
 });
 
 test('PokerBench enters the infinite pool only with a training-partition exact solver label', () => {
@@ -61,18 +77,16 @@ test('PokerBench enters the infinite pool only with a training-partition exact s
 
 test('exact duplicate PokerBench presentations are deduplicated even if row ids differ', () => {
   const first = trainingRow();
-  let second = { ...first, id: `${first.id}-duplicate` };
-  if (solverCorpusRole(second) !== 'training') {
-    // Corpus role is a guard on family, not row order; keep a valid training id if needed.
-    second = { ...first };
-  }
+  const second = { ...first, id: `${first.id}-duplicate` };
+  assert.equal(solverCorpusRole(second), 'training');
   const pool = buildInfiniteCandidatePool([], [], [first, second]);
   assert.equal(pool.length, 1);
 });
 
 test('next-hand sampling avoids recent exact candidates and recent decision families when alternatives exist', () => {
-  const variants = buildGeneratedVariantPool(coreScenarios.slice(0, 5), 2);
-  const pool = buildInfiniteCandidatePool(coreScenarios.slice(0, 5), variants, []);
+  const curated = coreScenarios.filter(item => !isHiddenBenchmarkScenario(item)).slice(0, 8);
+  const variants = buildGeneratedVariantPool(curated, 2);
+  const pool = buildInfiniteCandidatePool(curated, variants, []);
   assert.ok(pool.length >= 5);
   const recent = pool[0];
   const next = selectNextInfiniteCandidate(pool, [], [recent.id], [recent.familyId], () => 0.01, Date.now());
