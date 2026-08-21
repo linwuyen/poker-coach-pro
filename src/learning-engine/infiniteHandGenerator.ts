@@ -1,4 +1,5 @@
 import { HistoryItem, Scenario } from '../types';
+import { isHiddenBenchmarkScenario } from './benchmark';
 import { scenarioContextFamilyId } from './contextIdentity';
 import { solverDecisionFamilyId } from './semanticPairs';
 import { solverCorpusRole } from './solverCurriculum';
@@ -31,6 +32,7 @@ export interface InfinitePoolSummary {
   safeVariantInput: number;
   pokerBenchInput: number;
   usable: number;
+  heldOut: number;
   deduplicated: number;
   bySource: Record<InfiniteHandSource, number>;
 }
@@ -60,15 +62,15 @@ export function scenarioBestAction(scenario: Scenario, stepIndex = 0): string | 
   const feedbacks = Object.values(step.feedbacks).filter(Boolean);
   const best = [...new Set(feedbacks.map(feedback => feedback!.bestAction).filter(Boolean))];
   if (best.length !== 1) return undefined;
-  const bestFeedback = step.feedbacks[best[0] as keyof typeof step.feedbacks];
-  return bestFeedback && bestFeedback.score >= 8 ? best[0] : undefined;
+  const bestFeedback = Object.values(step.feedbacks).find(feedback => feedback?.bestAction === best[0] && feedback.score >= 8);
+  return bestFeedback ? best[0] : undefined;
 }
 
 export function isTruthBackedScenario(scenario: Scenario): boolean {
   if (!scenario.steps.length) return false;
   return scenario.steps.every((step, index) => {
     const best = scenarioBestAction(scenario, index);
-    return Boolean(best && step.feedbacks[best as keyof typeof step.feedbacks]);
+    return Boolean(best && Object.values(step.feedbacks).some(feedback => feedback?.bestAction === best));
   });
 }
 
@@ -140,14 +142,28 @@ function solverCandidate(row: PokerBenchRow): InfiniteSolverCandidate {
   };
 }
 
+function holdoutSourceIds(curated: Scenario[]): Set<string> {
+  return new Set(curated.filter(isHiddenBenchmarkScenario).map(scenario => scenario.id));
+}
+
+function isTrainingSafeCurated(scenario: Scenario): boolean {
+  return !isHiddenBenchmarkScenario(scenario) && isTruthBackedScenario(scenario);
+}
+
+function isTrainingSafeVariant(scenario: Scenario, heldOutSources: Set<string>): boolean {
+  const sourceId = scenario.reviewSourceId;
+  return isTruthBackedScenario(scenario) && (!sourceId || !heldOutSources.has(sourceId));
+}
+
 export function buildInfiniteCandidatePool(
   curated: Scenario[],
   safeVariants: Scenario[],
   pokerBenchRows: PokerBenchRow[],
 ): InfiniteHandCandidate[] {
+  const heldOutSources = holdoutSourceIds(curated);
   const raw: InfiniteHandCandidate[] = [
-    ...curated.filter(isTruthBackedScenario).map(item => scenarioCandidate(item, 'curated')),
-    ...safeVariants.filter(isTruthBackedScenario).map(item => scenarioCandidate(item, 'safe-variant')),
+    ...curated.filter(isTrainingSafeCurated).map(item => scenarioCandidate(item, 'curated')),
+    ...safeVariants.filter(item => isTrainingSafeVariant(item, heldOutSources)).map(item => scenarioCandidate(item, 'safe-variant')),
     ...pokerBenchRows.filter(isTruthBackedPokerBenchRow).map(solverCandidate),
   ];
   const byFingerprint = new Map<string, InfiniteHandCandidate>();
@@ -163,12 +179,23 @@ export function summarizeInfinitePool(
   pokerBenchRows: PokerBenchRow[],
   pool = buildInfiniteCandidatePool(curated, safeVariants, pokerBenchRows),
 ): InfinitePoolSummary {
-  const rawUsable = curated.filter(isTruthBackedScenario).length + safeVariants.filter(isTruthBackedScenario).length + pokerBenchRows.filter(isTruthBackedPokerBenchRow).length;
+  const heldOutSources = holdoutSourceIds(curated);
+  const truthBackedCurated = curated.filter(isTruthBackedScenario);
+  const truthBackedVariants = safeVariants.filter(isTruthBackedScenario);
+  const truthBackedPokerBench = pokerBenchRows.filter(row => row.correctDecision && row.availableMoves.length >= 2 && row.availableMoves.some(move => normalizeDecision(move) === normalizeDecision(row.correctDecision)));
+  const trainingCurated = truthBackedCurated.filter(item => !isHiddenBenchmarkScenario(item));
+  const trainingVariants = truthBackedVariants.filter(item => !item.reviewSourceId || !heldOutSources.has(item.reviewSourceId));
+  const trainingPokerBench = truthBackedPokerBench.filter(item => solverCorpusRole(item) === 'training');
+  const rawUsable = trainingCurated.length + trainingVariants.length + trainingPokerBench.length;
+  const heldOut = (truthBackedCurated.length - trainingCurated.length)
+    + (truthBackedVariants.length - trainingVariants.length)
+    + (truthBackedPokerBench.length - trainingPokerBench.length);
   return {
     curatedInput: curated.length,
     safeVariantInput: safeVariants.length,
     pokerBenchInput: pokerBenchRows.length,
     usable: pool.length,
+    heldOut,
     deduplicated: Math.max(0, rawUsable - pool.length),
     bySource: {
       curated: pool.filter(item => item.source === 'curated').length,
