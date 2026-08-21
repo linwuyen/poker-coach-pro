@@ -11,134 +11,123 @@ Poker Coach Pro must fail toward **unknown**, not toward fabricated precision.
 5. `derived-interpolation` — explicit derivation between supported nodes.
 6. `heuristic-estimate` — transparent teaching/ranking heuristic.
 
-A lower tier must never be relabelled as a higher tier just because it agrees with an expected answer. Storage, indexing, caching, migration, UI convenience, or sample size alone never upgrades a truth tier.
-
-## PokerBench
-
-The pinned PokerBench corpus supplies optimal decision labels. It does **not** supply a complete per-action EV/frequency surface for every row.
-
-Allowed: train/evaluate labels, build verified one-variable pairs when both rows exist, preserve dataset source/revision/split/row id. Not allowed: invent mixed frequencies, unavailable EV, or solver explanations.
+Storage, indexing, caching, migration, UI convenience, sample size, simulation reproducibility or agreement with an expected answer never upgrades a truth tier.
 
 ## Solver truth
 
 ### Preflop Strategy Profile v2
 
-A v2 profile marked `verified-solver` requires solver name, source reference, generated time, frequency data and immutable `id@version`. Per-action EV values must be finite and source-referenced.
+A `verified-solver` v2 profile requires solver name, source reference, generated time, frequency data and immutable `id@version`. Automated grading is exact-context only. P18 adds optional `forcedBetKey`; a straddle/dead-blind hand cannot match a standard node.
 
 ### Heads-up Postflop Truth Pack v3
 
-A v3 node represents one exact heads-up Flop/Turn/River state. Material dimensions include format/table, street, Hero/Villain positions, player count, effective stack, pot, SPR, to-call, exact board, preflop line, street line/sizing, last aggressor, rake/cap when material and exact Hero combo.
+A v3 node represents one exact heads-up Flop/Turn/River state: format/table, street, positions, player count, effective stack, pot, SPR, to-call, exact board, preflop/street action lines and sizing, aggressor, rake/cap when material, exact Hero combo, and P18 forced-bet geometry when present.
 
-Automatic regret requires a unique verified immutable node plus sourced EV for the chosen action and at least one comparison action. Zero exact nodes is Unknown; multiple exact versions is Ambiguous/Unknown.
+Automatic regret requires exactly one verified immutable node plus sourced chosen/comparison EV. Zero exact nodes is Unknown; multiple exact versions is Ambiguous/Unknown.
 
-### P13 indexed storage and solver adapters
+### Multiway Truth Pack v4
 
-Moving v3 truth from `localStorage` to IndexedDB changes **storage scale**, not epistemic status.
+v4 is separate from v3. A v4 context requires every active non-Hero opponent position + remaining stack, Hero stack, player count, pot/SPR/to-call, exact board/action lines, aggressor, rake/cap when material, exact combo, and optional P18 `forcedBetKey` / `potStructureKey`.
 
-- Every node is still validated before indexed insertion.
-- `id@version` remains immutable.
-- `contextKey` is an exact lookup accelerator, not an approximate matcher.
-- legacy localStorage migration cannot upgrade invalid/unverified data.
-- diagnostics/counts/manifests are observability metadata, not solver evidence.
-- NDJSON streaming changes import memory behavior only.
+Heads-up truth must never be projected onto multiway; multiway truth must never be simplified into a heads-up claim.
 
-P13-B configurable CSV mapping accepts a solver export only when material context, combo, action frequency and provenance fields can be explicitly mapped. Optional EV is accepted only when actually supplied. The adapter must not infer proprietary vendor semantics or manufacture missing solver rows.
+### Indexed storage / streaming
 
-Coverage/import capability is not equivalent to owning a licensed complete solver database.
+v3/v4 IndexedDB, context indexes, pack manifests, NDJSON streaming and portable workspace change storage scale only. Every node still passes the same immutable/provenance validation. P18 fixes streaming manifests so counts/bytes reflect actual streamed nodes rather than an empty final batch.
 
-### P14 Multiway Truth Pack v4
+## P18 real-world HH geometry
 
-Multiway truth is a separate contract, not a relaxation of v3. A v4 node requires `playersInHand >= 3` and enumerates **every active non-Hero opponent** with exact position and remaining stack, in addition to Hero stack, pot/SPR/to-call, board, action lines, aggressor and rake/cap when material.
+Raw HH is observation first. Special markers do not automatically prove or disprove gradeability; the question is whether the **decision-time material state** can be uniquely reconstructed.
 
-A multiway HH decision may receive verified regret only when:
+### Straddle / dead blind
 
-1. the HH state passes the exact-grading integrity audit;
-2. every active player/stack/position is reconstructable;
-3. exactly one verified immutable v4 context matches;
-4. the exact Hero combo exists;
-5. chosen and comparison EV are sourced.
+- A non-standard forced post is gradeable only when player position, kind and amount in BB can be canonicalized.
+- Straddle is a live preflop commitment and therefore affects to-call/current commitment.
+- Dead blind is dead pot money and does not offset a later call.
+- Canonical geometry enters v2/v3/v4 exact context matching.
+- Marker present but unresolved geometry → `Unsupported`.
 
-Heads-up v3 truth must never be projected onto a multiway state, and v4 truth must never be simplified into a heads-up claim.
+### Side pot / all-in
 
-## Hand histories and automatic leak grading
+When an active all-in player makes pot eligibility material, v4 records contribution tiers and eligible positions in `potStructureKey`. Folded contributions remain in pot amounts but folded players are not eligible. A truth node without the same tier geometry cannot grade the decision.
 
-Raw PokerStars/GGPoker HH establishes observations, not optimality. HH imports always create exposure evidence first.
+### Run-it-twice / multiple boards and cash-out
 
-### P13-C integrity gate
+If settlement begins only **after all Hero decisions are complete**, it does not retroactively change the earlier decision state and does not block those earlier decisions. If Hero acts after multi-board/cash-out settlement begins, current grading remains Unsupported.
 
-Before automatic grading, the product audits whether the current replay model can prove the material geometry. Unsupported or incomplete features remain exposure-only, including currently detected cases such as:
+Missing exact raise/all-in amount, Hero identity, button/blind/table geometry or other required material state remains fail-closed.
 
-- straddle / dead blind
-- run-it-twice or multiple board runouts
-- side/main-pot geometry not represented by the current state model
-- cash-out semantics
-- raise action without exact raise-to amount
-- missing Hero/button/blind/table geometry
+## P19 coverage claims
 
-The correct failure mode is `Unsupported` / exposure-only, not a guessed pot, stack or action line.
+Coverage means actual usable truth, not importer capability.
 
-Verified real-game regret may influence Training-partition priority at a matching situation level. It never unlocks Sibling/Holdout and does not assert identity between PokerBench rows and imported solver nodes.
+Unified v2/v3/v4 coverage counts:
 
-## Population evidence
+- unique exact contexts
+- unique usable combos
+- full per-action-EV combos
+- ambiguous combo overlap
+- source references
+- persisted pack metadata
 
-A `population-exploit` profile requires external reference, methodology, named population, generated time, meaningful sample floor and an explicit exploit strategy supplied by that evidence source.
+A combo owned by multiple exact truth versions is ambiguous and does not count as usable automatic-grading coverage.
 
-Measured local HH cohorts preserve raw numerator/denominator and remain observation evidence.
+A percentage such as “80% truth coverage” is allowed only against an explicit versioned `TruthCoverageTargetEnvelope` that defines the denominator/weights/minimum combo requirements. Without a target envelope, report absolute actual coverage only.
 
-### P16 replicated population deviation
+## Population evidence / P16 / P21
 
-A population rate is not considered a replicated deviation merely because a large aggregate sample differs from solver baseline. P16 requires:
+Measured HH cohorts preserve raw numerator/denominator and remain observation evidence.
 
-- predeclared metric/context
-- solver baseline rate + reference
-- population reference + methodology
-- raw training numerator/denominator
-- independent holdout numerator/denominator
-- minimum sample gates
-- practical-effect threshold
-- same-direction replication
-- 95% Wilson interval excluding the baseline in both splits
+P16 `validated-deviation` requires predeclared context/metric, baseline provenance, independent train/holdout raw counts, sample floors, practical delta, same-direction replication and Wilson 95% intervals excluding baseline. It still does **not** synthesize an exploit.
 
-Current default gates are training >= 1,000, holdout >= 500 and minimum practical delta 3 percentage points unless the analysis explicitly declares another threshold.
+P21 validates an already supplied candidate strategy only when:
 
-A `validated-deviation` still does **not** synthesize an exploit. `exploitEligible` is true only when an already evidence-backed `population-exploit` Strategy Profile is linked and its strategy context matches exactly. This separates “the pool deviates” from “this external strategy is an evidence-backed response.”
+1. P16 deviation is validated for the exact strategy context;
+2. candidate is already an evidence-backed `population-exploit` Strategy Profile;
+3. candidate context exactly matches;
+4. independent paired candidate-minus-baseline utility samples have provenance;
+5. holdout sample count is at least 200;
+6. mean improvement clears the declared practical threshold (default 0.01 BB/opportunity);
+7. 95% mean-delta interval lower bound is above zero.
 
-## Reviewed teaching explanations
+Passing P21 validates **that candidate in that declared population/context**. It does not synthesize a range or generalize to another pool.
 
-Human-reviewed explanations are interpretation records, not raw solver rationale. They require target, author, reviewer, review timestamp, reference, boundaries, common mistake, contrastive cue and disclaimer.
+## Tournament evidence / P15 / P20
 
-## Exact-math teaching
+Ordinary tournament HH does not reliably contain complete field state. P15 full-field lobby/snapshot and conservative summary adapters only establish values explicitly supplied by those sources.
 
-Exact-math scenarios are conditional on explicit inputs such as equity/fold rate. Displayed cards must not be represented as independently producing those supplied assumptions.
+P20 allows showdown equity to be computed from explicit `TournamentRangeEvidence` containing exact cards/board, weighted villain range and provenance. Only **exact enumeration** is `exact-eligible` for automatic attachment to exact ICM/PKO utility. Seeded Monte Carlo is reproducible `simulation-only`; it does not become `exact-math`.
 
-## Tournament HH / ICM / PKO / FGS
+FGS future branch probabilities may be attached only from explicit referenced parent→child probability evidence that covers every supplied tree edge and sums to one at each parent. Missing or extra edges are rejected. HH is never used to guess future strategy probabilities.
 
-Ordinary tournament HH is a hand-level observation and does not reliably contain complete tournament utility state.
+## Effectiveness / P10 / P17 / P22
 
-Explicit ICM/PKO/FGS evaluation still requires the necessary referenced state. FGS evaluates supplied finite branches/probabilities; it does not claim those probabilities are equilibrium strategy.
+P5/P17 before-after and longitudinal trends are observational prioritization signals. P17 real-game regret uses verified/exact compatible utility and does not treat raw HH exposure as loss truth.
 
-### P15 tournament automation
+P10 randomized N-of-1 supports an individual causal comparison only after preregistration, balanced seeded blocks, washout, minimum sample/block gates and one explicit primary metric.
 
-P15 may reduce manual entry through two conservative evidence adapters:
+P22 may feed a P10 result back into P17 only when the target `decisionFamilyId` was registered no later than the experiment preregistration and the experiment actually returns `randomized-n-of-1` with a winning arm. The result may select a **recommended intervention** for that leak family. It does not change solver truth, observed leak magnitude, or population-wide claims.
 
-1. full-field lobby/snapshot CSV containing tournamentId, handId, playersRemaining, every player stack, optional bounty, payout vector, utility unit and provenance;
-2. PokerStars-style summary parsing that accepts only **explicitly written finishing-place prize amounts**.
+## P23 portable truth workspace
 
-The summary parser must not infer player stacks or remaining field. A table HH must never be silently treated as full field. Summary and lobby metadata may be merged only when tournament IDs agree; provenance from both sources must remain visible.
+Large v3/v4 truth uses streaming NDJSON workspace records rather than ordinary history JSON backup.
 
-Decision-specific inputs not proven by those sources—such as showdown equity or FGS future branch probabilities—remain explicit.
+Required invariants:
 
-## Effectiveness, experimentation and P17 longitudinal claims
+- header precedes data records;
+- manifests/nodes validate independently;
+- footer counts exactly match streamed records;
+- validate-only pass is available before mutation;
+- restore is additive and immutable; existing truth is never silently overwritten or cleared;
+- export iterates stores incrementally rather than materializing one combined node array.
 
-P5-C before/after reports are observational.
+A truncated or count-mismatched workspace is invalid. A partially imported corrupted stream may leave only already-validated immutable additions; it cannot overwrite established truth.
 
-P10 randomized N-of-1 requires preregistration, explicit primary metric, balanced seeded blocks, washout, sample/block gates and non-overlap. Passing it supports an individual randomized-block comparison, not a population-wide claim.
+## PokerBench and reviewed explanations
 
-P17 longitudinal outcomes use only verified-solver/exact-math Cash BB real-game utility for regret metrics. Raw exposure is excluded. Monthly/family trends, early-vs-recent regret and training prescriptions are **observational prioritization signals** unless a separate P10 randomized experiment supports a causal intervention comparison.
+PokerBench supplies solver-labelled decisions, not a complete mixed-frequency/per-action-EV surface. Missing frequencies/EV/rationale must not be invented.
 
-The P17 frequency-weighted leak score is a comparable signal derived from recorded spot-frequency evidence. It must not be presented as guaranteed bankroll win rate or expected future profit.
-
-Training prescription priority may combine verified regret, encounter-frequency signal, recent training accuracy/delayed retention and evidence confidence. This ranks what to study next; it does not change the underlying solver truth.
+Human-reviewed explanations are interpretation records, not raw solver rationale. Author/reviewer/reference/boundary metadata remain distinct from solver evidence.
 
 ## UI rule
 
@@ -148,6 +137,7 @@ When evidence is missing or incompatible, use one of:
 - `Unsupported`
 - `Insufficient evidence`
 - `Ambiguous truth version`
+- `Simulation only`
 - explicit lower trust tier
 
 Never substitute a plausible-looking number.
