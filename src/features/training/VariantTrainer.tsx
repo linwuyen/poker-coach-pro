@@ -4,7 +4,7 @@ import { coreScenarios } from '../../teaching/scenarioCatalog';
 import { buildGeneratedVariantPool, sampleVariantSession } from '../../learning-engine/variantGenerator';
 import { HistoryItem } from '../../types';
 import { loadHistory, saveHistory } from '../../utils/history';
-import { TrainingSessionV12 } from './TrainingSessionV12';
+import { TrainingSession } from './TrainingSession';
 
 export function VariantTrainer({ onExit }: { onExit: () => void }) {
   const pool = useMemo(() => buildGeneratedVariantPool(coreScenarios, 6), []);
@@ -27,7 +27,7 @@ export function VariantTrainer({ onExit }: { onExit: () => void }) {
 
   if (running) {
     return <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8">
-      <TrainingSessionV12
+      <TrainingSession
         title="泛化變式 · 24 題"
         scenarios={session}
         history={history}
