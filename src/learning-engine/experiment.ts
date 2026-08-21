@@ -49,6 +49,8 @@ export interface LearningExperimentResult {
   claim: string;
 }
 
+const METRICS: LearningExperimentMetric[] = ['holdout-accuracy', 'transfer-accuracy', 'delayed-retention', 'verified-ev-loss'];
+
 function hashSeed(seed: string): number {
   let hash = 2166136261;
   for (let index = 0; index < seed.length; index += 1) {
@@ -124,10 +126,14 @@ export function createRandomizedBlockExperiment(input: {
 
 export function validateLearningExperiment(spec: LearningExperimentSpec): LearningExperimentSpec {
   if (!spec || spec.schemaVersion !== 1 || spec.design !== 'randomized-block-n-of-1') throw new Error('Unsupported learning experiment schema/design.');
-  if (spec.preRegisteredAt > Math.min(...spec.blocks.map(block => block.startAt))) throw new Error(`${spec.id}: preregistration must precede all blocks.`);
+  if (!spec.id || !spec.version || !spec.assignmentSeed || !spec.hypothesis || !METRICS.includes(spec.metric)) throw new Error('Experiment metadata/primary metric is incomplete.');
+  if (!Array.isArray(spec.blocks) || !spec.blocks.length || !Array.isArray(spec.arms)) throw new Error(`${spec.id}: experiment blocks/arms are required.`);
+  if (!Number.isFinite(spec.preRegisteredAt) || spec.preRegisteredAt > Math.min(...spec.blocks.map(block => block.startAt))) throw new Error(`${spec.id}: preregistration must precede all blocks.`);
+  if (!Number.isFinite(spec.washoutMs) || spec.washoutMs < 0) throw new Error(`${spec.id}: washout must be finite and non-negative.`);
   const armIds = new Set(spec.arms.map(arm => arm.id));
-  if (armIds.size < 2 || armIds.size !== spec.arms.length) throw new Error(`${spec.id}: experiment arms must be unique.`);
+  if (armIds.size < 2 || armIds.size !== spec.arms.length || spec.arms.some(arm => !arm.id || !arm.label || !arm.intervention)) throw new Error(`${spec.id}: experiment arms must be unique and fully described.`);
   const sorted = [...spec.blocks].sort((a, b) => a.startAt - b.startAt);
+  if (new Set(sorted.map(block => block.id)).size !== sorted.length) throw new Error(`${spec.id}: experiment block ids must be unique.`);
   sorted.forEach((block, index) => {
     if (!block.id || !armIds.has(block.armId) || !Number.isFinite(block.startAt) || !Number.isFinite(block.endAt) || block.endAt <= block.startAt) throw new Error(`${spec.id}: invalid experiment block.`);
     if (index > 0 && sorted[index - 1].endAt > block.startAt) throw new Error(`${spec.id}: experiment blocks cannot overlap.`);
@@ -147,7 +153,14 @@ function metricValue(item: HistoryItem, metric: LearningExperimentMetric): numbe
   }
   if (metric === 'transfer-accuracy') return item.isTransferTest && typeof item.correct === 'boolean' ? (item.correct ? 1 : 0) : undefined;
   if (metric === 'delayed-retention') return item.isDelayedReview && typeof item.correct === 'boolean' ? (item.correct ? 1 : 0) : undefined;
-  if (item.trainingType === 'real-hand' && item.truthTier === 'verified-solver' && typeof item.evLossBB === 'number' && Number.isFinite(item.evLossBB)) return item.evLossBB;
+  // P10 never mixes tournament dollar/seat utility with cash BB regret.
+  if (item.trainingType === 'real-hand'
+      && item.truthTier === 'verified-solver'
+      && item.gameFormat === 'Cash'
+      && item.utilityUnit === 'bb'
+      && item.utilityModel === 'cash-chip-ev'
+      && typeof item.evLossBB === 'number'
+      && Number.isFinite(item.evLossBB)) return item.evLossBB;
   return undefined;
 }
 
@@ -177,9 +190,7 @@ export function evaluateLearningExperiment(history: HistoryItem[], rawSpec: Lear
   });
   const enough = arms.every(result => result.samples >= spec.minSamplesPerArm && result.blocksWithEvidence >= 2 && result.mean !== null);
   const higherIsBetter = spec.metric !== 'verified-ev-loss';
-  if (!enough) {
-    return { status: 'insufficient', metric: spec.metric, higherIsBetter, arms, claim: 'Insufficient randomized block evidence; no experimental winner is reported.' };
-  }
+  if (!enough) return { status: 'insufficient', metric: spec.metric, higherIsBetter, arms, claim: 'Insufficient randomized block evidence; no experimental winner is reported.' };
   const ranked = [...arms].sort((left, right) => higherIsBetter ? (right.mean! - left.mean!) : (left.mean! - right.mean!));
   const best = ranked[0];
   const runnerUp = ranked[1];
