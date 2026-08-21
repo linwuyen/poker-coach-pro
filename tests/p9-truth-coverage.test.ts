@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildTruthCoverageReport, findExactVerifiedTruthProfile, verifiedActionRegret } from '../src/strategy-engine-v2/coverage';
+import { buildTruthCoverageReport, findExactVerifiedTruthProfile, findExactVerifiedTruthProfiles, verifiedActionRegret } from '../src/strategy-engine-v2/coverage';
 import { StrategyProfile } from '../src/strategy-engine-v2/types';
 
 function solverProfile(): StrategyProfile {
@@ -24,6 +24,11 @@ function solverProfile(): StrategyProfile {
   };
 }
 
+const exactQuery = {
+  hand: 'AKo', format: 'cash' as const, tableSize: '6max' as const, spot: 'bb-defense' as const, position: 'bb' as const, villainPosition: 'btn' as const,
+  stackDepthBB: 100, anteBB: 0, openSizeBB: 2.5, rakePercent: 5, rakeCapBB: 2,
+};
+
 test('truth coverage counts only verified solver rows as reportable truth coverage', () => {
   const report = buildTruthCoverageReport([solverProfile()]);
   assert.equal(report.verifiedSolverProfiles, 1);
@@ -35,17 +40,17 @@ test('truth coverage counts only verified solver rows as reportable truth covera
 });
 
 test('automatic grading requires an exact verified context instead of approximate fallback', () => {
-  const profiles = [solverProfile()];
-  const exact = findExactVerifiedTruthProfile(profiles, {
-    hand: 'AKo', format: 'cash', tableSize: '6max', spot: 'bb-defense', position: 'bb', villainPosition: 'btn',
-    stackDepthBB: 100, anteBB: 0, openSizeBB: 2.5, rakePercent: 5, rakeCapBB: 2,
-  });
-  assert.ok(exact);
-  const mismatched = findExactVerifiedTruthProfile(profiles, {
-    hand: 'AKo', format: 'cash', tableSize: '6max', spot: 'bb-defense', position: 'bb', villainPosition: 'btn',
-    stackDepthBB: 80, anteBB: 0, openSizeBB: 2.5,
-  });
+  assert.ok(findExactVerifiedTruthProfile([solverProfile()], exactQuery));
+  const mismatched = findExactVerifiedTruthProfile([solverProfile()], { ...exactQuery, stackDepthBB: 80 });
   assert.equal(mismatched, undefined);
+  assert.equal(findExactVerifiedTruthProfile([solverProfile()], { ...exactQuery, rakePercent: undefined }), undefined);
+});
+
+test('multiple exact verified solver versions are exposed as ambiguity, never array-order truth', () => {
+  const first = solverProfile();
+  const second = { ...solverProfile(), version: '2.0.0', source: { ...solverProfile().source, solverVersion: '2' } };
+  assert.equal(findExactVerifiedTruthProfiles([first, second], exactQuery).length, 2);
+  assert.equal(findExactVerifiedTruthProfile([first, second], exactQuery), undefined);
 });
 
 test('verified regret is emitted only when the chosen action has real per-action EV', () => {
