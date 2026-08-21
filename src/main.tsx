@@ -18,6 +18,7 @@ import { PokerBenchTrainer } from './features/training/PokerBenchTrainer';
 import { SemanticCounterfactualTrainer } from './features/training/SemanticCounterfactualTrainer';
 import { SizingTrainer } from './features/training/SizingTrainer';
 import { VariantTrainer } from './features/training/VariantTrainer';
+import { FgsWorkbench } from './features/tournament/FgsWorkbench';
 import { IcmWorkbench } from './features/tournament/IcmWorkbench';
 import './index.css';
 
@@ -48,6 +49,7 @@ function RootRouter() {
   if (route === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
   if (route === '#exploit-workbench') return <ExploitWorkbench onExit={exitLab} />;
   if (route === '#icm-workbench') return <IcmWorkbench onExit={exitLab} />;
+  if (route === '#fgs-workbench') return <FgsWorkbench onExit={exitLab} />;
   if (route === '#skill-graph') return <SkillGraphDashboard onExit={exitLab} />;
   if (route === '#calibration') return <CalibrationDashboard onExit={exitLab} />;
   return <AppV2 />;
