@@ -23,6 +23,10 @@ export interface MultiwayTruthContext {
   lastAggressorPosition?: Position;
   rakePercent?: number;
   rakeCapBB?: number;
+  /** P18: canonical non-standard forced-bet geometry (straddle/dead blind). */
+  forcedBetKey?: string;
+  /** P18: canonical main/side-pot eligibility tiers when an active all-in makes them material. */
+  potStructureKey?: string;
 }
 
 export interface MultiwayTruthNodeV4 {
