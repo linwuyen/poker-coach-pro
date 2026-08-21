@@ -54,6 +54,7 @@ export function canonicalPostflopContext(context: PostflopTruthContext): Postflo
     board: canonicalBoard(context.board),
     preflopLine: canonicalLine(context.preflopLine),
     streetLine: canonicalLine(context.streetLine),
+    forcedBetKey: context.forcedBetKey || undefined,
   };
 }
 
@@ -62,7 +63,7 @@ export function postflopContextKey(context: PostflopTruthContext): string {
   return JSON.stringify([
     c.format, c.tableSize, c.street, c.heroPosition, c.villainPosition, c.playersInHand,
     c.effectiveStackBB, c.potBB, c.spr, c.toCallBB, c.board, c.preflopLine, c.streetLine,
-    c.lastAggressorPosition || '-', c.rakePercent ?? '-', c.rakeCapBB ?? '-',
+    c.lastAggressorPosition || '-', c.rakePercent ?? '-', c.rakeCapBB ?? '-', c.forcedBetKey || '-',
   ]);
 }
 
@@ -98,6 +99,7 @@ export function findExactVerifiedPostflopNode(nodes: PostflopTruthNode[], query:
     if (!sameLine(c.preflopLine, query.preflopLine) || !sameLine(c.streetLine, query.streetLine)) return false;
     if (query.lastAggressorPosition !== c.lastAggressorPosition) return false;
     if (!sameNumber(c.rakePercent, query.rakePercent, 0.1) || !sameNumber(c.rakeCapBB, query.rakeCapBB, 0.1)) return false;
+    if ((query.forcedBetKey || undefined) !== (c.forcedBetKey || undefined)) return false;
     return Boolean(node.strategyByCombo[combo]);
   });
   return matches.length === 1 ? matches[0] : undefined;
