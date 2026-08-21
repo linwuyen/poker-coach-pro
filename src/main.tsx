@@ -2,6 +2,7 @@ import { StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import AppV2 from './app/AppV2';
 import { CalibrationDashboard } from './features/analysis/CalibrationDashboard';
+import { EffectivenessDashboard } from './features/analysis/EffectivenessDashboard';
 import { HandHistoryImporter } from './features/analysis/HandHistoryImporter';
 import { SkillGraphDashboard } from './features/analysis/SkillGraphDashboard';
 import { CompanionPanel } from './features/companion/CompanionPanel';
@@ -31,6 +32,7 @@ function RootRouter() {
 
   const exitLab = () => { window.location.hash = ''; };
   if (route === '#hand-history') return <HandHistoryImporter onExit={exitLab} />;
+  if (route === '#effectiveness') return <EffectivenessDashboard onExit={exitLab} />;
   if (route === '#companion') return <CompanionPanel onExit={exitLab} />;
   if (route === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
   if (route === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
