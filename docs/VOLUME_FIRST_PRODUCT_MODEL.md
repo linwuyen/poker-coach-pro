@@ -15,6 +15,10 @@ Fold / Check / Call / Bet / Raise / Jam
   ↓
 automatic History + scheduling
   ↓
+answer explanation + evidence
+  ↓
+player explicitly chooses Next
+  ↓
 next decision
   ↓
 repeat
@@ -30,6 +34,8 @@ The primary shell exposes only:
 2. **Train** — one truth-constrained Infinite Hand Generator.
 3. **Progress** — improvement, current leak, retention/transfer and recent decisions.
 
+Advanced training tools remain separate routes, but after a decision they are discoverable from the explanation surface and open in a new tab so the current hand is preserved.
+
 ## One action is enough
 
 A normal decision must not require auxiliary forms before the poker action. Confidence is optional evidence rather than a mandatory gate.
@@ -40,16 +46,21 @@ spot shown
 player chooses action
   ↓
 history is recorded automatically
+  ↓
+explanation is shown
 ```
 
 If confidence was not collected, the system leaves it absent. It must never synthesize a default value.
 
 ## Feedback policy
 
-- Correct decisions show compact confirmation and auto-advance.
-- Meaningful mistakes pause the table and show the portable rule first.
-- Deep range / EV / truth evidence remains optional disclosure.
-- A mistake automatically changes future sampling; the player does not choose a repair tool.
+- Correct and incorrect decisions both stop on the current hand and show an explanation.
+- The trainer never auto-advances away from an answer explanation; only an explicit **Next** action advances.
+- Scenario feedback shows the core reason, misconception, portable rule, local hand/math context, available range/EV/truth evidence, and why alternative options differ.
+- PokerBench feedback shows the exact optimal label for every answer, including correct answers, plus card visuals, hand/math context, option-by-option label comparison and provenance limits.
+- Missing per-action EV, mixed frequency or range evidence remains explicitly missing; the UI never fabricates solver precision.
+- Advanced Range / Boundary / Equity / Solver tools are discoverable after the answer and open separately without destroying the current explanation.
+- A mistake still automatically changes future sampling; the player does not need to select a repair tool.
 
 ## Infinite curriculum
 
@@ -98,7 +109,7 @@ Research code may model theory-vs-exploit evidence internally, but it cannot alt
 
 ## P0→P30 relationship
 
-Earlier P0→P30 work produced useful learning/truth primitives. The product now reuses only the pieces that improve a self-contained training table, such as:
+Earlier P0→P30 work produced useful learning/truth primitives. The product now reuses the pieces that improve a self-contained training table, such as:
 
 - truth hierarchy and fail-closed behavior;
 - hidden benchmark isolation;
@@ -107,6 +118,8 @@ Earlier P0→P30 work produced useful learning/truth primitives. The product now
 - due review and expected learning value;
 - History mastery / retention / transfer evidence;
 - immutable solver provenance;
+- local hand-strength / draw math;
+- contextual range / equity / decision-boundary / solver workbenches;
 - local generator/truth reliability telemetry.
 
 Mechanisms that existed specifically to ingest or interpret external real-game evidence are not part of the product architecture.
@@ -120,6 +133,7 @@ First run must be playable without a questionnaire. Player preferences are optio
 Volume-first does not mean:
 
 - reward raw hand count regardless of learning value;
+- skip explanation just because the answer was correct;
 - auto-grade unsupported states;
 - manufacture solver EV/frequencies;
 - mutate stack/position/sizing/range/board and inherit an old answer without truth;
@@ -128,4 +142,4 @@ Volume-first does not mean:
 - reconnect to real poker clients;
 - report trainer frequency priors as real-world win rate.
 
-The target is **maximum high-quality decision volume with minimum player input and evidence-safe ground truth**.
+The target is **maximum high-quality decision volume with minimum pre-decision friction, explicit post-decision learning, and evidence-safe ground truth**.

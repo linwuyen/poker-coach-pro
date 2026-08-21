@@ -1,10 +1,12 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Lightbulb, Scale, XCircle } from 'lucide-react';
 import { CardUI } from '../../components/CardUI';
 import { getDifficultyWeight, isDelayedReview, makeMasteryKey, resolveFeedbackQuality } from '../../learning-engine';
 import { inferSituationIdsFromScenario, scenarioContextFamilyId, scenarioDecisionFamilyId } from '../../learning-engine/contextIdentity';
 import { ActionType, Feedback, HistoryItem, Scenario, ScenarioStep } from '../../types';
+import { analyzeHandMath, evaluateHandStrength } from '../../utils/handMath';
 import { createAttemptId, getReviewSchedule } from '../../utils/history';
+import { AdvancedToolLinks } from './AdvancedToolLinks';
 
 interface TrainingSessionProps {
   scenarios: Scenario[];
@@ -29,7 +31,6 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
   const [selectedAction, setSelectedAction] = useState<ActionType | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [sessionItems, setSessionItems] = useState<HistoryItem[]>([]);
-  const [showDetails, setShowDetails] = useState(false);
   const startedAt = useRef(Date.now());
   const completionSent = useRef(false);
 
@@ -46,12 +47,14 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
   const correct = sessionItems.filter(item => item.correct).length;
   const accuracy = decisions ? Math.round(correct / decisions * 100) : 0;
   const evLoss = sessionItems.reduce((sum, item) => sum + (typeof item.evLossBB === 'number' ? Math.max(0, item.evLossBB) : 0), 0);
-
-  useEffect(() => {
-    if (!feedback || !currentItem?.correct) return;
-    const timer = window.setTimeout(() => next(), 650);
-    return () => window.clearTimeout(timer);
-  }, [feedback, currentItem?.attemptId]);
+  const handStrength = useMemo(
+    () => scenario && step ? evaluateHandStrength(scenario.holeCards, step.communityCards) : null,
+    [scenario, step],
+  );
+  const handMath = useMemo(
+    () => scenario && step ? analyzeHandMath(scenario.holeCards, step.communityCards, step.potOdds) : null,
+    [scenario, step],
+  );
 
   useEffect(() => {
     if (scenario || !continuous || !scenarios.length) return;
@@ -72,14 +75,13 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
   useEffect(() => { if (scenario) completionSent.current = false; }, [scenario]);
 
   if (!scenario || !step) {
-    if ((continuous && scenarios.length) || autoComplete) return <div className="grid min-h-[55vh] place-items-center text-sm text-slate-500">正在自動切換下一手…</div>;
+    if ((continuous && scenarios.length) || autoComplete) return <div className="grid min-h-[55vh] place-items-center text-sm text-slate-500">正在切換下一手…</div>;
     return <div className="mx-auto max-w-3xl rounded-3xl border border-emerald-500/20 bg-emerald-500/6 p-8 text-center text-slate-100"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 text-2xl font-bold">這批決策完成</h2><p className="mt-2 text-sm text-slate-400">{decisions} 個決策 · 正確率 {accuracy}%</p><div className="mt-6 flex justify-center gap-3"><button type="button" onClick={onComplete} className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">繼續</button><button type="button" onClick={onExit} className="rounded-xl border border-slate-700 px-5 py-3 text-slate-300">離開</button></div></div>;
   }
 
   function resetDecision() {
     setSelectedAction(null);
     setFeedback(null);
-    setShowDetails(false);
     startedAt.current = Date.now();
   }
 
@@ -154,10 +156,120 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
 
     <section className="rounded-2xl border border-slate-800 bg-slate-900/65 p-5" data-testid="decision-dock"><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{step.options.map(action => <button data-testid="decision-action" key={action} type="button" disabled={Boolean(feedback)} onClick={() => selectAction(action)} className={`rounded-xl border px-4 py-4 text-left text-sm font-semibold transition ${selectedAction === action ? 'border-emerald-400/60 bg-emerald-500/12 text-emerald-100' : 'border-slate-700 bg-slate-950/35 text-slate-200 hover:border-emerald-500/40'} disabled:cursor-default`}>{ACTION_LABELS[action] || action}</button>)}</div></section>
 
-    {feedback && currentItem && (currentItem.correct
-      ? <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/6 p-4"><div className="flex items-center gap-3"><CheckCircle2 className="h-6 w-6 text-emerald-400" /><div><div className="font-semibold text-emerald-100">正確 · 自動下一個決策</div><div className="mt-1 text-xs text-slate-500">最佳解：{feedback.bestAction}</div></div></div></section>
-      : <section className="rounded-2xl border border-red-500/25 bg-red-500/6 p-5"><div className="flex gap-3"><XCircle className="mt-0.5 h-6 w-6 shrink-0 text-red-400" /><div className="min-w-0 flex-1"><div className="font-semibold text-red-100">這個決策需要修正</div><div className="mt-2 text-sm text-slate-300">你：<b>{selectedAction}</b>　最佳解：<b>{feedback.bestAction}</b></div><p className="mt-3 text-sm leading-6 text-slate-400">{feedback.remember || feedback.why}</p>{typeof currentItem.evLossBB === 'number' && <div className="mt-2 font-mono text-xs text-amber-300">EV loss {Math.max(0, currentItem.evLossBB).toFixed(2)} BB</div>}<button type="button" onClick={() => setShowDetails(value => !value)} className="mt-3 flex items-center gap-1 text-xs text-slate-500">{showDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}詳細原因</button>{showDetails && <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/35 p-4 text-xs leading-6 text-slate-400"><div>{feedback.why}</div>{feedback.conceptualError && <div className="mt-2">核心錯誤：{feedback.conceptualError}</div>}<div className="mt-2 text-slate-500">系統已記錄此 family，後續會自動提高同類與鄰近 truth-backed spot 的權重。</div></div>}<button type="button" onClick={next} className="mt-4 rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">下一個決策</button></div></div></section>)}
+    {feedback && currentItem && <ScenarioExplanation
+      feedback={feedback}
+      selectedAction={selectedAction}
+      currentItem={currentItem}
+      scenario={scenario}
+      step={step}
+      handStrength={handStrength}
+      handMath={handMath}
+      onNext={next}
+    />}
   </div>;
+}
+
+function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, step, handStrength, handMath, onNext }: {
+  feedback: Feedback;
+  selectedAction: ActionType | null;
+  currentItem: HistoryItem;
+  scenario: Scenario;
+  step: ScenarioStep;
+  handStrength: ReturnType<typeof evaluateHandStrength> | null;
+  handMath: ReturnType<typeof analyzeHandMath> | null;
+  onNext: () => void;
+}) {
+  const isCorrect = Boolean(currentItem.correct);
+  const tone = isCorrect ? 'border-emerald-500/25 bg-emerald-500/6' : 'border-red-500/25 bg-red-500/6';
+  const evidence = evidenceRows(feedback);
+  const otherOptions = step.options.filter(action => action !== selectedAction);
+
+  return <section data-testid="decision-explanation" className={`rounded-2xl border p-5 ${tone}`}>
+    <div className="flex gap-3">
+      {isCorrect ? <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-400" /> : <XCircle className="mt-0.5 h-6 w-6 shrink-0 text-red-400" />}
+      <div className="min-w-0 flex-1 space-y-4">
+        <div>
+          <div className={`font-semibold ${isCorrect ? 'text-emerald-100' : 'text-red-100'}`}>{isCorrect ? '答對了 · 先看完整解說' : '這個決策需要修正'}</div>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            <Pill>你：{selectedAction ? ACTION_LABELS[selectedAction] || selectedAction : '-'}</Pill>
+            <Pill>最佳解：{ACTION_LABELS[feedback.bestAction] || feedback.bestAction}</Pill>
+            <Pill>評分 {feedback.score}/10</Pill>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold text-amber-200"><Lightbulb className="h-4 w-4" />為什麼</div>
+          <p className="mt-2 text-sm leading-6 text-slate-300">{feedback.why}</p>
+          {feedback.conceptualError && feedback.conceptualError !== '無' && <div className="mt-3 rounded-lg border border-red-500/15 bg-red-500/5 p-3 text-xs leading-5 text-red-200/80"><b>核心觀念：</b>{feedback.conceptualError}</div>}
+        </div>
+
+        <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold text-cyan-200"><Scale className="h-4 w-4" />牌力與數學</div>
+          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+            <Fact label="目前牌力" value={handStrength?.name || '未分類'} />
+            <Fact label="底池" value={`${step.potSize} BB`} />
+            <Fact label="SPR" value={step.spr === undefined ? '未提供' : String(step.spr)} />
+            <Fact label="Pot Odds" value={step.potOdds || '未提供'} />
+          </div>
+          {handStrength?.draw && <p className="mt-3 text-xs text-cyan-200/80">聽牌：{handStrength.draw}</p>}
+          {handMath?.hasDraw && <p className="mt-1 text-xs text-slate-400">本機聽牌估算：{handMath.drawDescription} · {handMath.outs} outs · 下一張約 {handMath.hitProbNext}%{step.street === 'Flop' ? ` · 到 River 約 ${handMath.hitProbRiver}%` : ''}</p>}
+          <p className="mt-2 text-[11px] leading-5 text-slate-600">牌力/outs 是本機結構分析；最佳解仍以此題已驗證 truth 為準。</p>
+        </div>
+
+        <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+          <div className="text-xs font-semibold text-violet-200">Range / EV / Solver 證據</div>
+          {evidence.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{evidence.map(([label, value]) => <Fact key={`${label}:${value}`} label={label} value={value} />)}</div> : <p className="mt-2 text-xs leading-5 text-slate-500">這題沒有額外的 per-action EV / range evidence；系統不會補造不存在的數值。</p>}
+          {step.strategySource && <p className="mt-3 text-[11px] text-slate-500">Strategy source：{step.strategySource}</p>}
+          {step.assumptions?.length ? <div className="mt-2 text-[11px] leading-5 text-slate-500">假設：{step.assumptions.join('；')}</div> : null}
+        </div>
+
+        {otherOptions.length > 0 && <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+          <div className="text-xs font-semibold text-slate-200">其他選項為什麼不同</div>
+          <div className="mt-3 space-y-2">
+            {otherOptions.map(action => {
+              const alternative = step.feedbacks[action];
+              if (!alternative) return null;
+              const best = action === feedback.bestAction;
+              return <div key={action} className="rounded-lg border border-slate-800/80 bg-slate-900/40 p-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs"><b className={best ? 'text-emerald-300' : 'text-slate-200'}>{ACTION_LABELS[action] || action}</b><span className="text-slate-600">{alternative.score}/10 · {alternative.judgment}</span>{best && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-300">最佳解</span>}</div>
+                <p className="mt-1.5 text-xs leading-5 text-slate-500">{alternative.why}</p>
+              </div>;
+            })}
+          </div>
+        </div>}
+
+        <div className="rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-4">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">下次記住</div>
+          <p className="mt-2 text-sm leading-6 text-emerald-100/85">{feedback.remember}</p>
+        </div>
+
+        <AdvancedToolLinks tournament={scenario.type === 'Tournament'} />
+
+        <button data-testid="decision-next" type="button" onClick={onNext} className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">看完解說，下一個決策</button>
+      </div>
+    </div>
+  </section>;
+}
+
+function evidenceRows(feedback: Feedback): Array<[string, string]> {
+  const evidence = feedback.evidence;
+  if (!evidence) return [];
+  const rows: Array<[string, string]> = [];
+  if (evidence.objective) rows.push(['目標', evidence.objective]);
+  if (evidence.heroRange) rows.push(['Hero range', evidence.heroRange]);
+  if (evidence.villainRange) rows.push(['Villain range', evidence.villainRange]);
+  if (evidence.continues) rows.push(['繼續範圍', evidence.continues]);
+  if (evidence.blockers) rows.push(['Blockers', evidence.blockers]);
+  if (typeof evidence.actionEvBB === 'number') rows.push(['你的 action EV', `${evidence.actionEvBB.toFixed(2)} BB`]);
+  if (typeof evidence.bestEvBB === 'number') rows.push(['最佳 action EV', `${evidence.bestEvBB.toFixed(2)} BB`]);
+  if (typeof evidence.evLossBB === 'number') rows.push(['EV loss', `${Math.max(0, evidence.evLossBB).toFixed(2)} BB`]);
+  if (typeof evidence.actionSizeBB === 'number') rows.push(['你的 sizing', `${evidence.actionSizeBB} BB`]);
+  if (typeof evidence.actionSizePot === 'number') rows.push(['你的 sizing / pot', `${Math.round(evidence.actionSizePot * 100)}%`]);
+  if (typeof evidence.bestActionSizeBB === 'number') rows.push(['最佳 sizing', `${evidence.bestActionSizeBB} BB`]);
+  if (typeof evidence.bestActionSizePot === 'number') rows.push(['最佳 sizing / pot', `${Math.round(evidence.bestActionSizePot * 100)}%`]);
+  if (evidence.sourceConfidence) rows.push(['Truth tier', evidence.sourceConfidence]);
+  if (evidence.reversals?.length) rows.push(['反轉條件', evidence.reversals.join('；')]);
+  return rows;
 }
 
 function shuffled<T>(items: T[]): T[] {
@@ -177,4 +289,5 @@ function mergeHistory(history: HistoryItem[], sessionItems: HistoryItem[]): Hist
 
 function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2"><span className="text-slate-600">{label}</span><span className="ml-2 font-mono text-slate-200">{value}</span></div>; }
 function Context({ label, value }: { label: string; value: string }) { return <div className="rounded-xl border border-slate-800 bg-slate-900/35 p-4"><div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">{label}</div><div className="mt-2 text-sm leading-6 text-slate-300">{value}</div></div>; }
+function Fact({ label, value }: { label: string; value: string }) { return <div className="rounded-lg border border-slate-800/80 bg-slate-900/45 p-3"><div className="text-[10px] uppercase tracking-[0.14em] text-slate-600">{label}</div><div className="mt-1 text-xs leading-5 text-slate-300">{value}</div></div>; }
 function Pill({ children }: { children: ReactNode }) { return <span className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 text-[11px] text-slate-400">{children}</span>; }
