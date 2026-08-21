@@ -1,6 +1,6 @@
 # ♠️ 想高龍了 德撲訓練機
 
-**History v6 · Closed-loop Decision Tutor · Strategy Engine v2 · P0→P11**
+**History v6 · Closed-loop Decision Tutor · Strategy Engine v2/v3 · P0→P12**
 
 繁體中文德州撲克決策學習系統。North star 不是刷題數，而是降低未來 decision loss：
 
@@ -21,7 +21,9 @@
 - Production scenario instances：**216**
 - P2 generated isomorphic transfer pool：528 nodes，共享 canonical mastery family
 - PokerBench pinned corpus：1,000 Preflop + 10,000 Postflop solver-labelled rows
-- Full solver truth：**外部 immutable Strategy Profile v2 surfaces**；coverage 依實際已匯入 verified data 計算，不宣稱 repo 內建完整 EV database
+- Preflop full truth：外部 immutable **Strategy Profile v2** surfaces
+- Postflop full truth：外部 immutable **Postflop Truth Pack v3** nodes
+- coverage 只依實際匯入的 verified solver data 計算；repo 不宣稱內建完整 EV database
 
 ## 已完成能力
 
@@ -44,72 +46,13 @@
 - **P7 Population exploit profile**：只有 provenance + methodology + population + generatedAt + sampleSize≥1000 + explicit exploit range 才能標 `population-exploit`。
 - **P8 FGS**：explicit finite future-state tree + exact ICM leaves + probability-weighted backward induction；不自行猜 future action probability。
 
-### P9-A · Full Solver Truth Coverage
+### P9 · Truth automation
 
-入口：`#truth-ops`、`#strategy-surface`
-
-- 對已匯入 profiles 建立 verified coverage index：contexts / frequency hands / mixed hands / EV hands / full per-action-EV hands。
-- 自動 real-game grading 使用比互動查詢更嚴格的 matcher：format / table / spot / Hero/Villain position / stack / ante / open size / rake / cap / ICM model 必須完整 exact-match。
-- 只有 `verified-solver` 且 chosen action 真有 per-action EV 時才產生 reportable regret。
-- **這完成的是 full-truth ingestion/index/matching 能力，不是憑空附送一份完整 solver database。**
-
-### P9-B · Real Population Cohort Registry
-
-入口：`#truth-ops`
-
-Population cohort 會保存：
-
-- site / stake / game / table size / named population
-- observedFrom / observedTo / generatedAt
-- sampleSize / reference / methodology
-- 每個 metric 的 raw numerator / denominator / rate
-- 可選 linked exploit profile keys
-
-`id@version` immutable；rate 必須和 numerator/denominator 一致。只有「72%」沒有 raw counts/provenance 的漂亮數字不算 evidence-backed cohort。
-
-### P9-C · HH → Truth → Leak → Daily
-
-入口：`#hand-history`
-
-1. Raw HH 先照常寫 exposure evidence。
-2. Preflop decision 只有在唯一 exact verified Strategy Profile v2 node 對上時才進 grading。
-3. Chosen action 必須有真實 per-action EV 才寫 `evLossBB`。
-4. Verified real-game regret 會提升相同 position/street 的 PokerBench **Training** priority。
-5. 這只是 situation-level routing，不宣稱 PokerBench row 等於外部 solver node；Sibling/Holdout 完全不變。
-
-目前 automated HH→solver grading 明確只涵蓋 Strategy Engine v2 能完整表達的 **preflop nodes**。Postflop board/action tree 尚未有等價完整 context model，因此保持 Unsupported，不拿 preflop truth 硬套。
-
-Cash solver profile 若有 rake/rake-cap 維度，HH 匯入頁必須由使用者明確提供，留白就不允許 exact grading。
-
-### P9-D · Tournament HH → ICM / PKO / FGS
-
-入口：`#tournament-context`
-
-一般 MTT HH 只當 `handId` join key。Tournament Context Envelope 必須另外明確提供：
-
-- all player IDs / stacks
-- payouts + utility unit
-- Hero / chosen action
-- ICM/PKO：villain、amount at risk、showdown equity；PKO 再提供 bounty
-- FGS：完整 action trees + 每條 branch probability
-- reference / methodology / generatedAt
-
-輸出寫成 `exact-math` tournament utility evidence。結果語義永遠是 **conditional on supplied tournament state/tree**。
-
-### P9-E · Human-reviewed Solver Teaching
-
-入口：`#truth-ops`
-
-Reviewed Explanation Registry 和 solver truth 分開：
-
-- target decisionFamily 或 profile+hand
-- why
-- explicit boundary conditions
-- common mistake
-- contrastive cue
-- author / reviewer(s) / reviewedAt / reference / version
-
-沒有 review provenance 的文字不能進 registry；human interpretation 不會被標成 raw solver output。
+- **P9-A Solver coverage**：對已匯入 v2 profiles 建 verified coverage index；auto grading 嚴格 exact-match，0 或多個 exact versions 都是 Unknown。
+- **P9-B Population cohort registry**：保存 site/stake/window/sample/raw numerator-denominator/provenance；`id@version` immutable。
+- **P9-C HH → Truth → Leak → Daily**：Preflop exact v2 join + sourced per-action EV 才寫 regret；verified real-game regret 只提升 Training priority，不碰 Sibling/Holdout。
+- **P9-D Tournament Context**：HH 以 handId join explicit ICM/PKO/FGS state；不猜 payout、stack、bounty、equity 或 branch probability。
+- **P9-E Reviewed explanations**：human-reviewed explanation registry 與 raw solver truth 分離。
 
 ### P10 · Preregistered Randomized N-of-1
 
@@ -123,16 +66,92 @@ Reviewed Explanation Registry 和 solver truth 分開：
 - minimum sample gate
 - 支援 holdout accuracy / transfer accuracy / delayed retention / verified real-game EV loss
 
-不足門檻顯示 `Insufficient`，不選 winner。通過時只宣稱「這位玩家在這個 preregistered randomized N-of-1 experiment 中」的比較，不外推成 population-wide causal claim。
+不足門檻顯示 `Insufficient`，不選 winner。通過時只宣稱這位玩家在這個 preregistered randomized N-of-1 experiment 中的比較，不外推成 population-wide causal claim。
 
 ### P11 · Browser E2E + Performance Hardening
 
-- 所有 heavyweight labs 改為 route-level `React.lazy` chunks，避免首屏把 solver/analysis/tournament 全部載入同一 bundle。
-- Real Chrome production smoke 現在走完整 critical journey：
+- heavyweight labs 使用 route-level `React.lazy` chunks。
+- 真 Chrome production smoke 走 critical routes。
+- vendor chunk splitting + Vite manifest。
+- CI 有 **500 KiB minified JS chunk hard budget**；超標直接 fail。
 
-> Today → HH controlled input + History v6 persistence → Truth Ops → Solver Surface → Effectiveness → Tournament Join → FGS → randomized N-of-1 persistence → Today
+### P12-A · Postflop Strategy Context v3
 
-Lazy chunk 本身載不進來就會直接讓 E2E 失敗。
+入口：`#postflop-truth`
+
+Strategy Engine v3 專門表示 Flop / Turn / River exact heads-up state：
+
+- exact board
+- Hero / Villain position
+- effective stack
+- pot BB / SPR / to-call
+- canonical preflop line
+- 當街 action line + bet/raise pot fraction
+- last aggressor
+- cash rake / rake cap
+- exact Hero hole-card combo
+
+Automatic truth lookup **沒有 approximate fallback**。Multiway 不會被硬塞進 heads-up solver node。
+
+### P12-B · Postflop Truth Pack v3
+
+v3 importer 支援 immutable solver truth pack：
+
+- solver name/version/reference/generatedAt
+- per-combo action frequencies
+- mixed strategy
+- optional per-action EV
+- optional action-size surface
+- content hash + `id@version` immutability
+- Flop / Turn / River coverage report
+
+這完成的是大量 solver truth 的 ingestion/index/matching 能力；**沒有可信公開資料時不會在 repo 內生成假的完整 solver database**。
+
+### P12-C · HH → Postflop Solver → Regret → Daily
+
+入口：`#hand-history`
+
+HH replay 會重建每個 Hero postflop decision **發生前**的：
+
+> pot → street commitments → remaining stack → active players → board → preflop line → street line → to-call → SPR
+
+只有以下全部成立才寫 `verified-solver` regret：
+
+1. heads-up postflop state；
+2. 唯一 exact v3 node；
+3. exact Hero combo 存在；
+4. chosen action 有真實 EV；
+5. 至少一個 comparison action EV 存在。
+
+否則只保留 raw HH exposure。產生的 Flop/Turn/River regret 會沿用既有 Daily situation-level routing，仍只影響 PokerBench Training partition。
+
+### P12-D · Measured Local Population Dataset
+
+每批真實 HH 會把 postflop action opportunities 聚合成：
+
+- street
+- facing state
+- action
+- raw numerator
+- raw denominator
+- measured rate
+- sample hands / decision opportunities
+- source hand-id hash
+
+這些資料標成 **`measured-local-cohort`**。它證明「觀察到什麼」，不自動宣稱「這就是 exploit 策略」，也不直接升級成 `population-exploit`。
+
+### P12-E · Tournament Context Reconstruction
+
+入口：`#postflop-truth` + `#hand-history`
+
+新增 tournament metadata registry：一次提供 tournament-level payout vector、utility unit、reference/methodology，以及每個 handId 的 **full-field stack snapshot**。之後 MTT HH 可用 tournamentId + handId 自動 join：
+
+- HH 可自動證明的 table players / Hero / hand ID 直接抽取
+- full field / payouts 從 metadata registry 接上
+- 缺資料會列出 missing fields
+- **table stacks 永遠不會被偷偷當成整場比賽的 full field**
+
+這層降低每手手動 JSON 的負擔；ICM/PKO/FGS 的 showdown equity / bounty / future probabilities 等 decision-specific inputs 仍必須來自明確可追溯來源。
 
 ## Truth hierarchy
 
@@ -149,8 +168,9 @@ verified-solver
 
 - PokerBench 公開資料是 optimal decision labels，不是完整 mixed-frequency/per-action-EV surface。
 - Raw HH 是 observation，不是 solver truth。
-- Population rate 沒有 provenance/raw counts 不升級。
-- Tournament payout/state/FGS probability 不從普通 HH 猜。
+- v3 Postflop auto-grading 目前故意限制在 heads-up exact state。
+- Local population HH cohort 是 measured observation，不等於 population exploit truth。
+- Tournament payout/full-field state/FGS probability 不從普通 HH 猜。
 - Reviewed explanation 是 human interpretation，不是 raw solver rationale。
 
 完整邊界：[`docs/DATA_TRUST_CONTRACT.md`](docs/DATA_TRUST_CONTRACT.md)  
@@ -159,9 +179,10 @@ verified-solver
 ## 主要入口
 
 ```text
-#hand-history          HH exposure + strict verified leak grading
-#truth-ops             solver coverage / population cohort / reviewed explanation
-#strategy-surface      full Strategy Profile v2 inspection/import
+#hand-history          HH exposure + Preflop v2 / Postflop v3 strict grading
+#postflop-truth        P12 v3 solver truth + tournament metadata + local cohort status
+#truth-ops             v2 solver coverage / population cohort / reviewed explanation
+#strategy-surface      Strategy Profile v2 inspection/import
 #solver-corpus         PokerBench training corpus
 #semantic-counterfactual
 #effectiveness         observational before/training/follow-up
@@ -176,30 +197,23 @@ verified-solver
 
 ```bash
 npm ci
-npm run audit        # high+ vulnerability 不接受
-npm run lint         # tsc --noEmit
-npm run validate     # scenario + range contracts
-npm test             # learning / solver / HH / population / tournament / experiment / scheduler tests
-npm run check        # lint + validate + test
-npm run build:web    # production GitHub Pages build + lazy chunks
-npm run e2e:browser  # real Chrome critical-route smoke
-npm run build        # web + Node server bundle
+npm run audit
+npm run lint
+npm run validate
+npm test
+npm run check
+npm run build:web
+npm run check:bundle
+npm run e2e:browser
+npm run build
 ```
 
 PR merge 前必須讓最新 head 的 GitHub Actions 全綠。
-
-## 本地開發
-
-```bash
-npm ci
-npm run dev
-```
-
-`start.bat` 可用於 Windows 本地啟動。
 
 ## 資料與隱私
 
 - Training history / HH-derived evidence / imported truth registries 預設存在瀏覽器 localStorage。
 - 原始 HH 不會自動上傳第三方。
-- JSON backup 支援完整 History 匯出/匯入；既有遠端同步仍使用使用者自己的 HTTPS endpoint 與 AES-GCM 流程。
+- measured-local-cohort 保存 aggregate counts + hand-id hash，不把它冒充公開 population dataset。
+- JSON backup 支援 History 匯出/匯入；既有遠端同步仍使用使用者自己的 HTTPS endpoint 與 AES-GCM 流程。
 - GitHub Pages 主訓練不需要 API key；Gemini server mode 的 key 僅留在 server environment。
