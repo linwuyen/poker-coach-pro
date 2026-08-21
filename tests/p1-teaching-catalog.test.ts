@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { scenarios } from '../src/data';
-import { coreScenarios, curatedTeachingVariants } from '../src/teaching/scenarioCatalog';
+import { coreScenarios, curatedTeachingVariants, semanticTeachingScenarios } from '../src/teaching/scenarioCatalog';
 import { validateScenarios } from '../src/utils/validateScenarios';
 
-test('teaching catalog expands the 88-scenario core to at least 150 validated scenarios', () => {
+test('teaching catalog has 152 genuine decision families plus cosmetic retrieval instances', () => {
   assert.equal(coreScenarios.length, 88);
+  assert.equal(semanticTeachingScenarios.length, 64);
   assert.equal(curatedTeachingVariants.length, 64);
-  assert.equal(scenarios.length, 152);
+  assert.equal(scenarios.length, 216);
+  assert.equal(new Set(scenarios.map(scenario => scenario.decisionFamilyId || scenario.id)).size, 152);
   assert.deepEqual(validateScenarios(scenarios), []);
 });
 
