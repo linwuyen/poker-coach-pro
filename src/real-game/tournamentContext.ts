@@ -62,6 +62,11 @@ function validatePlayersAndPayouts(input: TournamentHandContext): void {
   if (!Array.isArray(input.payouts) || !input.payouts.length || input.payouts.some(value => !Number.isFinite(value) || value < 0)) {
     throw new Error(`${input.id}: explicit finite non-negative payouts are required.`);
   }
+  if (!['dollar-ev', 'prize-pool-share', 'seat-equity'].includes(input.utilityUnit)) throw new Error(`${input.id}: tournament utilityUnit is unsupported.`);
+}
+
+function canonicalState(players: IcmPlayer[]): string {
+  return JSON.stringify([...players].sort((a, b) => a.id.localeCompare(b.id)).map(player => [player.id, player.stack]));
 }
 
 export function validateTournamentHandContext(input: TournamentHandContext): TournamentHandContext {
@@ -85,6 +90,12 @@ export function validateTournamentHandContext(input: TournamentHandContext): Tou
     if (!Array.isArray(input.actionTrees) || input.actionTrees.length < 2) throw new Error(`${input.id}: FGS requires at least two explicit action trees.`);
     const actions = new Set(input.actionTrees.map(tree => tree.action));
     if (actions.size !== input.actionTrees.length || !actions.has(input.chosenAction)) throw new Error(`${input.id}: FGS action labels must be unique and include chosenAction.`);
+    const currentState = canonicalState(input.players);
+    input.actionTrees.forEach(tree => {
+      if (!tree.root?.players || canonicalState(tree.root.players) !== currentState) {
+        throw new Error(`${input.id}: every FGS action tree must start from the same explicit current player state.`);
+      }
+    });
   }
   return JSON.parse(JSON.stringify(input)) as TournamentHandContext;
 }
