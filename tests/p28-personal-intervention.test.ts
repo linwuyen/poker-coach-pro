@@ -8,7 +8,7 @@ function evidence(experimentKey:string,intervention:string,diff:number,metric:Ca
 test('P28 learns an intervention only from repeated independent randomized experiments within one family and metric',()=>{
  const model=buildPersonalInterventionModel([evidence('exp1@1','contrastive',.12),evidence('exp2@1','contrastive',.10),evidence('exp3@1','delayed-recall',.08),evidence('exp4@1','delayed-recall',.05)]);
  assert.equal(model.recommendations.length,1);assert.equal(model.recommendations[0].intervention,'contrastive');assert.equal(model.recommendations[0].experiments,2);
- const annotated=annotatePrescriptionsWithPersonalInterventionModel([{decisionFamilyId:'river.bluff-catch',verifiedObservations:12,averageEvLossBB:.2,recentTrainingAttempts:5,priority:2,reason:'fixture'}],model);assert.equal(annotated[0].learnedIntervention?.intervention,'contrastive');assert.equal(annotated[0].priority,2);
+ const annotated=annotatePrescriptionsWithPersonalInterventionModel([{decisionFamilyId:'river.bluff-catch',observations:12,averageEvLossBB:.2,recentTrainingAttempts:5,priority:2,reason:'fixture'}],model);assert.equal(annotated[0].learnedIntervention?.intervention,'contrastive');assert.equal(annotated[0].priority,2);
 });
 
 test('P28 does not learn from a one-off experiment or pool incomparable primary metrics',()=>{
