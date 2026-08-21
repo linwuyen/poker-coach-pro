@@ -18,13 +18,13 @@ const ACTION_ZH: Array<[RegExp, string]> = [
   [/^all\s*-?\s*in|^allin|^jam/i, '全下'],
 ];
 
-function prettyCard(code: string): string {
+export function prettySolverCard(code: string): string {
   const match = code.trim().match(/^([2-9TJQKA])([cdhs])$/i);
   return match ? `${match[1].toUpperCase()}${SUIT[match[2].toLowerCase()]}` : code;
 }
 
-function prettyCards(value: string): string {
-  const cards = [...value.matchAll(/([2-9TJQKA][cdhs])/gi)].map(match => prettyCard(match[1]));
+export function prettySolverCards(value: string): string {
+  const cards = [...value.matchAll(/([2-9TJQKA][cdhs])/gi)].map(match => prettySolverCard(match[1]));
   return cards.length ? cards.join(' ') : value;
 }
 
@@ -38,7 +38,7 @@ export function humanizeSolverMove(value: string): string {
   return value;
 }
 
-function humanizePreflopLine(value: string): string {
+export function humanizeSolverPreflopLine(value: string): string {
   if (!value.trim()) return '前面都棄牌，輪到你決策';
   const tokens = value.split('/').map(token => token.trim()).filter(Boolean);
   const result: string[] = [];
@@ -62,7 +62,7 @@ function humanizePreflopLine(value: string): string {
   return result.join(' → ');
 }
 
-function humanizePostflopLine(value: string): string {
+export function humanizeSolverPostflopLine(value: string): string {
   if (!value.trim()) return '尚無先前 postflop 行動';
   const tokens = value.split('/').map(token => token.trim()).filter(Boolean);
   const result: string[] = [];
@@ -70,7 +70,7 @@ function humanizePostflopLine(value: string): string {
     const token = tokens[index];
     if (/^dealcards?$/i.test(token)) {
       const card = tokens[index + 1];
-      if (card) { result.push(`發 ${prettyCard(card)}`); index += 1; }
+      if (card) { result.push(`發 ${prettySolverCard(card)}`); index += 1; }
       continue;
     }
     const action = token.match(/^(OOP|IP)_(CHECK|CALL|FOLD|BET|RAISE)(?:_([0-9]+(?:\.[0-9]+)?))?$/i);
@@ -196,7 +196,7 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
       errorType: classifyDecisionError({ correct: isCorrect, selectedDecision: selected.action, bestDecision: best.action }),
       solverCorpusRole: solverCorpusRole(row),
       curriculumLevel: curriculum.level,
-      questionLabel: `自動變化題 · ${prettyCards(row.holding)}`,
+      questionLabel: `自動變化題 · ${prettySolverCards(row.holding)}`,
       notes: `${POKERBENCH_SOURCE.label}. Training partition only; optimal action comes from the pinned dataset. Missing per-action EV/mixed frequency is intentionally not fabricated.`,
       ...getReviewSchedule(isCorrect ? 10 : 0, previous, undefined, now),
     };
@@ -214,16 +214,16 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
     startedAt.current = Date.now();
   }
 
-  const board = row.split === 'postflop' ? prettyCards(`${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}`) : '';
+  const board = row.split === 'postflop' ? prettySolverCards(`${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}`) : '';
   const progress = Math.round(index / Math.max(1, rows.length) * 100);
-  const preflopLine = row.split === 'preflop' ? humanizePreflopLine(row.prevLine) : humanizePreflopLine(row.preflopAction);
-  const postflopLine = row.split === 'postflop' ? humanizePostflopLine(row.postflopAction) : '';
+  const preflopLine = row.split === 'preflop' ? humanizeSolverPreflopLine(row.prevLine) : humanizeSolverPreflopLine(row.preflopAction);
+  const postflopLine = row.split === 'postflop' ? humanizeSolverPostflopLine(row.postflopAction) : '';
 
   return <div className="mx-auto max-w-5xl space-y-5 text-slate-100" data-testid="solver-decision-session">
     <header className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><div className="flex items-center gap-3"><button onClick={onExit} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-400 hover:bg-slate-800"><ArrowLeft className="h-4 w-4" />離開</button><div className="flex-1"><div className="flex justify-between text-sm"><b>{title}</b><span className="font-mono text-slate-500">{index + 1}/{rows.length}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full bg-emerald-400" style={{ width: `${progress}%` }} /></div></div></div></header>
     <section className="rounded-3xl border border-slate-800 bg-slate-900/55 p-6 md:p-8">
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">新的一手 · Solver 最佳解</div>
-      <h2 className="mt-3 text-3xl font-bold">{prettyCards(row.holding)} <span className="text-slate-500">· {row.heroPosition}</span></h2>
+      <h2 className="mt-3 text-3xl font-bold">{prettySolverCards(row.holding)} <span className="text-slate-500">· {row.heroPosition}</span></h2>
       <div className="mt-4 grid gap-2 text-sm text-slate-400 sm:grid-cols-3"><span>底池 {row.potSize} BB</span><span>{row.split === 'preflop' ? `${row.numPlayers} 人桌` : row.evaluationAt}</span><span>{row.split === 'postflop' ? `公牌 ${board}` : `加注層級 ${row.numBets}`}</span></div>
       <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/35 p-4 text-sm leading-7 text-slate-300"><div><span className="text-slate-500">翻前：</span>{preflopLine}</div>{row.split === 'postflop' && <div className="mt-1"><span className="text-slate-500">翻後：</span>{postflopLine}</div>}</div>
       <div className="mt-5 grid gap-2 sm:grid-cols-2">{row.availableMoves.map(move => <button data-testid="solver-action" key={move} disabled={submitted} onClick={() => submit(move)} className={`rounded-xl border p-4 text-left text-sm font-semibold ${choice === move ? 'border-emerald-400/60 bg-emerald-500/12' : 'border-slate-700 bg-slate-950/35 hover:border-emerald-500/40'}`}>{humanizeSolverMove(move)}</button>)}</div>
