@@ -40,6 +40,7 @@ export function strategyContextCoverageKey(profile: Pick<StrategyProfile, 'conte
     `rake:${c.rakePercent ?? '-'}`,
     `cap:${c.rakeCapBB ?? '-'}`,
     `icm:${c.icm?.model || '-'}`,
+    `forced:${c.forcedBetKey || '-'}`,
   ].join('|');
 }
 
@@ -104,6 +105,7 @@ function isExactVerifiedMatch(profile: StrategyProfile, query: StrategyQuery, ha
   if (!sameOptionalNumber(c.rakePercent, query.rakePercent, 0.1)) return false;
   if (!sameOptionalNumber(c.rakeCapBB, query.rakeCapBB, 0.1)) return false;
   if (query.icm?.model !== c.icm?.model) return false;
+  if ((query.forcedBetKey || undefined) !== (c.forcedBetKey || undefined)) return false;
   return Boolean(profile.ranges[hand]);
 }
 
