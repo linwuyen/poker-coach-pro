@@ -5,15 +5,10 @@ import './index.css';
 
 const CalibrationDashboard = lazy(() => import('./features/analysis/CalibrationDashboard').then(module => ({ default: module.CalibrationDashboard })));
 const EffectivenessDashboard = lazy(() => import('./features/analysis/EffectivenessDashboard').then(module => ({ default: module.EffectivenessDashboard })));
-const EvidenceOpsDashboard = lazy(() => import('./features/analysis/EvidenceOpsDashboard').then(module => ({ default: module.EvidenceOpsDashboard })));
 const ExperimentDashboard = lazy(() => import('./features/analysis/ExperimentDashboard').then(module => ({ default: module.ExperimentDashboard })));
-const HandHistoryImporter = lazy(() => import('./features/analysis/HandHistoryImporter').then(module => ({ default: module.HandHistoryImporter })));
 const PostflopTruthLab = lazy(() => import('./features/analysis/PostflopTruthLab').then(module => ({ default: module.PostflopTruthLab })));
-const ProductionIntelligenceDashboard = lazy(() => import('./features/analysis/ProductionIntelligenceDashboard').then(module => ({ default: module.ProductionIntelligenceDashboard })));
-const ProductionScaleDashboard = lazy(() => import('./features/analysis/ProductionScaleDashboard').then(module => ({ default: module.ProductionScaleDashboard })));
 const SkillGraphDashboard = lazy(() => import('./features/analysis/SkillGraphDashboard').then(module => ({ default: module.SkillGraphDashboard })));
 const TruthOpsDashboard = lazy(() => import('./features/analysis/TruthOpsDashboard').then(module => ({ default: module.TruthOpsDashboard })));
-const CompanionPanel = lazy(() => import('./features/companion/CompanionPanel').then(module => ({ default: module.CompanionPanel })));
 const EquityWorkbench = lazy(() => import('./features/learning/EquityWorkbench').then(module => ({ default: module.EquityWorkbench })));
 const RangeReadingTrainer = lazy(() => import('./features/range/RangeReadingTrainer').then(module => ({ default: module.RangeReadingTrainer })));
 const ExploitWorkbench = lazy(() => import('./features/strategy/ExploitWorkbench').then(module => ({ default: module.ExploitWorkbench })));
@@ -28,22 +23,18 @@ const SizingTrainer = lazy(() => import('./features/training/SizingTrainer').the
 const VariantTrainer = lazy(() => import('./features/training/VariantTrainer').then(module => ({ default: module.VariantTrainer })));
 const FgsWorkbench = lazy(() => import('./features/tournament/FgsWorkbench').then(module => ({ default: module.FgsWorkbench })));
 const IcmWorkbench = lazy(() => import('./features/tournament/IcmWorkbench').then(module => ({ default: module.IcmWorkbench })));
-const TournamentContextLab = lazy(() => import('./features/tournament/TournamentContextLab').then(module => ({ default: module.TournamentContextLab })));
 
 function RootRouter() {
   const [route, setRoute] = useState(window.location.hash);
   useEffect(() => { const handleHashChange = () => setRoute(window.location.hash); window.addEventListener('hashchange', handleHashChange); return () => window.removeEventListener('hashchange', handleHashChange); }, []);
   const exitLab = () => { window.location.hash = ''; };
-  if (route === '#hand-history') return <HandHistoryImporter onExit={exitLab} />;
+
+  // Real-game / hand-history routes were intentionally removed. The product is now
+  // a self-contained truth-backed infinite training table; no external hand import is required.
   if (route === '#postflop-truth') return <PostflopTruthLab onExit={exitLab} />;
-  if (route === '#production-ops') return <ProductionScaleDashboard onExit={exitLab} />;
-  if (route === '#evidence-ops') return <EvidenceOpsDashboard onExit={exitLab} />;
-  if (route === '#production-intelligence') return <ProductionIntelligenceDashboard onExit={exitLab} />;
   if (route === '#effectiveness') return <EffectivenessDashboard onExit={exitLab} />;
   if (route === '#experiment') return <ExperimentDashboard onExit={exitLab} />;
   if (route === '#truth-ops') return <TruthOpsDashboard onExit={exitLab} />;
-  if (route === '#tournament-context') return <TournamentContextLab onExit={exitLab} />;
-  if (route === '#companion') return <CompanionPanel onExit={exitLab} />;
   if (route === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
   if (route === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
   if (route === '#boundary-map') return <DecisionBoundaryMap onExit={exitLab} />;
