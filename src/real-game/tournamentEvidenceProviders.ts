@@ -18,6 +18,7 @@ export interface TournamentEvidenceProvider {
   provideRange?:(request:TournamentRangeRequest)=>Promise<TournamentRangeEvidence|undefined>|TournamentRangeEvidence|undefined;
   provideFgsProbabilities?:(request:TournamentFgsRequest)=>Promise<FgsProbabilityEvidence|undefined>|FgsProbabilityEvidence|undefined;
 }
+export interface StaticTournamentEvidenceProviderEnvelope {schemaVersion:1;descriptor:TournamentEvidenceProviderDescriptor;ranges?:TournamentRangeEvidence[];fgsProbabilities?:FgsProbabilityEvidence[];}
 export interface ProviderResolution<T> { status:'unavailable'|'resolved'|'ambiguous';evidence?:T;providerKey?:string;candidateProviderKeys:string[];reasons:string[]; }
 
 function providerKey(provider:TournamentEvidenceProvider){return`${provider.descriptor.id}@${provider.descriptor.version}`;}
@@ -29,6 +30,15 @@ export function validateTournamentEvidenceProvider(provider:TournamentEvidencePr
  return provider;
 }
 function uniqueProviders(providers:TournamentEvidenceProvider[]){const keys=new Set<string>();return providers.map(validateTournamentEvidenceProvider).map(provider=>{const key=providerKey(provider);if(keys.has(key))throw new Error(`Duplicate tournament evidence provider ${key}.`);keys.add(key);return provider;});}
+
+/** Serializable provider package for solver/population/user-model evidence exported outside the app. */
+export function staticTournamentEvidenceProvider(raw:StaticTournamentEvidenceProviderEnvelope):TournamentEvidenceProvider{
+ if(!raw||raw.schemaVersion!==1||!raw.descriptor)throw new Error('Invalid static tournament evidence provider envelope.');const ranges=(raw.ranges||[]).map(validateTournamentRangeEvidence),fgs=(raw.fgsProbabilities||[]).map(validateFgsProbabilityEvidence),descriptor=JSON.parse(JSON.stringify(raw.descriptor)) as TournamentEvidenceProviderDescriptor;
+ const provider:TournamentEvidenceProvider={descriptor};
+ if(descriptor.capabilities.includes('range'))provider.provideRange=request=>{const matches=ranges.filter(row=>row.handId===request.handId&&row.heroCards.join('|')===request.heroCards.join('|')&&row.board.join('|')===request.board.join('|'));if(matches.length>1)throw new Error(`${descriptor.id}: static range package has multiple records for the exact request.`);return matches[0];};
+ if(descriptor.capabilities.includes('fgs-probabilities'))provider.provideFgsProbabilities=request=>{const expected=[...request.edgeKeys].sort().join('|'),matches=fgs.filter(row=>row.handId===request.handId&&row.edges.map(edge=>`${edge.parentId}->${edge.childId}`).sort().join('|')===expected);if(matches.length>1)throw new Error(`${descriptor.id}: static FGS package has multiple records for the exact request.`);return matches[0];};
+ return validateTournamentEvidenceProvider(provider);
+}
 
 async function select<T>(candidates:Array<{provider:TournamentEvidenceProvider;evidence:T}>,preferredProviderId?:string):Promise<ProviderResolution<T>>{
  const keys=candidates.map(item=>providerKey(item.provider));
