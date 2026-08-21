@@ -20,7 +20,7 @@ next decision
 repeat
 ```
 
-The player is not expected to operate truth ingestion, solver diagnostics, randomized experiment controls, workspace diagnostics, or any real-game / Hand History workflow during normal training.
+The player is not expected to operate truth ingestion, solver diagnostics, randomized experiment controls, workspace diagnostics, population/exploit imports, or any real-game / Hand History workflow during normal training.
 
 ## Player surface
 
@@ -53,7 +53,7 @@ If confidence was not collected, the system leaves it absent. It must never synt
 
 ## Infinite curriculum
 
-The current live table draws from three evidence-safe mechanisms without exposing separate modes:
+The live table draws from three evidence-safe mechanisms without exposing separate modes:
 
 ```text
 216 scenario inventory
@@ -64,20 +64,37 @@ truth + holdout gate
             ↓
 exact presentation dedupe
             ↓
-recent-repeat cooldown
+64-hand exact cooldown
++ decision-family cooldown
             ↓
-leak / review adaptive sampling
+street / position / action / stack / format novelty
+            ↓
+trainer leak / due-review adaptive weighting
             ↓
 next decision
 ```
 
-Truth provenance remains distinct even when the UI presents everything as one table.
+The novelty layer prevents apparent volume from collapsing into repeated versions of the same strategic situation. It changes sampling only; it never changes or interpolates the correct answer.
+
+Truth provenance remains distinct even when the UI presents everything as one table:
+
+- curated scenario: validated teaching truth;
+- safe variant: strategy-equivalent truth only;
+- PokerBench: pinned training-partition solver optimal label.
+
+If a candidate cannot prove one of those truth paths, it is not eligible for the live table.
 
 ## Real-game retirement
 
-The product is no longer a real-game tracker. It does not require PokerStars/GGPoker/other client integration or Hand History import.
+The product is not a real-game tracker. It does not require PokerStars/GGPoker/other client integration or Hand History import.
 
-Old real-game runtime routes have been retired. Historical modules may temporarily remain as isolated testable code until dead-code cleanup, but they are not dependencies of the player runtime or the Infinite Hand Generator.
+The real-game subsystem, companion hand-state bus and real-money coaching path are retired. Training History stores decisions made inside this product only. Learning priority and longitudinal coaching therefore describe trainer performance, not bankroll win rate or observed live-table BB/100.
+
+## Exploit boundary
+
+The primary product teaches best play from validated theory / solver truth. Manual Population Exploit JSON import is not a player workflow and the old exploit workbench route is retired.
+
+Research code may model theory-vs-exploit evidence internally, but it cannot alter a live training answer without its own valid truth contract. The Infinite Hand Generator never invents an exploit answer from player mistakes or heuristics.
 
 ## P0→P30 relationship
 
@@ -88,10 +105,11 @@ Earlier P0→P30 work produced useful learning/truth primitives. The product now
 - solver corpus partitioning;
 - semantic counterfactual logic;
 - due review and expected learning value;
-- History v6 mastery / retention / transfer evidence;
-- immutable solver provenance.
+- History mastery / retention / transfer evidence;
+- immutable solver provenance;
+- local generator/truth reliability telemetry.
 
-Mechanisms that existed specifically to ingest or interpret external real-game evidence are not part of the player workflow.
+Mechanisms that existed specifically to ingest or interpret external real-game evidence are not part of the product architecture.
 
 ## First-run rule
 
@@ -107,6 +125,7 @@ Volume-first does not mean:
 - mutate stack/position/sizing/range/board and inherit an old answer without truth;
 - leak sibling/holdout data into training;
 - infer confidence that was never supplied;
-- reconnect to real poker clients.
+- reconnect to real poker clients;
+- report trainer frequency priors as real-world win rate.
 
 The target is **maximum high-quality decision volume with minimum player input and evidence-safe ground truth**.
