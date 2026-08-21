@@ -14,6 +14,7 @@ interface TrainingSessionProps {
   history: HistoryItem[];
   title: string;
   continuous?: boolean;
+  autoComplete?: boolean;
   onRecord: (item: HistoryItem) => void;
   onExit: () => void;
   onComplete: () => void;
@@ -24,7 +25,7 @@ const ACTION_LABELS: Partial<Record<ActionType, string>> = {
   'All-in': '全下', Check: '過牌', 'Bet small': '小注', 'Bet half pot': '半池', 'Bet big': '大注',
 };
 
-export function TrainingSessionV12({ scenarios, history, title, continuous = false, onRecord, onExit, onComplete }: TrainingSessionProps) {
+export function TrainingSessionV12({ scenarios, history, title, continuous = false, autoComplete = false, onRecord, onExit, onComplete }: TrainingSessionProps) {
   const [queue, setQueue] = useState<Scenario[]>(() => diversifyInitialQueue(scenarios));
   const [scenarioIndex, setScenarioIndex] = useState(0);
   const [stepIndex, setStepIndex] = useState(0);
@@ -33,6 +34,7 @@ export function TrainingSessionV12({ scenarios, history, title, continuous = fal
   const [sessionItems, setSessionItems] = useState<HistoryItem[]>([]);
   const [showDetails, setShowDetails] = useState(false);
   const startedAt = useRef(Date.now());
+  const completionSent = useRef(false);
 
   const scenario = queue[scenarioIndex];
   const step = scenario?.steps[stepIndex];
@@ -72,8 +74,15 @@ export function TrainingSessionV12({ scenarios, history, title, continuous = fal
     return () => window.clearTimeout(timer);
   }, [scenario, continuous, scenarios]);
 
+  useEffect(() => {
+    if (scenario || continuous || !autoComplete || completionSent.current) return;
+    completionSent.current = true;
+    onComplete();
+  }, [scenario, continuous, autoComplete, onComplete]);
+  useEffect(() => { if (scenario) completionSent.current = false; }, [scenario]);
+
   if (!scenario || !step) {
-    if (continuous && scenarios.length) return <div className="grid min-h-[55vh] place-items-center text-sm text-slate-500">正在自動重排下一輪牌局…</div>;
+    if ((continuous && scenarios.length) || autoComplete) return <div className="grid min-h-[55vh] place-items-center text-sm text-slate-500">正在自動重排下一批牌局…</div>;
     return <SessionComplete decisions={decisionCount} accuracy={accuracy} evLoss={evLoss} onRestart={() => {
       setQueue(diversifyInitialQueue(scenarios)); setScenarioIndex(0); setStepIndex(0); setSessionItems([]); resetDecisionState();
     }} onComplete={onComplete} onExit={onExit} />;
