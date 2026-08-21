@@ -11,7 +11,6 @@ const SkillGraphDashboard = lazy(() => import('./features/analysis/SkillGraphDas
 const TruthOpsDashboard = lazy(() => import('./features/analysis/TruthOpsDashboard').then(module => ({ default: module.TruthOpsDashboard })));
 const EquityWorkbench = lazy(() => import('./features/learning/EquityWorkbench').then(module => ({ default: module.EquityWorkbench })));
 const RangeReadingTrainer = lazy(() => import('./features/range/RangeReadingTrainer').then(module => ({ default: module.RangeReadingTrainer })));
-const ExploitWorkbench = lazy(() => import('./features/strategy/ExploitWorkbench').then(module => ({ default: module.ExploitWorkbench })));
 const SolverSurfaceLab = lazy(() => import('./features/strategy/SolverSurfaceLab').then(module => ({ default: module.SolverSurfaceLab })));
 const BenchmarkTrainer = lazy(() => import('./features/training/BenchmarkTrainer').then(module => ({ default: module.BenchmarkTrainer })));
 const ContrastiveTrainer = lazy(() => import('./features/training/ContrastiveTrainer').then(module => ({ default: module.ContrastiveTrainer })));
@@ -29,8 +28,7 @@ function RootRouter() {
   useEffect(() => { const handleHashChange = () => setRoute(window.location.hash); window.addEventListener('hashchange', handleHashChange); return () => window.removeEventListener('hashchange', handleHashChange); }, []);
   const exitLab = () => { window.location.hash = ''; };
 
-  // Real-game / hand-history routes were intentionally removed. The product is now
-  // a self-contained truth-backed infinite training table; no external hand import is required.
+  // Player flow is the infinite table. Remaining hash routes are internal truth/training diagnostics only.
   if (route === '#postflop-truth') return <PostflopTruthLab onExit={exitLab} />;
   if (route === '#effectiveness') return <EffectivenessDashboard onExit={exitLab} />;
   if (route === '#experiment') return <ExperimentDashboard onExit={exitLab} />;
@@ -47,7 +45,6 @@ function RootRouter() {
   if (route === '#strategy-surface') return <SolverSurfaceLab onExit={exitLab} />;
   if (route === '#hidden-benchmark') return <BenchmarkTrainer onExit={exitLab} />;
   if (route === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
-  if (route === '#exploit-workbench') return <ExploitWorkbench onExit={exitLab} />;
   if (route === '#icm-workbench') return <IcmWorkbench onExit={exitLab} />;
   if (route === '#fgs-workbench') return <FgsWorkbench onExit={exitLab} />;
   if (route === '#skill-graph') return <SkillGraphDashboard onExit={exitLab} />;
