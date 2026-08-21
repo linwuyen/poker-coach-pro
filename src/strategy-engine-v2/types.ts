@@ -48,6 +48,8 @@ export interface StrategyContext {
   rakeCapBB?: number;
   betTree?: BetTreeConfig;
   icm?: IcmContext;
+  /** P18: canonical straddle/dead-blind geometry. Undefined means standard forced bets only. */
+  forcedBetKey?: string;
 }
 
 export interface StrategySource {
