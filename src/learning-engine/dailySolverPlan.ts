@@ -70,13 +70,15 @@ function profileBoost(row: PokerBenchRow, profile?: PlayerProfile): number {
 }
 
 /**
- * Route training toward situations where exact HH↔solver joins observed real regret.
+ * Route training toward situations where exact HH↔solver joins observed real cash regret.
  * This is a situation-level priority signal only; it never relabels a PokerBench row as the same solver node.
+ * Tournament utility is kept on its own P9-D plane because PokerBench rows do not carry compatible tournament utility units.
  */
 export function verifiedRealGameLeakBoost(row: PokerBenchRow, history: HistoryItem[]): number {
   const targetStreet = row.split === 'preflop' ? 'Preflop' : row.evaluationAt;
   const relevant = history.filter(item => item.trainingType === 'real-hand')
     .filter(item => item.truthTier === 'verified-solver')
+    .filter(item => item.gameFormat === 'Cash' && item.utilityUnit === 'bb' && item.utilityModel === 'cash-chip-ev')
     .filter(item => typeof item.evLossBB === 'number' && item.evLossBB > 0)
     .filter(item => item.position?.toUpperCase() === row.heroPosition.toUpperCase())
     .filter(item => item.street === targetStreet);
