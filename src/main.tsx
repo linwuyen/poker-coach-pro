@@ -2,6 +2,8 @@ import { StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import AppV2 from './app/AppV2';
 import { CalibrationDashboard } from './features/analysis/CalibrationDashboard';
+import { EffectivenessDashboard } from './features/analysis/EffectivenessDashboard';
+import { HandHistoryImporter } from './features/analysis/HandHistoryImporter';
 import { SkillGraphDashboard } from './features/analysis/SkillGraphDashboard';
 import { CompanionPanel } from './features/companion/CompanionPanel';
 import { EquityWorkbench } from './features/learning/EquityWorkbench';
@@ -16,6 +18,7 @@ import { PokerBenchTrainer } from './features/training/PokerBenchTrainer';
 import { SemanticCounterfactualTrainer } from './features/training/SemanticCounterfactualTrainer';
 import { SizingTrainer } from './features/training/SizingTrainer';
 import { VariantTrainer } from './features/training/VariantTrainer';
+import { FgsWorkbench } from './features/tournament/FgsWorkbench';
 import { IcmWorkbench } from './features/tournament/IcmWorkbench';
 import './index.css';
 
@@ -29,6 +32,8 @@ function RootRouter() {
   }, []);
 
   const exitLab = () => { window.location.hash = ''; };
+  if (route === '#hand-history') return <HandHistoryImporter onExit={exitLab} />;
+  if (route === '#effectiveness') return <EffectivenessDashboard onExit={exitLab} />;
   if (route === '#companion') return <CompanionPanel onExit={exitLab} />;
   if (route === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
   if (route === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
@@ -44,6 +49,7 @@ function RootRouter() {
   if (route === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
   if (route === '#exploit-workbench') return <ExploitWorkbench onExit={exitLab} />;
   if (route === '#icm-workbench') return <IcmWorkbench onExit={exitLab} />;
+  if (route === '#fgs-workbench') return <FgsWorkbench onExit={exitLab} />;
   if (route === '#skill-graph') return <SkillGraphDashboard onExit={exitLab} />;
   if (route === '#calibration') return <CalibrationDashboard onExit={exitLab} />;
   return <AppV2 />;

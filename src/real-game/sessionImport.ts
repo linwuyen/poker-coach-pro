@@ -54,7 +54,7 @@ export function sessionImportToHistory(payload: NormalizedSessionImport, importe
     const frequency = spot.exposureCount / payload.session.handsObserved * 100;
     const utilityReady = typeof spot.utilityLoss === 'number' && spot.utilityUnit && spot.utilityModel;
     return {
-      schemaVersion: 5,
+      schemaVersion: 6,
       attemptId: `session:${payload.session.id}:${index}`,
       trainingType: 'real-hand',
       scenarioId: spot.scenarioId || `session-${payload.session.id}-${spot.contextFamilyId}`,
@@ -73,6 +73,8 @@ export function sessionImportToHistory(payload: NormalizedSessionImport, importe
       spotFrequencyPer100Hands: frequency,
       gameFormat: payload.session.format,
       sessionId: payload.session.id,
+      sourceBatchId: payload.session.id,
+      realGameSource: 'normalized-session',
       handsObserved: payload.session.handsObserved,
       spotExposureCount: spot.exposureCount,
       contextFamilyId: spot.contextFamilyId,

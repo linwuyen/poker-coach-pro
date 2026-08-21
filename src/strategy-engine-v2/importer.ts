@@ -1,10 +1,21 @@
 import { getAllStartingHands, normalizeFrequencies, normalizeHand } from './engine';
-import { SolverImportEnvelope, StrategyProfile } from './types';
+import { SolverImportEnvelope, StrategyAction, StrategyProfile } from './types';
 
 export interface ProfileValidationResult {
   profile: StrategyProfile;
   warnings: string[];
 }
+
+export interface StrategySurfaceCapabilities {
+  frequencyHands: number;
+  evHands: number;
+  mixedHands: number;
+  hasFrequencies: boolean;
+  hasPerActionEv: boolean;
+  hasMixedStrategy: boolean;
+}
+
+const STRATEGY_ACTIONS: StrategyAction[] = ['raise', 'call', 'limp', 'fold', 'allIn'];
 
 export function stableProfileHash(profile: StrategyProfile): string {
   const canonical = stableStringify({
@@ -23,6 +34,30 @@ export function stableProfileHash(profile: StrategyProfile): string {
     hash = Math.imul(hash, 16777619);
   }
   return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function validateActionMap(profileId: string, hand: string, values: Record<string, unknown>, label: string): void {
+  Object.entries(values).forEach(([action, value]) => {
+    if (!STRATEGY_ACTIONS.includes(action as StrategyAction)) throw new Error(`${profileId}:${hand} unknown ${label} action ${action}.`);
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${profileId}:${hand}:${action} ${label} must be finite.`);
+  });
+}
+
+export function strategySurfaceCapabilities(profile: StrategyProfile): StrategySurfaceCapabilities {
+  const entries = Object.entries(profile.ranges || {});
+  const evEntries = Object.entries(profile.evByHand || {});
+  const mixedHands = entries.filter(([, frequency]) => {
+    const normalized = normalizeFrequencies(frequency);
+    return STRATEGY_ACTIONS.filter(action => normalized[action] > 0.0001).length >= 2;
+  }).length;
+  return {
+    frequencyHands: entries.length,
+    evHands: evEntries.length,
+    mixedHands,
+    hasFrequencies: entries.length > 0,
+    hasPerActionEv: evEntries.some(([, values]) => Object.keys(values || {}).length >= 2),
+    hasMixedStrategy: mixedHands > 0,
+  };
 }
 
 export function validateStrategyProfile(input: StrategyProfile): ProfileValidationResult {
@@ -45,14 +80,31 @@ export function validateStrategyProfile(input: StrategyProfile): ProfileValidati
   Object.entries(input.ranges || {}).forEach(([hand, frequency]) => {
     const normalizedHand = normalizeHand(hand);
     if (normalizedHand !== hand || !validHands.has(hand)) throw new Error(`${input.id}: invalid canonical hand ${hand}.`);
+    validateActionMap(input.id, hand, frequency as Record<string, unknown>, 'frequency');
+    Object.values(frequency).forEach(value => {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error(`${input.id}:${hand} frequency must be finite and non-negative.`);
+    });
     const normalized = normalizeFrequencies(frequency);
     const suppliedTotal = Object.values(frequency).reduce((sum, value) => sum + (Number(value) || 0), 0);
     if (suppliedTotal > 1.0001) warnings.push(`${input.id}:${hand} frequencies normalized from ${suppliedTotal.toFixed(3)}.`);
     if (Object.values(normalized).some(value => value < 0 || value > 1)) throw new Error(`${input.id}:${hand} frequency out of bounds.`);
   });
-  Object.keys(input.evByHand || {}).forEach(hand => {
-    if (!validHands.has(normalizeHand(hand))) throw new Error(`${input.id}: invalid EV hand ${hand}.`);
+  Object.entries(input.evByHand || {}).forEach(([hand, actionEv]) => {
+    const normalizedHand = normalizeHand(hand);
+    if (normalizedHand !== hand || !validHands.has(hand)) throw new Error(`${input.id}: invalid canonical EV hand ${hand}.`);
+    validateActionMap(input.id, hand, actionEv as Record<string, unknown>, 'EV');
   });
+  Object.entries(input.actionSizesBB || {}).forEach(([action, sizes]) => {
+    if (!STRATEGY_ACTIONS.includes(action as StrategyAction)) throw new Error(`${input.id}: unknown action size action ${action}.`);
+    if (!Array.isArray(sizes) || sizes.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0)) {
+      throw new Error(`${input.id}:${action} actionSizesBB must contain finite non-negative values.`);
+    }
+  });
+
+  const capabilities = strategySurfaceCapabilities(input);
+  if (input.source.trustTier === 'verified-solver' && !capabilities.hasFrequencies) throw new Error(`${input.id}: verified solver surface requires frequency data.`);
+  if (capabilities.hasPerActionEv && !input.source.reference) throw new Error(`${input.id}: per-action EV data requires a provenance reference.`);
+  if (input.source.type === 'solver' && !input.source.solverVersion) warnings.push(`${input.id}: solverVersion is recommended for reproducibility.`);
 
   const profile = { ...input, immutable: true };
   profile.contentHash = stableProfileHash(profile);

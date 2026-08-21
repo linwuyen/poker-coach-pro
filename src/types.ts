@@ -9,7 +9,7 @@ export interface Card {
 export type Street = 'Preflop' | 'Flop' | 'Turn' | 'River';
 export type GameFormatTag = 'Cash' | 'MTT';
 export type UtilityUnit = 'bb' | 'dollar-ev' | 'prize-pool-share' | 'seat-equity';
-export type UtilityModel = 'cash-chip-ev' | 'icm' | 'pko' | 'satellite' | 'priority-only';
+export type UtilityModel = 'cash-chip-ev' | 'icm' | 'pko' | 'satellite' | 'fgs' | 'priority-only';
 export type TransferLevel = 'near' | 'context' | 'structural';
 
 export interface HandAction {
@@ -119,7 +119,7 @@ export interface Scenario {
 }
 
 export interface HistoryItem {
-  schemaVersion?: 3 | 4 | 5;
+  schemaVersion?: 3 | 4 | 5 | 6;
   attemptId?: string;
   trainingType?: 'scenario' | 'gto' | 'custom' | 'benchmark' | 'range' | 'counterfactual' | 'transfer' | 'real-hand' | 'solver-corpus' | 'solver-benchmark' | 'contrastive' | 'strategy-surface';
   scenarioId: string;
@@ -177,8 +177,8 @@ export interface HistoryItem {
   contrastivePairId?: string;
   boardTextureId?: string;
 
-  // v8: structured real-game evidence. These fields deliberately replace
-  // category/notes parsing for any value that participates in scheduling math.
+  // v6: structured real-game evidence. Values used by scheduling are typed;
+  // provenance fields make raw HH imports auditable without calling them solver truth.
   gameFormat?: GameFormatTag;
   sessionId?: string;
   handsObserved?: number;
@@ -189,6 +189,9 @@ export interface HistoryItem {
   utilityUnit?: UtilityUnit;
   utilityModel?: UtilityModel;
   transferLevel?: TransferLevel;
+  realGameSource?: 'pokerstars' | 'ggpoker' | 'generic' | 'normalized-session';
+  sourceHandId?: string;
+  sourceBatchId?: string;
 }
 
 export type PlayerExperience = 'beginner' | 'intermediate' | 'advanced';

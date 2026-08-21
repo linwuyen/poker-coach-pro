@@ -1,5 +1,6 @@
 import { scenarios as rawCoreScenarios } from '../coreData';
 import { ActionType, Feedback, Scenario, Suit } from '../types';
+import { exactMathSemanticScenarios } from './semanticMathScenarios';
 
 const SUIT_SYMBOL: Record<Suit, string> = {
   spades: '♠', hearts: '♥', diamonds: '♦', clubs: '♣',
@@ -59,7 +60,7 @@ function mapFeedback(feedback: Feedback, map: Record<Suit, Suit>): Feedback {
 function repairKnownGroundTruth(scenario: Scenario): Scenario {
   return {
     ...scenario,
-    decisionFamilyId: scenario.decisionFamilyId || scenario.reviewSourceId || scenario.id,
+    decisionFamilyId: scenario.decisionFamilyId || scenario.id,
     steps: scenario.steps.map(step => ({
       ...step,
       feedbacks: Object.fromEntries(Object.entries(step.feedbacks).map(([action, feedback]) => {
@@ -75,15 +76,14 @@ export function makeSuitIsomorphicScenario(base: Scenario, variantIndex: number,
   const permutation = SUIT_PERMUTATIONS[Math.abs(variantIndex) % SUIT_PERMUTATIONS.length];
   const suitMap = Object.fromEntries(SUITS.map((suit, index) => [suit, permutation[index]])) as Record<Suit, Suit>;
   const mapCard = (card: Scenario['holeCards'][number]) => ({ ...card, suit: suitMap[card.suit] });
-  const familyId = base.decisionFamilyId || base.reviewSourceId || base.id;
   return {
     ...base,
     id: `${idPrefix}-${base.id}-iso-${variantIndex + 1}`,
-    decisionFamilyId: familyId,
+    decisionFamilyId: base.decisionFamilyId || base.id,
     title: `${mapTextSymbols(base.title, suitMap) || base.title} · 同構轉移`,
     preAction: mapTextSymbols(base.preAction, suitMap) || base.preAction,
     holeCards: base.holeCards.map(mapCard),
-    reviewSourceId: familyId,
+    reviewSourceId: base.id,
     benchmarkRole: 'training',
     steps: base.steps.map(step => ({
       ...step,
@@ -101,10 +101,16 @@ export function makeSuitIsomorphicScenario(base: Scenario, variantIndex: number,
 
 export const coreScenarios: Scenario[] = rawCoreScenarios.map(repairKnownGroundTruth);
 
-// 88 originals + 64 curated, strategy-equivalent suit isomorphs = 152 teaching scenarios.
-// These variants change visual identity but not strategic truth, so they are safe for retrieval practice.
+// P6: 64 new semantic decision families. Truth is exact arithmetic from stated
+// pot/equity/fold-rate inputs, not an old answer copied onto mutated poker context.
+export const semanticTeachingScenarios: Scenario[] = exactMathSemanticScenarios.map(repairKnownGroundTruth);
+
+// Cosmetic retrieval instances remain useful, but P3-C keeps them on the same
+// decisionFamilyId so they never inflate mastery or semantic catalog counts.
 export const curatedTeachingVariants: Scenario[] = coreScenarios
   .slice(0, 64)
   .map((scenario, index) => makeSuitIsomorphicScenario(scenario, index));
 
-export const scenarios: Scenario[] = [...coreScenarios, ...curatedTeachingVariants];
+// 88 original semantic families + 64 exact-math semantic families = 152 genuine
+// decision families. The 64 suit-isomorphic instances bring the rendered bank to 216.
+export const scenarios: Scenario[] = [...coreScenarios, ...semanticTeachingScenarios, ...curatedTeachingVariants];

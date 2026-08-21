@@ -1,8 +1,8 @@
 import { ConfidenceLevel, HistoryItem, PlayerProfile } from '../types';
 import { getHistoryMasteryKey, isHistoryCorrect } from '../learning-engine';
 
-export const HISTORY_KEY = 'poker_training_history_v5';
-const LEGACY_HISTORY_KEYS = ['poker_training_history_v4', 'poker_training_history_v3', 'poker_training_history_v2'];
+export const HISTORY_KEY = 'poker_training_history_v6';
+const LEGACY_HISTORY_KEYS = ['poker_training_history_v5', 'poker_training_history_v4', 'poker_training_history_v3', 'poker_training_history_v2'];
 
 const normalize = (item: HistoryItem, index: number): HistoryItem => {
   const timestamp = Number.isFinite(item.timestamp) ? item.timestamp : Date.now();
@@ -10,7 +10,7 @@ const normalize = (item: HistoryItem, index: number): HistoryItem => {
   const correct = item.correct ?? (score >= 8);
   const normalized: HistoryItem = {
     ...item,
-    schemaVersion: 5,
+    schemaVersion: 6,
     attemptId: item.attemptId || `legacy-${timestamp}-${index}`,
     trainingType: item.trainingType || 'scenario',
     category: Array.isArray(item.category) ? item.category : [],
@@ -62,8 +62,8 @@ export function getReviewSchedule(
   return { nextReviewAt: now + days * 86400000, reviewIntervalDays: days };
 }
 
-export interface TrainingBackup { version: 5; exportedAt: string; history: HistoryItem[]; starredIds: string[]; playerProfile?: PlayerProfile; }
-export function makeTrainingBackup(history: HistoryItem[], starredIds: string[], playerProfile?: PlayerProfile): TrainingBackup { return { version: 5, exportedAt: new Date().toISOString(), history: history.map(normalize), starredIds, playerProfile }; }
+export interface TrainingBackup { version: 6; exportedAt: string; history: HistoryItem[]; starredIds: string[]; playerProfile?: PlayerProfile; }
+export function makeTrainingBackup(history: HistoryItem[], starredIds: string[], playerProfile?: PlayerProfile): TrainingBackup { return { version: 6, exportedAt: new Date().toISOString(), history: history.map(normalize), starredIds, playerProfile }; }
 export function exportTrainingData(history: HistoryItem[], starredIds: string[], playerProfile?: PlayerProfile): void {
   const blob = new Blob([JSON.stringify(makeTrainingBackup(history, starredIds, playerProfile), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `poker-coach-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url);
