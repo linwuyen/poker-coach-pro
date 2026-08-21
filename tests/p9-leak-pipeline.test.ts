@@ -21,14 +21,14 @@ P1: folds
 P2: folds
 *** SUMMARY ***`;
 
-function profile(): StrategyProfile {
+function profile(stackDepthBB = 100): StrategyProfile {
   return {
     schemaVersion: 2,
-    id: 'solver:btn-rfi-100',
+    id: `solver:btn-rfi-${stackDepthBB}`,
     version: '1',
-    name: 'BTN RFI 100BB',
+    name: `BTN RFI ${stackDepthBB}BB`,
     description: 'fixture',
-    context: { format: 'cash', tableSize: '6max', spot: 'rfi', position: 'btn', stackDepthBB: 100, anteBB: 0, rakePercent: 5, rakeCapBB: 2 },
+    context: { format: 'cash', tableSize: '6max', spot: 'rfi', position: 'btn', stackDepthBB, anteBB: 0, rakePercent: 5, rakeCapBB: 2 },
     source: { type: 'solver', trustTier: 'verified-solver', label: 'fixture', reference: 'fixture://rfi', solverName: 'Fixture', solverVersion: '1', generatedAt: '2026-08-20T00:00:00Z', disclaimer: 'test' },
     ranges: { AKo: { raise: 1 } },
     evByHand: { AKo: { raise: 0.45, fold: 0 } },
@@ -59,4 +59,12 @@ test('heuristic profile can never auto-grade a real hand even if its shape match
   const heuristic: StrategyProfile = { ...profile(), source: { ...profile().source, type: 'heuristic', trustTier: 'heuristic-estimate' } };
   const result = buildVerifiedLeakEvidence(parseHandHistoryText(handText), [heuristic], { rakePercent: 5, rakeCapBB: 2 });
   assert.equal(result.gradedDecisions, 0);
+});
+
+test('first-in multiway grading uses the shortest live effective stack instead of Hero stack', () => {
+  const shortBlind = handText.replace('Seat 2: P2 ($100 in chips)', 'Seat 2: P2 ($20 in chips)');
+  const result = buildVerifiedLeakEvidence(parseHandHistoryText(shortBlind), [profile(20)], { rakePercent: 5, rakeCapBB: 2 });
+  assert.equal(result.matchedDecisions, 1);
+  assert.equal(result.gradedDecisions, 1);
+  assert.equal(result.history[0].truthSourceId, 'solver:btn-rfi-20');
 });
