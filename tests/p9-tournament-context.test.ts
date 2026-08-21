@@ -51,3 +51,16 @@ test('FGS context uses only explicit probability trees and reports chosen-action
   assert.ok(result.bestUtility >= result.chosenUtility);
   assert.ok(result.utilityLoss >= 0);
 });
+
+test('FGS action comparison rejects trees that start from different current states', () => {
+  const rootPlayers = [{ id: 'hero', stack: 20 }, { id: 'villain', stack: 10 }, { id: 'p3', stack: 30 }];
+  assert.throws(() => validateTournamentHandContext({
+    schemaVersion: 1, id: 'fgs-mismatch', version: '1', handId: 'mtt-1', model: 'fgs', heroId: 'hero',
+    players: rootPlayers, payouts: [100, 60, 0], utilityUnit: 'dollar-ev', chosenAction: 'fold',
+    reference: 'fixture://sim', generatedAt: '2026-08-21T00:00:00Z', methodology: 'Explicit simulator branches',
+    actionTrees: [
+      { action: 'fold', root: { id: 'fold-root', players: rootPlayers } },
+      { action: 'jam', root: { id: 'jam-root', players: [{ id: 'hero', stack: 19 }, { id: 'villain', stack: 11 }, { id: 'p3', stack: 30 }] } },
+    ],
+  }), /same explicit current player state/);
+});
