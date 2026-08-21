@@ -154,14 +154,14 @@ try {
   await navigateRoute(cdp.send, '#truth-ops', 'Truth Operations');
   await navigateRoute(cdp.send, '#strategy-surface', 'Full Strategy Surface');
   await navigateRoute(cdp.send, '#effectiveness', 'Learning Effectiveness');
-  await navigateRoute(cdp.send, '#tournament-context', 'Tournament truth join');
+  await navigateRoute(cdp.send, '#tournament-context', 'Tournament reconstruction');
   await navigateRoute(cdp.send, '#fgs-workbench', 'Finite Game Simulation');
   await navigateRoute(cdp.send, '#experiment', 'Randomized N-of-1');
   await evaluate(cdp.send, `document.querySelector('[data-testid="experiment-create"]').click(); true`);
   await waitFor(cdp.send, `Boolean(localStorage.getItem('poker_learning_experiment_v1'))`, 'N-of-1 experiment persistence');
   await navigateRoute(cdp.send, '', '今天');
 
-  console.log('Browser E2E PASS: Today → HH persistence → Postflop Truth v3 → Truth Ops → Solver Surface → Effectiveness → Tournament Join → FGS → randomized N-of-1 → Today.');
+  console.log('Browser E2E PASS: Today → HH persistence → Postflop Truth v3 → Truth Ops → Solver Surface → Effectiveness → Tournament Reconstruction → FGS → randomized N-of-1 → Today.');
 } finally {
   try { cdp?.socket?.close(); } catch {}
   await terminate(chrome);
