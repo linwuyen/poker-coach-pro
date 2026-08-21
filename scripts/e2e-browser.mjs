@@ -29,6 +29,18 @@ function browserCommand() {
   throw new Error('Chrome/Chromium is required for browser E2E.');
 }
 
+async function waitForChrome(child, stderr, attempts = 160) {
+  const url = `http://${HOST}:${DEBUG_PORT}/json/version`;
+  for (let index = 0; index < attempts; index += 1) {
+    if (child.exitCode !== null) {
+      throw new Error(`Chrome exited before CDP was ready (exit=${child.exitCode}). ${stderr().trim()}`);
+    }
+    try { const response = await fetch(url); if (response.ok) return response; } catch {}
+    await sleep(125);
+  }
+  throw new Error(`Timed out waiting for ${url}. Chrome exit=${child.exitCode}. ${stderr().trim()}`);
+}
+
 async function connectCdp(webSocketDebuggerUrl) {
   const socket = new WebSocket(webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
@@ -87,16 +99,24 @@ const userData = mkdtempSync(join(tmpdir(), 'poker-coach-e2e-'));
 let preview;
 let chrome;
 let cdp;
+let chromeStderr = '';
 try {
   // Spawn Vite directly instead of `npm exec vite preview`. The npm wrapper creates a grandchild
   // that can outlive its parent and keep CI pipes open after the assertions have passed.
-  preview = spawn(process.execPath, [VITE_BIN, 'preview', '--host', HOST, '--port', String(PREVIEW_PORT)], { stdio: 'ignore' });
+  preview = spawn(process.execPath, [VITE_BIN, 'preview', '--host', HOST, '--port', String(PREVIEW_PORT)], { stdio: ['ignore', 'pipe', 'pipe'] });
   await waitHttp(BASE_URL);
-  chrome = spawn(browserCommand(), [
-    '--headless=new', '--no-sandbox', '--disable-gpu', `--remote-debugging-port=${DEBUG_PORT}`,
-    `--user-data-dir=${userData}`, '--disable-background-networking', '--disable-default-apps', BASE_URL,
-  ], { stdio: 'ignore' });
-  await waitHttp(`http://${HOST}:${DEBUG_PORT}/json/version`);
+
+  const browser = browserCommand();
+  console.log(`Browser E2E using ${browser}`);
+  chrome = spawn(browser, [
+    '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+    `--remote-debugging-address=${HOST}`, `--remote-debugging-port=${DEBUG_PORT}`,
+    `--user-data-dir=${userData}`, '--disable-background-networking', '--disable-default-apps',
+    '--no-first-run', '--no-default-browser-check', BASE_URL,
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  chrome.stderr?.on('data', chunk => { chromeStderr += String(chunk); });
+  await waitForChrome(chrome, () => chromeStderr);
+
   let pages = [];
   for (let index = 0; index < 40; index += 1) {
     pages = await (await fetch(`http://${HOST}:${DEBUG_PORT}/json/list`)).json();
