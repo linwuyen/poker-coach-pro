@@ -7,15 +7,15 @@ import type { Scenario } from '../src/types';
 
 test('correct action with failed reasoning is routed back into targeted repair', () => {
   const table = readFileSync('src/features/training/InfiniteTrainingTable.tsx', 'utf8');
-  assert.match(table, /annotated\.correct === false \|\| annotated\.reasoningProbeResult === 'fail'/);
+  assert.match(table, /annotated\.correct\s*===\s*false\s*\|\|\s*annotated\.reasoningProbeResult\s*===\s*'fail'/);
   assert.match(table, /fragile-reasoning-review/);
-  assert.match(table, /selectTargetedReviewCandidates\(pool, candidate/);
+  assert.match(table, /selectTargetedReviewCandidates\(pool,\s*candidate/);
 });
 
 test('hidden exam waits for the full mixed holdout pool before question one', () => {
   const exam = readFileSync('src/features/training/ExamMode.tsx', 'utf8');
-  assert.match(exam, /if \(loadingSolver\) \{/);
-  assert.doesNotMatch(exam, /if \(loadingSolver && !pool\.length\)/);
+  assert.match(exam, /if\s*\(\s*loadingSolver\s*\)\s*return/);
+  assert.doesNotMatch(exam, /if\s*\(\s*loadingSolver\s*&&\s*!pool\.length/);
   assert.match(exam, /initialHistory/);
 });
 
