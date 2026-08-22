@@ -4,8 +4,10 @@ import test from 'node:test';
 import { AnalysisContext, analysisContextHref, readAnalysisContextFromHash, startingHandFromCodes } from '../src/features/analysis/analysisContext';
 import { automaticSolverAnalysis, parseSolverCards } from '../src/features/training/SolverDecisionSession';
 import { selectTargetedReviewCandidates } from '../src/learning-engine/targetedReview';
+import { analyzeHandMath } from '../src/utils/handMath';
 import type { InfiniteHandCandidate } from '../src/learning-engine/infiniteHandGenerator';
 import type { PokerBenchPostflopRow } from '../src/solver-data/pokerbench';
+import type { Card } from '../src/types';
 
 const solverRow: PokerBenchPostflopRow = {
   id: 'postflop-ux-contract',
@@ -55,11 +57,27 @@ test('analysis context survives hash links without inventing data', () => {
   assert.deepEqual(readAnalysisContextFromHash(href), context);
 });
 
-test('correct solver answers still receive teaching analysis', () => {
+test('PokerBench analysis stays inside the exact-label evidence boundary', () => {
   const lines = automaticSolverAnalysis(solverRow, 'Call');
-  assert.ok(lines.length >= 2);
-  assert.match(lines.join('\n'), /選對跟注|optimal label/i);
+  assert.ok(lines.length >= 3);
+  assert.match(lines.join('\n'), /optimal label/i);
   assert.match(lines.join('\n'), /沒有 per-action EV|沒有 per-action ev/i);
+  assert.match(lines.join('\n'), /沒有提供.*rationale|不會.*冒充 solver 理由/i);
+  assert.doesNotMatch(lines.join('\n'), /保留繼續範圍|實現 equity|主動施壓|取得價值/);
+});
+
+test('board-only four-flush is not taught as nine Hero outs', () => {
+  const hole: Card[] = [{ rank: 'A', suit: 'spades' }, { rank: 'K', suit: 'diamonds' }];
+  const board: Card[] = [{ rank: '2', suit: 'hearts' }, { rank: '5', suit: 'hearts' }, { rank: '9', suit: 'hearts' }, { rank: 'Q', suit: 'hearts' }];
+  const result = analyzeHandMath(hole, board);
+  assert.equal(result.hasDraw, false);
+  assert.equal(result.outs, 0);
+
+  const heroHeart: Card[] = [{ rank: 'A', suit: 'hearts' }, { rank: 'K', suit: 'diamonds' }];
+  const threeHeartBoard: Card[] = [{ rank: '2', suit: 'hearts' }, { rank: '5', suit: 'hearts' }, { rank: '9', suit: 'hearts' }, { rank: 'Q', suit: 'clubs' }];
+  const heroResult = analyzeHandMath(heroHeart, threeHeartBoard);
+  assert.equal(heroResult.hasDraw, true);
+  assert.equal(heroResult.outs, 9);
 });
 
 test('targeted repair selects three truth-gated structural siblings', () => {
@@ -95,7 +113,7 @@ test('training UX requires explicit next and exposes contextual analysis tools',
   assert.match(solver, /data-testid="solver-hole-cards"/);
   assert.match(solver, /data-testid="solver-board-cards"/);
   assert.match(solver, /<CardUI/);
-  assert.match(solver, /答對了 · 先看完整 Solver 解說/);
+  assert.match(solver, /答對了 · 先看完整證據解說/);
   assert.match(solver, /AdvancedToolLinks/);
 
   assert.match(semantic, /data-testid="semantic-next"/);
