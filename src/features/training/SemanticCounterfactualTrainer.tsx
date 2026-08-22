@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, GitCompareArrows, Loader2, XCircle } from 'lucide-react';
+import { CardUI } from '../../components/CardUI';
 import { HistoryItem } from '../../types';
 import { classifyDecisionError } from '../../learning-engine/errorModel';
 import { getDifficultyWeight, isDelayedReview, makeMasteryKey } from '../../learning-engine';
@@ -9,6 +10,7 @@ import { solverCorpusRole } from '../../learning-engine/solverCurriculum';
 import { fingerprintPokerBenchRow } from '../../solver-data/contextFingerprint';
 import { decisionsMatch, loadPokerBenchSplit, parsePokerDecision, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow, PokerBenchSplit } from '../../solver-data/pokerbench';
 import { createAttemptId, getReviewSchedule, loadHistory, saveHistory } from '../../utils/history';
+import { humanizeSolverMove, parseSolverCards } from './SolverDecisionSession';
 
 type Side = 'left' | 'right';
 type LockedAnswer = { choice: string; durationMs: number };
@@ -41,14 +43,8 @@ export function SemanticCounterfactualSession({ pairs, history, onRecord, onExit
     onComplete();
   }, [pair, autoComplete, onComplete]);
 
-  useEffect(() => {
-    if (!revealed || !pairCorrect) return;
-    const timer = window.setTimeout(() => next(), 900);
-    return () => window.clearTimeout(timer);
-  }, [revealed, pairCorrect, index]);
-
   if (!pair || !row) {
-    if (autoComplete) return <div className="grid min-h-[45vh] place-items-center text-sm text-slate-500">正在自動切換下一批牌局…</div>;
+    if (autoComplete) return <div className="grid min-h-[45vh] place-items-center text-sm text-slate-500">正在切換下一批牌局…</div>;
     return <div className="mx-auto max-w-3xl rounded-3xl border border-emerald-500/20 bg-emerald-500/6 p-8 text-center text-slate-100"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 text-2xl font-bold">這批變化題完成</h2><p className="mt-2 text-sm text-slate-400">完成 {pairs.length} 組、{pairs.length * 2} 個決策。</p><div className="mt-6 flex justify-center gap-3"><button onClick={onComplete} className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">繼續</button><button onClick={onExit} className="rounded-xl border border-slate-700 px-5 py-3 text-slate-300">離開</button></div></div>;
   }
 
@@ -81,7 +77,7 @@ export function SemanticCounterfactualSession({ pairs, history, onRecord, onExit
   const progress = pairs.length ? Math.round(index / pairs.length * 100) : 0;
   return <div className="mx-auto max-w-5xl space-y-5 text-slate-100" data-testid="semantic-auto-session">
     <header className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><div className="flex flex-wrap items-center gap-3"><button onClick={onExit} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-400 hover:bg-slate-800"><ArrowLeft className="h-4 w-4" />離開</button><div className="flex-1"><div className="flex justify-between text-sm"><b>{title}</b><span className="font-mono text-slate-500">{index + 1}/{pairs.length}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full bg-emerald-400" style={{ width: `${progress}%` }} /></div></div></div></header>
-    {!revealed ? <><section className="rounded-3xl border border-slate-800 bg-slate-900/55 p-6 md:p-8"><div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">自動插入的變化題 · {side === 'left' ? 'A' : 'B'}</div><h2 className="mt-3 text-2xl font-bold">{side === 'left' ? '先做這個決策' : '現在只改一個重要條件，再做一次'}</h2>{side === 'right' && <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/7 px-4 py-3 text-sm text-emerald-100">A 已鎖定。B 只改一個可觀測策略條件，不需要你另外開任何工具。</div>}</section><SolverSpot row={row} onChoice={choose} /></> : <SemanticReveal pair={pair} answers={answers} onNext={next} autoAdvance={pairCorrect} />}
+    {!revealed ? <><section className="rounded-3xl border border-slate-800 bg-slate-900/55 p-6 md:p-8"><div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">理解驗證 · {side === 'left' ? 'A' : 'B'}</div><h2 className="mt-3 text-2xl font-bold">{side === 'left' ? '先做這個決策' : '現在只改一個重要條件，再做一次'}</h2>{side === 'right' && <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/7 px-4 py-3 text-sm text-emerald-100">A 已鎖定。B 只改一個可觀測策略條件；兩題完成後一定停下來看翻轉原因。</div>}</section><SolverSpot row={row} onChoice={choose} /></> : <SemanticReveal pair={pair} answers={answers} onNext={next} correct={pairCorrect} />}
   </div>;
 }
 
@@ -108,19 +104,29 @@ export function SemanticCounterfactualTrainer({ onExit }: { onExit: () => void }
 }
 
 function SolverSpot({ row, onChoice }: { row: PokerBenchRow; onChoice: (choice: string) => void }) {
-  const board = row.split === 'postflop' ? `${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}` : '';
-  return <section className="rounded-2xl border border-slate-800 bg-slate-900/55 p-5 md:p-6"><div className="font-mono text-2xl font-bold">{row.holding} · {row.heroPosition}</div><div className="mt-3 grid gap-2 text-sm text-slate-400 sm:grid-cols-3"><span>Pot {row.potSize} BB</span><span>{row.split === 'preflop' ? `${row.numPlayers} 人桌 · bet depth ${row.numBets}` : row.evaluationAt}</span><span>{row.split === 'postflop' ? `Board ${board}` : 'Preflop'}</span></div><div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/35 p-4 text-sm leading-6 text-slate-300">{row.split === 'preflop' ? row.prevLine || 'First in' : <><div>Preflop: {row.preflopAction || '-'}</div><div>Postflop: {row.postflopAction || '-'}</div></>}</div><div className="mt-5 grid gap-2 sm:grid-cols-2">{row.availableMoves.map(move => <button data-testid="semantic-action" key={move} onClick={() => onChoice(move)} className="rounded-xl border border-slate-700 bg-slate-950/35 p-4 text-left text-sm font-semibold text-slate-300 hover:border-emerald-500/40">{move}</button>)}</div></section>;
+  const holdingCards = parseSolverCards(row.holding);
+  const boardCards = row.split === 'postflop' ? parseSolverCards(`${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}`) : [];
+  return <section className="rounded-2xl border border-slate-800 bg-slate-900/55 p-5 md:p-6">
+    <div className="rounded-2xl border border-emerald-500/15 bg-slate-950/35 p-5 text-center">
+      <div className="flex min-h-20 items-center justify-center gap-2">{boardCards.length ? boardCards.map((card, index) => <CardUI key={`${card.rank}-${card.suit}-${index}`} card={card} size="sm" />) : <span className="rounded-xl border border-dashed border-slate-700 px-5 py-3 text-xs text-slate-500">Preflop</span>}</div>
+      <div className="mt-5 flex justify-center gap-2">{holdingCards.map((card, index) => <CardUI key={`${card.rank}-${card.suit}-${index}`} card={card} size="sm" />)}</div>
+      <div className="mt-2 text-xs text-emerald-200">Hero · {row.heroPosition}</div>
+    </div>
+    <div className="mt-3 grid gap-2 text-sm text-slate-400 sm:grid-cols-3"><span>Pot {row.potSize} BB</span><span>{row.split === 'preflop' ? `${row.numPlayers} 人桌 · bet depth ${row.numBets}` : row.evaluationAt}</span><span>{row.split === 'postflop' ? `${boardCards.length} board cards` : 'Preflop'}</span></div>
+    <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/35 p-4 text-sm leading-6 text-slate-300">{row.split === 'preflop' ? row.prevLine || 'First in' : <><div>Preflop: {row.preflopAction || '-'}</div><div>Postflop: {row.postflopAction || '-'}</div></>}</div>
+    <div className="mt-5 grid gap-2 sm:grid-cols-2">{row.availableMoves.map(move => <button data-testid="semantic-action" key={move} onClick={() => onChoice(move)} className="rounded-xl border border-slate-700 bg-slate-950/35 p-4 text-left text-sm font-semibold text-slate-300 hover:border-emerald-500/40">{humanizeSolverMove(move)}</button>)}</div>
+  </section>;
 }
 
-function SemanticReveal({ pair, answers, onNext, autoAdvance }: { pair: SemanticDecisionPair; answers: PairAnswers; onNext: () => void; autoAdvance: boolean }) {
+function SemanticReveal({ pair, answers, onNext, correct }: { pair: SemanticDecisionPair; answers: PairAnswers; onNext: () => void; correct: boolean }) {
   const left = answers.left!;
   const right = answers.right!;
-  return <section className={`rounded-3xl border p-6 md:p-8 ${autoAdvance ? 'border-emerald-500/20 bg-emerald-500/6' : 'border-red-500/20 bg-red-500/6'}`}><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300"><GitCompareArrows className="h-4 w-4" />決策邊界</div><h2 className="mt-3 text-2xl font-bold">只改「{semanticDimensionLabel(pair.dimension)}」，最佳動作就翻轉</h2><p className="mt-3 rounded-xl border border-slate-800 bg-slate-950/35 p-4 text-sm text-slate-300">{describeSemanticChange(pair)}</p><div className="mt-5 grid gap-4 md:grid-cols-2"><RevealCard label="A" choice={left.choice} best={pair.left.correctDecision} /><RevealCard label="B" choice={right.choice} best={pair.right.correctDecision} /></div><p className="mt-5 text-xs leading-6 text-slate-500">系統只使用已驗證的 optimal labels。沒有 action EV、mixed frequency 或因果資料時，不補假精度。</p>{autoAdvance ? <div className="mt-4 flex items-center gap-2 text-sm text-emerald-200"><CheckCircle2 className="h-5 w-5" />兩題都對，自動下一組</div> : <button onClick={onNext} className="mt-5 rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">下一組</button>}</section>;
+  return <section data-testid="semantic-reveal" className={`rounded-3xl border p-6 md:p-8 ${correct ? 'border-emerald-500/20 bg-emerald-500/6' : 'border-red-500/20 bg-red-500/6'}`}><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300"><GitCompareArrows className="h-4 w-4" />決策邊界</div><h2 className="mt-3 text-2xl font-bold">只改「{semanticDimensionLabel(pair.dimension)}」，最佳動作就翻轉</h2><p className="mt-3 rounded-xl border border-slate-800 bg-slate-950/35 p-4 text-sm text-slate-300">{describeSemanticChange(pair)}</p><div className="mt-5 grid gap-4 md:grid-cols-2"><RevealCard label="A" choice={left.choice} best={pair.left.correctDecision} /><RevealCard label="B" choice={right.choice} best={pair.right.correctDecision} /></div><p className="mt-5 text-xs leading-6 text-slate-500">系統只使用已驗證的 optimal labels。沒有 action EV、mixed frequency 或因果資料時，不補假精度。</p><div className={`mt-4 flex items-center gap-2 text-sm ${correct ? 'text-emerald-200' : 'text-red-200'}`}>{correct ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}{correct ? '兩題都對：這才是跨情境理解的證據；仍由你看完後手動下一組。' : '至少一題錯：先比較 A/B 哪個條件讓最佳線翻轉。'}</div><button data-testid="semantic-next" onClick={onNext} className="mt-5 rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">看完差異，下一組</button></section>;
 }
 
 function RevealCard({ label, choice, best }: { label: string; choice: string; best: string }) {
   const correct = decisionsMatch(choice, best);
-  return <div className={`rounded-xl border p-4 ${correct ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5'}`}><div className="flex items-center gap-2 text-xs text-slate-500">Spot {label}{correct ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <XCircle className="h-4 w-4 text-red-400" />}</div><div className="mt-2 text-sm">你：<b>{choice}</b></div><div className="mt-1 text-sm">最佳線：<b>{best}</b></div></div>;
+  return <div className={`rounded-xl border p-4 ${correct ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5'}`}><div className="flex items-center gap-2 text-xs text-slate-500">Spot {label}{correct ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <XCircle className="h-4 w-4 text-red-400" />}</div><div className="mt-2 text-sm">你：<b>{humanizeSolverMove(choice)}</b></div><div className="mt-1 text-sm">最佳線：<b>{humanizeSolverMove(best)}</b></div></div>;
 }
 
 function makeHistoryItem(pair: SemanticDecisionPair, row: PokerBenchRow, answer: LockedAnswer, history: HistoryItem[], now: number, offset: number): HistoryItem {
