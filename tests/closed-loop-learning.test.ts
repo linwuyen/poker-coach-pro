@@ -45,8 +45,8 @@ test('verified EV north star accepts only evaluation-grade exact/solver cash BB 
   assert.equal(result.previousAverageEvLossBB, 0.8);
   assert.equal(result.recentAverageEvLossBB, 0.3);
   assert.ok(Math.abs((result.deltaBBPerDecision || 0) + 0.5) < 1e-9);
-  assert.equal(result.trainingHours, 2);
-  assert.ok(Math.abs((result.learningRoiBBPerHour || 0) - 0.25) < 1e-9);
+  assert.equal(result.trainingHours, 1);
+  assert.ok(Math.abs((result.learningRoiBBPerHour || 0) - 0.5) < 1e-9);
 });
 
 test('knowledge state keeps zero-evidence skills visible as coverage gaps', () => {
@@ -141,6 +141,7 @@ test('closed-loop product surfaces are actually wired into the player flow', () 
   assert.match(training, /fragile-knowledge/);
   assert.match(training, /utilityModel: verifiedCashEv \? 'cash-chip-ev'/);
   assert.match(exam, /feedback intentionally withheld|feedback withheld|不顯示正誤/);
+  assert.match(exam, /initialHistory/);
   assert.doesNotMatch(exam, /<TrainingSession/);
   assert.doesNotMatch(exam, /<SolverDecisionSession/);
   assert.match(tools, /#minimal-flip/);
