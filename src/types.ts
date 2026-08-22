@@ -44,6 +44,7 @@ export type StrategyMode = 'theory' | 'exploit';
 export type ContextMatchStatus = 'exact' | 'approximate' | 'unsupported';
 export type SolverCorpusRole = 'training' | 'sibling' | 'holdout';
 export type DecisionErrorType = 'none' | 'knowledge-gap' | 'mental-model' | 'sizing-boundary' | 'action-boundary' | 'lucky-guess' | 'fragile-knowledge';
+export type ReasoningProbeResult = 'pass' | 'fail' | 'skipped';
 
 export interface FeedbackEvidence {
   objective?: string;
@@ -171,6 +172,11 @@ export interface HistoryItem {
   contextMatchStatus?: ContextMatchStatus;
   strategyDistance?: number;
   reasoningConceptIds?: string[];
+  reasoningProbeResult?: ReasoningProbeResult;
+  predictedSuccessProbability?: number;
+  learningPriorityScore?: number;
+  examSessionId?: string;
+  examMode?: boolean;
   errorType?: DecisionErrorType;
   solverCorpusRole?: SolverCorpusRole;
   curriculumLevel?: 1 | 2 | 3 | 4 | 5;
