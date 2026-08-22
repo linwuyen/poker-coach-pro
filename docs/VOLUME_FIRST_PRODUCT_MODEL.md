@@ -60,7 +60,9 @@ If confidence was not collected, the system leaves it absent. It must never synt
 - PokerBench feedback shows the exact optimal label for every answer, including correct answers, plus card visuals, hand/math context, option-by-option label comparison and provenance limits.
 - Missing per-action EV, mixed frequency or range evidence remains explicitly missing; the UI never fabricates solver precision.
 - Advanced Range / Boundary / Equity / Solver tools are discoverable after the answer and open separately without destroying the current explanation.
-- A mistake still automatically changes future sampling; the player does not need to select a repair tool.
+- The answer surface captures a portable **Analysis Context** containing only observed or already-validated fields such as hole cards, board, street, position, pot, effective stack, chosen/best action and truth provenance. Context-aware tools prefill those exact fields; missing villain range, Hero equity, solver EV or frequency remains missing.
+- A mistake queues up to three structurally related repair decisions from the same already truth-gated Infinite pool before normal sampling resumes. If fewer safe siblings exist, the repair queue is shorter; no new answer is synthesized.
+- Semantic counterfactual / understanding-check reveals also stop for explicit review. Even when both A/B decisions are correct, the user chooses when to continue.
 
 ## Infinite curriculum
 
@@ -83,6 +85,13 @@ street / position / action / stack / format novelty
 trainer leak / due-review adaptive weighting
             ↓
 next decision
+
+mistake
+  ↓
+up to 3 structurally related candidates
+from the same truth-gated pool
+  ↓
+resume normal Infinite sampling
 ```
 
 The novelty layer prevents apparent volume from collapsing into repeated versions of the same strategic situation. It changes sampling only; it never changes or interpolates the correct answer.
@@ -93,7 +102,7 @@ Truth provenance remains distinct even when the UI presents everything as one ta
 - safe variant: strategy-equivalent truth only;
 - PokerBench: pinned training-partition solver optimal label.
 
-If a candidate cannot prove one of those truth paths, it is not eligible for the live table.
+If a candidate cannot prove one of those truth paths, it is not eligible for the live table or the targeted repair queue.
 
 ## Real-game retirement
 
@@ -119,7 +128,9 @@ Earlier P0→P30 work produced useful learning/truth primitives. The product now
 - History mastery / retention / transfer evidence;
 - immutable solver provenance;
 - local hand-strength / draw math;
+- portable per-decision Analysis Context;
 - contextual range / equity / decision-boundary / solver workbenches;
+- immediate truth-backed targeted repair after mistakes;
 - local generator/truth reliability telemetry.
 
 Mechanisms that existed specifically to ingest or interpret external real-game evidence are not part of the product architecture.
@@ -134,10 +145,12 @@ Volume-first does not mean:
 
 - reward raw hand count regardless of learning value;
 - skip explanation just because the answer was correct;
+- auto-advance semantic/counterfactual reveals before the player reads them;
 - auto-grade unsupported states;
 - manufacture solver EV/frequencies;
+- inject a default villain range merely to make an equity calculator return a number;
 - mutate stack/position/sizing/range/board and inherit an old answer without truth;
-- leak sibling/holdout data into training;
+- leak sibling/holdout data into training or repair queues;
 - infer confidence that was never supplied;
 - reconnect to real poker clients;
 - report trainer frequency priors as real-world win rate.
