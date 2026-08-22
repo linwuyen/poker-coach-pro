@@ -7,7 +7,7 @@ import { getDifficultyWeight, makeMasteryKey } from '../../learning-engine';
 import { getHiddenBenchmarkScenarios } from '../../learning-engine/benchmark';
 import { inferSituationIdsFromScenario, scenarioContextFamilyId } from '../../learning-engine/contextIdentity';
 import { solverDecisionFamilyId } from '../../learning-engine/semanticPairs';
-import { inferScenarioSkillIds } from '../../learning-engine/skillGraph';
+import { inferScenarioStepSkillIds } from '../../learning-engine/skillGraph';
 import { solverCorpusRole } from '../../learning-engine/solverCurriculum';
 import {
   decisionsMatch,
@@ -162,7 +162,7 @@ export function ExamMode({ onExit }: { onExit: () => void }) {
       decisionFamilyId: scenario.decisionFamilyId || scenario.id,
       stepId: step.id,
       masteryKey: makeMasteryKey(scenario.decisionFamilyId || scenario.id, step.id),
-      skillIds: inferScenarioSkillIds(scenario),
+      skillIds: inferScenarioStepSkillIds(scenario, step),
       situationIds: inferSituationIdsFromScenario(scenario),
       category: [...(scenario.category || []), ...(step.conceptIds || []), 'Hidden Exam'],
       score: feedback.score,
