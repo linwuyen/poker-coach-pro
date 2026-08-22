@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Database, Infinity as InfinityIcon, ShieldCheck } from 'lucide-react';
+import { Database, Infinity as InfinityIcon, ShieldCheck, Target } from 'lucide-react';
 import { HistoryItem, Scenario } from '../../types';
 import { coreScenarios } from '../../teaching/scenarioCatalog';
 import { buildGeneratedVariantPool } from '../../learning-engine/variantGenerator';
@@ -9,6 +9,7 @@ import {
   selectNextInfiniteCandidate,
   summarizeInfinitePool,
 } from '../../learning-engine/infiniteHandGenerator';
+import { selectTargetedReviewCandidates, targetedReviewReason } from '../../learning-engine/targetedReview';
 import { appendReliabilityEvent } from '../../observability/reliability';
 import { loadPokerBenchSplit, PokerBenchRow } from '../../solver-data/pokerbench';
 import { TrainingSession } from './TrainingSession';
@@ -26,6 +27,9 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
   const [candidate, setCandidate] = useState<InfiniteHandCandidate>();
   const [recentCandidateIds, setRecentCandidateIds] = useState<string[]>([]);
   const [recentFamilyIds, setRecentFamilyIds] = useState<string[]>([]);
+  const [targetedQueue, setTargetedQueue] = useState<InfiniteHandCandidate[]>([]);
+  const [targetedActive, setTargetedActive] = useState(false);
+  const [targetedReason, setTargetedReason] = useState('');
 
   const pool = useMemo(
     () => buildInfiniteCandidatePool(scenarioBank, safeVariants, pokerBenchRows),
@@ -70,12 +74,30 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     setCandidate(choose(recentCandidateIds, recentFamilyIds));
   }, [candidate, pool, history, recentCandidateIds, recentFamilyIds]);
 
+  function record(item: HistoryItem) {
+    onRecord(item);
+    if (item.correct !== false || !candidate) return;
+    const repair = selectTargetedReviewCandidates(pool, candidate, [...recentCandidateIds, candidate.id], 3);
+    setTargetedQueue(repair);
+    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'targeted-review', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? undefined : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
+  }
+
   function advance() {
     if (!candidate) return;
     const nextIds = [...recentCandidateIds, candidate.id].slice(-64);
     const nextFamilies = [...recentFamilyIds, candidate.familyId].slice(-12);
     setRecentCandidateIds(nextIds);
     setRecentFamilyIds(nextFamilies);
+    if (targetedQueue.length) {
+      const [next, ...rest] = targetedQueue;
+      setTargetedQueue(rest);
+      setTargetedActive(true);
+      setTargetedReason(targetedReviewReason(next, candidate));
+      setCandidate(next);
+      return;
+    }
+    setTargetedActive(false);
+    setTargetedReason('');
     setCandidate(choose(nextIds, nextFamilies));
   }
 
@@ -96,6 +118,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
         <span data-testid="infinite-source" className="rounded-full border border-slate-700 bg-slate-950/45 px-2.5 py-1">{sourceLabel}</span>
         <span className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />{candidate.truthLabel}</span>
         <span data-testid="infinite-dimensions" className="font-mono text-[11px] text-slate-500">{candidate.street} · {candidate.position || '?'} · {candidate.actionClass} · {candidate.stackBand}</span>
+        {(targetedActive || targetedQueue.length > 0) && <span data-testid="targeted-review-status" className="flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/8 px-2.5 py-1 text-amber-200"><Target className="h-3.5 w-3.5" />針對複習 · 尚有 {targetedQueue.length + (targetedActive ? 1 : 0)} 題{targetedReason ? ` · ${targetedReason}` : ''}</span>}
       </div>
       <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-slate-500">
         <span>{summary.usable.toLocaleString()} usable</span>
@@ -109,21 +132,21 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     {candidate.kind === 'scenario'
       ? <TrainingSession
           key={candidate.id}
-          title="無限牌局 · 自動最佳解訓練"
+          title={targetedActive ? '針對複習 · 自動最佳解訓練' : '無限牌局 · 自動最佳解訓練'}
           scenarios={[candidate.scenario]}
           history={history}
           autoComplete
-          onRecord={onRecord}
+          onRecord={record}
           onExit={onExit}
           onComplete={advance}
         />
       : <SolverDecisionSession
           key={candidate.id}
-          title="無限牌局 · Solver 最佳解"
+          title={targetedActive ? '針對複習 · Solver 最佳解' : '無限牌局 · Solver 最佳解'}
           rows={[candidate.row]}
           history={history}
           autoComplete
-          onRecord={onRecord}
+          onRecord={record}
           onExit={onExit}
           onComplete={advance}
         />}
