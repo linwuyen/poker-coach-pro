@@ -1,5 +1,7 @@
 import { ChangeEvent, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, FileUp, Layers3, ShieldAlert } from 'lucide-react';
+import { AnalysisContextBanner } from '../analysis/AnalysisContextBanner';
+import { readAnalysisContextFromHash } from '../analysis/analysisContext';
 import {
   STRATEGY_PROFILES_V2,
   StrategyAction,
@@ -25,19 +27,29 @@ function saveCustom(profiles: StrategyProfile[]): void {
   localStorage.setItem(CUSTOM_PROFILES_KEY, JSON.stringify(profiles));
 }
 
+function normalizedPosition(value?: string): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase().replace(/\s+/g, '').replace('utg+1', 'utg1').replace('utg+2', 'utg2');
+  return ['utg', 'utg1', 'utg2', 'mp', 'hj', 'co', 'btn', 'sb', 'bb'].includes(normalized) ? normalized : undefined;
+}
+
 export function SolverSurfaceLab({ onExit }: { onExit: () => void }) {
+  const context = readAnalysisContextFromHash();
   const [customProfiles, setCustomProfiles] = useState<StrategyProfile[]>(loadCustom);
   const [importMessage, setImportMessage] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const profiles = useMemo(() => mergeImmutableProfiles(STRATEGY_PROFILES_V2, customProfiles), [customProfiles]);
   const fullProfiles = profiles.filter(profile => profile.source.trustTier === 'verified-solver' || profile.evByHand);
   const visible = fullProfiles.length ? fullProfiles : profiles;
-  const [profileId, setProfileId] = useState(visible[0]?.id || '');
+  const contextPosition = normalizedPosition(context?.position);
+  const preferred = visible.find(profile => (!contextPosition || profile.context.position === contextPosition) && (!context?.startingHand || Object.prototype.hasOwnProperty.call(profile.ranges, context.startingHand))) || visible[0];
+  const [profileId, setProfileId] = useState(preferred?.id || '');
   const profile = visible.find(item => item.id === profileId) || visible[0];
   const hands = profile ? Object.keys(profile.ranges).sort() : [];
-  const [hand, setHand] = useState(hands[0] || 'AKs');
+  const initialHand = context?.startingHand && hands.includes(context.startingHand) ? context.startingHand : hands[0] || 'AKs';
+  const [hand, setHand] = useState(initialHand);
   const [chosen, setChosen] = useState<Record<string, number>>({ raise: 100, call: 0, limp: 0, allIn: 0, fold: 0 });
-  const [stack, setStack] = useState(profile?.context.stackDepthBB || 100);
+  const [stack, setStack] = useState(context?.effectiveStackBB ?? profile?.context.stackDepthBB ?? 100);
   const [openSize, setOpenSize] = useState(profile?.context.openSizeBB || 0);
   const [rake, setRake] = useState(profile?.context.rakePercent || 0);
 
@@ -53,13 +65,15 @@ export function SolverSurfaceLab({ onExit }: { onExit: () => void }) {
   const contextMatch = compareStrategyContexts(targetContext, profile.context);
   const fingerprint = fingerprintStrategyContext(profile.context);
   const capabilities = strategySurfaceCapabilities(profile);
+  const handWasPrefilled = Boolean(context?.startingHand && hand === context.startingHand);
 
   const selectProfile = (id: string) => {
     const next = visible.find(item => item.id === id);
     setProfileId(id);
     if (next) {
-      setHand(Object.keys(next.ranges).sort()[0] || 'AKs');
-      setStack(next.context.stackDepthBB);
+      const nextHands = Object.keys(next.ranges).sort();
+      setHand(context?.startingHand && nextHands.includes(context.startingHand) ? context.startingHand : nextHands[0] || 'AKs');
+      setStack(context?.effectiveStackBB ?? next.context.stackDepthBB);
       setOpenSize(next.context.openSizeBB || 0);
       setRake(next.context.rakePercent || 0);
     }
@@ -76,8 +90,8 @@ export function SolverSurfaceLab({ onExit }: { onExit: () => void }) {
       const first = result.profiles[0];
       if (first) {
         setProfileId(first.id);
-        setHand(Object.keys(first.ranges).sort()[0] || 'AKs');
-        setStack(first.context.stackDepthBB);
+        setHand(context?.startingHand && Object.prototype.hasOwnProperty.call(first.ranges, context.startingHand) ? context.startingHand : Object.keys(first.ranges).sort()[0] || 'AKs');
+        setStack(context?.effectiveStackBB ?? first.context.stackDepthBB);
         setOpenSize(first.context.openSizeBB || 0);
         setRake(first.context.rakePercent || 0);
       }
@@ -91,6 +105,8 @@ export function SolverSurfaceLab({ onExit }: { onExit: () => void }) {
 
   return <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8"><div className="mx-auto max-w-6xl">
     <div className="flex flex-wrap items-center justify-between gap-3"><button type="button" onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4" />返回主訓練機</button><button type="button" onClick={() => fileRef.current?.click()} className="flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-500/8 px-4 py-2 text-sm font-semibold text-blue-200"><FileUp className="h-4 w-4" />匯入 Solver Surface JSON</button><input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={importSurface} /></div>
+    <div className="mt-4"><AnalysisContextBanner context={context} compact /></div>
+    {context && <div data-testid="solver-context-prefill" className="mt-3 rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-4 py-3 text-xs leading-5 text-cyan-100">{handWasPrefilled ? `已把 ${context.startingHand} 帶入目前 profile。` : `目前 profile 沒有 ${context.startingHand || '這手牌'} 的 surface，未強行替換成近似手牌。`} Profile / stack 的 Strict Context Match 仍是最終邊界。</div>}
     {importMessage && <div data-testid="surface-import-message" className="mt-4 rounded-xl border border-blue-500/20 bg-blue-500/6 px-4 py-3 text-sm text-blue-100">{importMessage}</div>}
     <section className="pc-hero-glow mt-6 rounded-3xl border border-blue-500/20 bg-[linear-gradient(135deg,rgba(59,130,246,0.13),rgba(15,23,42,0.78))] p-6 md:p-8"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-blue-300"><Layers3 className="h-4 w-4" />P5-B · Full Strategy Surface</div><h1 className="mt-3 text-3xl font-bold">Frequency、Mixed Strategy、per-action EV 都能進同一個 immutable truth model</h1><p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">匯入檔必須帶 solver provenance；frequency 會算 Strategy Distance，只有真實 per-action EV 存在才算 EV regret。PokerBench 沒有 EV surface，所以它仍只做 label corpus。</p></section>
 
