@@ -141,7 +141,10 @@ export interface HistoryItem {
   bestDecision?: PokerDecisionAction;
   street?: Street;
   position?: string;
+  /** Decision latency: question shown until action submit. */
   durationMs?: number;
+  /** Complete learning dwell: question shown until explicit Next, including explanation/probe reading. */
+  trainingDwellMs?: number;
   confidence?: ConfidenceLevel;
   correct?: boolean;
   feedbackQuality?: FeedbackQuality;
