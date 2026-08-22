@@ -20,10 +20,22 @@ export function CurrentHandAnalysis({ onExit }: { onExit: () => void }) {
   const hero = (context?.heroCards || []).map(codeToCard).filter((card): card is NonNullable<ReturnType<typeof codeToCard>> => Boolean(card));
   const board = (context?.boardCards || []).map(codeToCard).filter((card): card is NonNullable<ReturnType<typeof codeToCard>> => Boolean(card));
   const strength = hero.length === 2 ? evaluateHandStrength(hero, board) : null;
-  const math = hero.length === 2 ? analyzeHandMath(hero, board, context?.potOddsPercent === undefined ? undefined : `${context.potOddsPercent}%`) : null;
-  const minimumEquity = context?.potOddsPercent;
+  const minimumEquity = context?.minimumCallingEquityPercent;
+  const rawPotOdds = context?.potOddsPercent;
+  const math = hero.length === 2 ? analyzeHandMath(hero, board, minimumEquity === undefined ? undefined : `${minimumEquity}%`) : null;
   const hasMeasuredEquity = typeof context?.heroEquityPercent === 'number';
   const equityMargin = hasMeasuredEquity && minimumEquity !== undefined ? context!.heroEquityPercent! - minimumEquity : undefined;
+  const thresholdValue = minimumEquity === undefined ? (rawPotOdds === undefined ? '未提供' : '不適用') : `${minimumEquity}%`;
+  const thresholdDetail = minimumEquity !== undefined
+    ? '當前決策含 Call option，題目 pot odds 可作為最低跟注 equity 門檻'
+    : rawPotOdds !== undefined
+      ? `題目顯示 ${rawPotOdds}%，但這個決策不是 facing-call；不把它轉成跟注門檻`
+      : '當前題沒有可驗證的 facing-call 價格門檻';
+  const marginDetail = equityMargin !== undefined
+    ? `Hero equity ${context!.heroEquityPercent}% − call threshold ${minimumEquity}%`
+    : hasMeasuredEquity
+      ? `Hero showdown equity ${context!.heroEquityPercent}% 已帶入；本題沒有 facing-call threshold，所以不計 call margin`
+      : '這題沒有可靠 villain range / Hero equity，所以不虛構';
 
   return <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8">
     <div className="mx-auto max-w-6xl">
@@ -31,7 +43,7 @@ export function CurrentHandAnalysis({ onExit }: { onExit: () => void }) {
       <section className="mt-6 rounded-3xl border border-cyan-500/20 bg-[linear-gradient(135deg,rgba(6,182,212,0.12),rgba(15,23,42,0.78))] p-6 md:p-8">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300"><Sparkles className="h-4 w-4" />Current Hand Analysis</div>
         <h1 className="mt-3 text-3xl font-bold">直接分析你剛剛那一題，不再從空白工具開始</h1>
-        <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">只使用當前題可驗證的資料。牌力、outs、pot-odds 邊界屬於本機數學；PokerBench 若只有 optimal label，就不會假裝有 per-action EV 或 mixed frequency。</p>
+        <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">只使用當前題可驗證的資料。牌力、outs、facing-call pot-odds 邊界屬於本機數學；PokerBench 若只有 optimal label，就不會假裝有 per-action EV 或 mixed frequency。</p>
       </section>
 
       <div className="mt-5"><AnalysisContextBanner context={context} /></div>
@@ -46,15 +58,15 @@ export function CurrentHandAnalysis({ onExit }: { onExit: () => void }) {
       <section className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Metric icon={<ShieldCheck className="h-4 w-4" />} label="目前牌力" value={strength?.name || '資料不足'} detail={strength?.draw || '以目前可見牌面分類'} />
         <Metric icon={<Calculator className="h-4 w-4" />} label="Draw / Outs" value={math?.hasDraw ? `${math.outs} outs` : '無明確 draw'} detail={math?.hasDraw ? `${math.drawDescription} · 下一張約 ${math.hitProbNext}%${context?.street === 'Flop' ? ` · 到 River 約 ${math.hitProbRiver}%` : ''}` : '不把未知 range 當成已知 equity'} />
-        <Metric icon={<Crosshair className="h-4 w-4" />} label="最低繼續 Equity" value={minimumEquity === undefined ? '未提供' : `${minimumEquity}%`} detail="由題目 pot odds 取得；不是 solver frequency" />
-        <Metric icon={<Calculator className="h-4 w-4" />} label="Equity margin" value={equityMargin === undefined ? 'Unavailable' : `${equityMargin >= 0 ? '+' : ''}${equityMargin.toFixed(1)}%`} detail={hasMeasuredEquity ? `Hero equity ${context!.heroEquityPercent}% − threshold ${minimumEquity}%` : '這題沒有可靠 villain range / Hero equity，所以不虛構'} />
+        <Metric icon={<Crosshair className="h-4 w-4" />} label="最低跟注 Equity" value={thresholdValue} detail={thresholdDetail} />
+        <Metric icon={<Calculator className="h-4 w-4" />} label="Equity margin" value={equityMargin === undefined ? 'Unavailable' : `${equityMargin >= 0 ? '+' : ''}${equityMargin.toFixed(1)}%`} detail={marginDetail} />
       </section>
 
       <section className="mt-5 rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5">
         <div className="font-semibold text-violet-100">證據邊界</div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <Fact label="可直接證明" value={context?.source === 'pokerbench' ? '這筆 PokerBench row 的 exact optimal label、牌面結構、本機牌力與數學。' : '此題已驗證 feedback、牌面結構、本機牌力與題目提供的 EV/range evidence。'} />
-          <Fact label="不能憑空補" value={context?.source === 'pokerbench' ? 'per-action EV、mixed frequency、solver 因果理由與 villain range。' : '題目沒提供的 solver frequency / EV / range 不會被猜測。'} />
+          <Fact label="可直接證明" value={context?.source === 'pokerbench' ? '這筆 PokerBench row 的 exact optimal label、牌面結構、本機牌力與數學。' : '此題已驗證 feedback、牌面結構、本機牌力與題目提供的 EV/range evidence；若題目明示 showdown equity，也會原值帶入。'} />
+          <Fact label="不能憑空補" value={context?.source === 'pokerbench' ? 'per-action EV、mixed frequency、solver 因果理由與 villain range。' : '非 facing-call 題目的百分比不會被轉成 call threshold；題目沒提供的 solver frequency / EV / range 也不會被猜測。'} />
         </div>
       </section>
 
