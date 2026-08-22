@@ -245,7 +245,9 @@ export function ExamMode({ onExit }: { onExit: () => void }) {
     });
   }
 
-  if (loadingSolver && !pool.length) {
+  // Do not expose question one until the full mixed scenario + PokerBench holdout
+  // pool has finished loading. Otherwise the candidate sequence could change mid-exam.
+  if (loadingSolver) {
     return <div className="grid min-h-screen place-items-center bg-slate-950 text-sm text-slate-500">正在建立 hidden exam pool…</div>;
   }
   if (!pool.length) return <EmptyExam onExit={onExit} />;
