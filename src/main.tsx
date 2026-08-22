@@ -1,7 +1,8 @@
-import { StrictMode, Suspense, lazy, useEffect, useState } from 'react';
+import { ReactNode, StrictMode, Suspense, lazy, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import AppV2 from './app/AppV2';
-import { analysisRouteFromHash } from './features/analysis/analysisContext';
+import { AnalysisContextBanner } from './features/analysis/AnalysisContextBanner';
+import { analysisRouteFromHash, readAnalysisContextFromHash } from './features/analysis/analysisContext';
 import './index.css';
 
 const CalibrationDashboard = lazy(() => import('./features/analysis/CalibrationDashboard').then(module => ({ default: module.CalibrationDashboard })));
@@ -25,6 +26,11 @@ const VariantTrainer = lazy(() => import('./features/training/VariantTrainer').t
 const FgsWorkbench = lazy(() => import('./features/tournament/FgsWorkbench').then(module => ({ default: module.FgsWorkbench })));
 const IcmWorkbench = lazy(() => import('./features/tournament/IcmWorkbench').then(module => ({ default: module.IcmWorkbench })));
 
+function ContextualRoute({ children }: { children: ReactNode }) {
+  const context = readAnalysisContextFromHash();
+  return <div className="bg-slate-950"><div className="mx-auto max-w-6xl px-4 pt-4 md:px-8"><AnalysisContextBanner context={context} compact /></div>{children}</div>;
+}
+
 function RootRouter() {
   const [route, setRoute] = useState(window.location.hash);
   useEffect(() => { const handleHashChange = () => setRoute(window.location.hash); window.addEventListener('hashchange', handleHashChange); return () => window.removeEventListener('hashchange', handleHashChange); }, []);
@@ -37,22 +43,22 @@ function RootRouter() {
   if (routeKey === '#effectiveness') return <EffectivenessDashboard onExit={exitLab} />;
   if (routeKey === '#experiment') return <ExperimentDashboard onExit={exitLab} />;
   if (routeKey === '#truth-ops') return <TruthOpsDashboard onExit={exitLab} />;
-  if (routeKey === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
-  if (routeKey === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
+  if (routeKey === '#range-reading') return <ContextualRoute><RangeReadingTrainer onExit={exitLab} /></ContextualRoute>;
+  if (routeKey === '#decision-boundary') return <ContextualRoute><CounterfactualTrainer onExit={exitLab} /></ContextualRoute>;
   if (routeKey === '#boundary-map') return <DecisionBoundaryMap onExit={exitLab} />;
-  if (routeKey === '#contrastive-trainer') return <ContrastiveTrainer onExit={exitLab} />;
-  if (routeKey === '#semantic-counterfactual') return <SemanticCounterfactualTrainer onExit={exitLab} />;
-  if (routeKey === '#sizing-trainer') return <SizingTrainer onExit={exitLab} />;
-  if (routeKey === '#variant-trainer') return <VariantTrainer onExit={exitLab} />;
-  if (routeKey === '#solver-corpus') return <PokerBenchTrainer onExit={exitLab} />;
+  if (routeKey === '#contrastive-trainer') return <ContextualRoute><ContrastiveTrainer onExit={exitLab} /></ContextualRoute>;
+  if (routeKey === '#semantic-counterfactual') return <ContextualRoute><SemanticCounterfactualTrainer onExit={exitLab} /></ContextualRoute>;
+  if (routeKey === '#sizing-trainer') return <ContextualRoute><SizingTrainer onExit={exitLab} /></ContextualRoute>;
+  if (routeKey === '#variant-trainer') return <ContextualRoute><VariantTrainer onExit={exitLab} /></ContextualRoute>;
+  if (routeKey === '#solver-corpus') return <ContextualRoute><PokerBenchTrainer onExit={exitLab} /></ContextualRoute>;
   if (routeKey === '#solver-benchmark') return <PokerBenchTrainer onExit={exitLab} mode="benchmark" />;
   if (routeKey === '#strategy-surface') return <SolverSurfaceLab onExit={exitLab} />;
   if (routeKey === '#hidden-benchmark') return <BenchmarkTrainer onExit={exitLab} />;
   if (routeKey === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
-  if (routeKey === '#icm-workbench') return <IcmWorkbench onExit={exitLab} />;
-  if (routeKey === '#fgs-workbench') return <FgsWorkbench onExit={exitLab} />;
-  if (routeKey === '#skill-graph') return <SkillGraphDashboard onExit={exitLab} />;
-  if (routeKey === '#calibration') return <CalibrationDashboard onExit={exitLab} />;
+  if (routeKey === '#icm-workbench') return <ContextualRoute><IcmWorkbench onExit={exitLab} /></ContextualRoute>;
+  if (routeKey === '#fgs-workbench') return <ContextualRoute><FgsWorkbench onExit={exitLab} /></ContextualRoute>;
+  if (routeKey === '#skill-graph') return <ContextualRoute><SkillGraphDashboard onExit={exitLab} /></ContextualRoute>;
+  if (routeKey === '#calibration') return <ContextualRoute><CalibrationDashboard onExit={exitLab} /></ContextualRoute>;
   return <AppV2 />;
 }
 
