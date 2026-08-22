@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { AnalysisContext, analysisContextHref, readAnalysisContextFromHash, startingHandFromCodes } from '../src/features/analysis/analysisContext';
 import { automaticSolverAnalysis, parseSolverCards } from '../src/features/training/SolverDecisionSession';
+import { selectTargetedReviewCandidates } from '../src/learning-engine/targetedReview';
+import type { InfiniteHandCandidate } from '../src/learning-engine/infiniteHandGenerator';
 import type { PokerBenchPostflopRow } from '../src/solver-data/pokerbench';
 
 const solverRow: PokerBenchPostflopRow = {
@@ -29,6 +32,27 @@ test('PokerBench card codes become real CardUI-compatible cards', () => {
   assert.deepEqual(parseSolverCards('Ks7h2dJc7c').map(card => `${card.rank}:${card.suit}`), [
     'K:spades', '7:hearts', '2:diamonds', 'J:clubs', '7:clubs',
   ]);
+  assert.equal(startingHandFromCodes(['Kh', '8c']), 'K8o');
+});
+
+test('analysis context survives hash links without inventing data', () => {
+  const context: AnalysisContext = {
+    schemaVersion: 1,
+    capturedAt: 1,
+    source: 'pokerbench',
+    heroCards: ['Kh', '8c'],
+    boardCards: ['Ks', '7h', '2d', 'Jc', '7c'],
+    startingHand: 'K8o',
+    street: 'River',
+    position: 'OOP',
+    potBB: 18,
+    selectedAction: 'Call',
+    bestAction: 'Call',
+    truthTier: 'verified-solver',
+  };
+  const href = analysisContextHref('#equity-workbench', context);
+  assert.match(href, /^#equity-workbench\?ctx=/);
+  assert.deepEqual(readAnalysisContextFromHash(href), context);
 });
 
 test('correct solver answers still receive teaching analysis', () => {
@@ -38,12 +62,28 @@ test('correct solver answers still receive teaching analysis', () => {
   assert.match(lines.join('\n'), /沒有 per-action EV|沒有 per-action ev/i);
 });
 
-test('training UX requires explicit next and exposes explanations/tools', () => {
+test('targeted repair selects three truth-gated structural siblings', () => {
+  const make = (id: string, values: Partial<InfiniteHandCandidate> = {}) => ({
+    kind: 'solver', id, source: 'pokerbench', familyId: 'family-a', presentationFingerprint: id,
+    truthLabel: 'verified solver label', street: 'River', position: 'OOP', format: 'solver', stackBand: 'unknown', actionClass: 'call',
+    ...values,
+  }) as unknown as InfiniteHandCandidate;
+  const failed = make('failed');
+  const pool = [failed, make('same-family-1'), make('same-family-2'), make('same-family-3'), make('unrelated', { familyId: 'x', street: 'Preflop', position: 'BTN', actionClass: 'raise' })];
+  const selected = selectTargetedReviewCandidates(pool, failed, [], 3);
+  assert.deepEqual(selected.map(item => item.id), ['same-family-1', 'same-family-2', 'same-family-3']);
+});
+
+test('training UX requires explicit next and exposes contextual analysis tools', () => {
   const training = readFileSync('src/features/training/TrainingSession.tsx', 'utf8');
   const solver = readFileSync('src/features/training/SolverDecisionSession.tsx', 'utf8');
+  const semantic = readFileSync('src/features/training/SemanticCounterfactualTrainer.tsx', 'utf8');
+  const tools = readFileSync('src/features/training/AdvancedToolLinks.tsx', 'utf8');
+  const main = readFileSync('src/main.tsx', 'utf8');
 
   assert.doesNotMatch(training, /setTimeout\(\(\)\s*=>\s*next\(\)/);
   assert.doesNotMatch(solver, /setTimeout\(\(\)\s*=>\s*next\(\)/);
+  assert.doesNotMatch(semantic, /setTimeout\(\(\)\s*=>\s*next\(\)/);
   assert.doesNotMatch(training, /正確\s*·\s*自動下一個決策/);
   assert.doesNotMatch(solver, /正確\s*·\s*直接下一手/);
 
@@ -57,4 +97,11 @@ test('training UX requires explicit next and exposes explanations/tools', () => 
   assert.match(solver, /<CardUI/);
   assert.match(solver, /答對了 · 先看完整 Solver 解說/);
   assert.match(solver, /AdvancedToolLinks/);
+
+  assert.match(semantic, /data-testid="semantic-next"/);
+  assert.match(semantic, /<CardUI/);
+  assert.match(tools, /#current-analysis/);
+  assert.match(tools, /analysisContextHref/);
+  assert.match(tools, /#semantic-counterfactual/);
+  assert.match(main, /analysisRouteFromHash/);
 });
