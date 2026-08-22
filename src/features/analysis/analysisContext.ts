@@ -6,6 +6,7 @@ export interface AnalysisContext {
   source: 'scenario' | 'pokerbench' | 'unknown';
   trainingType?: string;
   scenarioId?: string;
+  stepId?: string;
   datasetRowId?: string;
   title?: string;
   heroCards: string[];
@@ -124,6 +125,7 @@ export function captureCurrentAnalysisContext(doc: Document = document): Analysi
     source,
     trainingType,
     scenarioId: typeof history?.scenarioId === 'string' ? history.scenarioId : undefined,
+    stepId: typeof history?.stepId === 'string' ? history.stepId : undefined,
     datasetRowId: typeof history?.datasetRowId === 'string' ? history.datasetRowId : undefined,
     title: typeof history?.questionLabel === 'string' ? history.questionLabel : undefined,
     heroCards,
