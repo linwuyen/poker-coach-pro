@@ -39,6 +39,7 @@ export interface CandidateLearningSignal {
   duePressure: number;
   evSeverity: number;
   transferGap: number;
+  reasoningGap: number;
   spotFrequency: number;
   priorityScore: number;
   weight: number;
@@ -63,6 +64,10 @@ function correct(item: HistoryItem): boolean {
   return item.correct ?? item.score >= 8;
 }
 
+function understood(item: HistoryItem): boolean {
+  return correct(item) && item.reasoningProbeResult !== 'fail';
+}
+
 function average(values: number[]): number | undefined {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : undefined;
 }
@@ -71,9 +76,9 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function percent(items: HistoryItem[]): number | undefined {
+function percent(items: HistoryItem[], predicate: (item: HistoryItem) => boolean = correct): number | undefined {
   if (!items.length) return undefined;
-  return items.filter(correct).length / items.length * 100;
+  return items.filter(predicate).length / items.length * 100;
 }
 
 export function isEvaluationAttempt(item: HistoryItem): boolean {
@@ -139,8 +144,8 @@ export function buildKnowledgeStates(history: HistoryItem[]): SkillKnowledgeStat
     const confidence = items.filter(item => item.confidence);
     const probes = items.filter(item => item.reasoningProbeResult && item.reasoningProbeResult !== 'skipped');
     const record = mastery.get(node.id);
-    const understanding = percent(recent) ?? record?.score ?? 0;
-    const retention = percent(delayed);
+    const understanding = percent(recent, understood) ?? record?.score ?? 0;
+    const retention = percent(delayed, understood);
     const transferScore = percent(transfer);
     const calibration = confidence.length ? 100 - average(confidence.map(item => {
       const predicted = ({ 1: 0.35, 2: 0.55, 3: 0.75, 4: 0.9 } as const)[item.confidence!];
@@ -153,13 +158,15 @@ export function buildKnowledgeStates(history: HistoryItem[]): SkillKnowledgeStat
     const retentionGap = retention === undefined ? 0.5 : 1 - retention / 100;
     const transferGap = transferScore === undefined ? 0.65 : 1 - transferScore / 100;
     const understandingGap = 1 - understanding / 100;
+    const reasoningGap = reasoning === undefined ? 0.5 : 1 - reasoning / 100;
     const severity = clamp01(averageEvLossBB / 1.5);
     const priority = Math.round(clamp01(
-      0.27 * (uncertainty / 100)
-      + 0.24 * transferGap
-      + 0.19 * retentionGap
-      + 0.18 * understandingGap
-      + 0.12 * severity,
+      0.24 * (uncertainty / 100)
+      + 0.22 * transferGap
+      + 0.17 * retentionGap
+      + 0.17 * understandingGap
+      + 0.10 * reasoningGap
+      + 0.10 * severity,
     ) * node.evImportance / 1.5 * 100);
     return {
       skillId: node.id,
@@ -208,15 +215,19 @@ export function candidateLearningSignal(candidate: InfiniteHandCandidate, histor
   const transfers = relevant.filter(item => item.isTransferTest || item.trainingType === 'transfer' || item.trainingType === 'counterfactual' || item.trainingType === 'contrastive');
   const transferRate = transfers.length ? transfers.filter(correct).length / transfers.length : 0.5;
   const transferGap = 1 - transferRate;
+  const probes = relevant.filter(item => item.reasoningProbeResult && item.reasoningProbeResult !== 'skipped');
+  const reasoningRate = probes.length ? probes.filter(item => item.reasoningProbeResult === 'pass').length / probes.length : 0.5;
+  const reasoningGap = 1 - reasoningRate;
   const spotFrequency = candidate.kind === 'scenario' && typeof candidate.scenario.spotFrequencyPer100Hands === 'number'
     ? clamp01(candidate.scenario.spotFrequencyPer100Hands / 10)
     : 0.5;
   const priorityScore = clamp01(
-    0.34 * uncertainty
-    + 0.22 * evSeverity
-    + 0.16 * duePressure
-    + 0.16 * transferGap
-    + 0.12 * spotFrequency,
+    0.30 * uncertainty
+    + 0.20 * evSeverity
+    + 0.15 * duePressure
+    + 0.13 * transferGap
+    + 0.12 * reasoningGap
+    + 0.10 * spotFrequency,
   );
   return {
     predictedSuccessProbability,
@@ -224,6 +235,7 @@ export function candidateLearningSignal(candidate: InfiniteHandCandidate, histor
     duePressure,
     evSeverity,
     transferGap,
+    reasoningGap,
     spotFrequency,
     priorityScore,
     weight: 0.75 + priorityScore * 2.75,
