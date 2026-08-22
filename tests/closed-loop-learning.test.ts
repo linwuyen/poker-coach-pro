@@ -7,6 +7,7 @@ import {
   candidateLearningSignal,
   verifiedEvNorthStar,
 } from '../src/learning-engine/closedLoop';
+import { inferSituationIdsFromScenarioStep } from '../src/learning-engine/contextIdentity';
 import { normalizeSituationId } from '../src/learning-engine/coverageMatrix';
 import type { InfiniteHandCandidate } from '../src/learning-engine/infiniteHandGenerator';
 import { exactScenarioMinimalFlip } from '../src/learning-engine/minimalFlip';
@@ -71,6 +72,24 @@ test('current-step skill inference does not leak later-street skills into an att
   assert.ok(!flop.some(id => id.startsWith('preflop.')));
 });
 
+test('current-step situation inference exposes only the street actually tested', () => {
+  const scenario = {
+    id: 'multi-street-test', title: 'multi', category: [], difficulty: '中階', type: 'Cash Game', blinds: '1/2', ante: false,
+    userStack: '100 BB', userBB: 100, position: 'BTN', holeCards: [], preAction: 'x', effectiveStack: '100 BB', tableSize: '6max',
+    steps: [
+      { id: 'flop', street: 'Flop', communityCards: [], description: 'f', potSize: 10, options: [], feedbacks: {} },
+      { id: 'turn', street: 'Turn', communityCards: [], description: 't', potSize: 20, options: [], feedbacks: {} },
+      { id: 'river', street: 'River', communityCards: [], description: 'r', potSize: 30, options: [], feedbacks: {} },
+    ],
+  } as Scenario;
+  const ids = inferSituationIdsFromScenarioStep(scenario, scenario.steps[0]);
+  assert.ok(ids.includes('street.flop'));
+  assert.ok(!ids.includes('street.turn'));
+  assert.ok(!ids.includes('street.river'));
+  assert.ok(ids.includes('position.btn'));
+  assert.ok(ids.includes('format.cash'));
+});
+
 test('knowledge state keeps zero-evidence skills visible as coverage gaps', () => {
   const states = buildKnowledgeStates([]);
   assert.equal(states.length, SKILL_GRAPH.length);
@@ -80,14 +99,7 @@ test('knowledge state keeps zero-evidence skills visible as coverage gaps', () =
 
 test('solver decisions are first-class knowledge-state evidence', () => {
   const states = buildKnowledgeStates([
-    historyItem({
-      trainingType: 'solver-corpus',
-      skillIds: ['preflop.solver-decision'],
-      category: ['PokerBench', 'Preflop'],
-      street: 'Preflop',
-      truthTier: 'verified-solver',
-      correct: true,
-    }),
+    historyItem({ trainingType: 'solver-corpus', skillIds: ['preflop.solver-decision'], category: ['PokerBench', 'Preflop'], street: 'Preflop', truthTier: 'verified-solver', correct: true }),
   ]);
   const solverState = states.find(state => state.skillId === 'preflop.solver-decision');
   assert.ok(solverState);
@@ -111,17 +123,10 @@ test('active learning favors uncertainty and due repair instead of only recent n
   const unseen = candidateLearningSignal(candidate, [], 1000);
   assert.equal(unseen.predictedSuccessProbability, 0.5);
   assert.equal(unseen.uncertainty, 1);
-
-  const mastered = Array.from({ length: 8 }, (_, index) => historyItem({
-    decisionFamilyId: candidate.familyId,
-    scenarioId: scenario.id,
-    timestamp: 100 + index,
-    correct: true,
-  }));
+  const mastered = Array.from({ length: 8 }, (_, index) => historyItem({ decisionFamilyId: candidate.familyId, scenarioId: scenario.id, timestamp: 100 + index, correct: true }));
   const masteredSignal = candidateLearningSignal(candidate, mastered, 1000);
   assert.ok(masteredSignal.predictedSuccessProbability > unseen.predictedSuccessProbability);
   assert.ok(masteredSignal.uncertainty < unseen.uncertainty);
-
   const repair = [historyItem({ decisionFamilyId: candidate.familyId, scenarioId: scenario.id, timestamp: 900, correct: false, score: 0, nextReviewAt: 950, evLossBB: 1.5 })];
   const repairSignal = candidateLearningSignal(candidate, repair, 1000);
   assert.ok(repairSignal.duePressure > 0);
@@ -129,10 +134,7 @@ test('active learning favors uncertainty and due repair instead of only recent n
 });
 
 test('adaptive predictor calibration reports Brier score from observed decisions', () => {
-  const report = adaptiveCalibrationReport([
-    historyItem({ predictedSuccessProbability: 0.8, correct: true }),
-    historyItem({ predictedSuccessProbability: 0.2, correct: false }),
-  ]);
+  const report = adaptiveCalibrationReport([historyItem({ predictedSuccessProbability: 0.8, correct: true }), historyItem({ predictedSuccessProbability: 0.2, correct: false })]);
   assert.equal(report.samples, 2);
   assert.ok(Math.abs((report.brierScore || 0) - 0.04) < 1e-9);
   assert.ok(report.bins.length >= 1);
@@ -144,21 +146,15 @@ test('minimal flip accepts exact reversal evidence and refuses weaker truth', ()
   assert.ok(flip);
   assert.equal(flip!.source, 'exact-math');
   assert.match(flip!.change, /break-even|Equity|門檻/i);
-
   const weak = JSON.parse(JSON.stringify(exact)) as Scenario;
   Object.values(weak.steps[0].feedbacks).forEach(feedback => { if (feedback?.evidence) feedback.evidence.sourceConfidence = 'expert-baseline'; });
   assert.equal(exactScenarioMinimalFlip(weak, weak.steps[0].id), undefined);
 });
 
 test('reasoning probe is occasional, post-answer, and exact-math gated', () => {
-  const feedback: Feedback = {
-    judgment: '正確', score: 10, bestAction: 'Call', why: 'x', conceptualError: '無', remember: 'x', nextStepId: 'next_hand',
-    evidence: { sourceConfidence: 'exact-math', reversals: ['Equity 低於 25% 時翻轉為 Fold'] },
-  };
+  const feedback: Feedback = { judgment: '正確', score: 10, bestAction: 'Call', why: 'x', conceptualError: '無', remember: 'x', nextStepId: 'next_hand', evidence: { sourceConfidence: 'exact-math', reversals: ['Equity 低於 25% 時翻轉為 Fold'] } };
   let shown = 0;
-  for (let index = 0; index < 32; index += 1) {
-    if (shouldShowReasoningProbe(historyItem({ attemptId: `probe-${index}`, correct: true }), feedback)) shown += 1;
-  }
+  for (let index = 0; index < 32; index += 1) if (shouldShowReasoningProbe(historyItem({ attemptId: `probe-${index}`, correct: true }), feedback)) shown += 1;
   assert.ok(shown > 0 && shown < 32);
   assert.equal(shouldShowReasoningProbe(historyItem({ correct: false }), feedback), false);
   assert.equal(shouldShowReasoningProbe(historyItem({ correct: true }), { ...feedback, evidence: { ...feedback.evidence, sourceConfidence: 'expert-baseline' } }), false);
@@ -181,33 +177,25 @@ test('closed-loop product surfaces are actually wired into the player flow', () 
   const main = readFileSync('src/main.tsx', 'utf8');
   const table = readFileSync('src/features/training/InfiniteTrainingTable.tsx', 'utf8');
   const training = readFileSync('src/features/training/TrainingSession.tsx', 'utf8');
+  const solver = readFileSync('src/features/training/SolverDecisionSession.tsx', 'utf8');
   const exam = readFileSync('src/features/training/ExamMode.tsx', 'utf8');
   const tools = readFileSync('src/features/training/AdvancedToolLinks.tsx', 'utf8');
 
-  assert.match(app, /verifiedEvNorthStar/);
-  assert.match(app, /buildKnowledgeStates/);
-  assert.match(app, /adaptiveCalibrationReport/);
-  assert.match(app, /knowledge-state-matrix/);
-  assert.match(app, /#exam-mode/);
-  assert.match(main, /#exam-mode/);
-  assert.match(main, /#minimal-flip/);
-  assert.match(table, /candidateLearningSignal/);
-  assert.match(table, /predictedSuccessProbability/);
-  assert.match(table, /active-learning-signal/);
-  assert.match(table, /trainingDwellMs/);
+  assert.match(app, /verifiedEvNorthStar/); assert.match(app, /buildKnowledgeStates/); assert.match(app, /adaptiveCalibrationReport/); assert.match(app, /knowledge-state-matrix/); assert.match(app, /#exam-mode/);
+  assert.match(main, /#exam-mode/); assert.match(main, /#minimal-flip/);
+  assert.match(table, /candidateLearningSignal/); assert.match(table, /predictedSuccessProbability/); assert.match(table, /active-learning-signal/);
+  assert.match(table, /typeof annotated\.trainingDwellMs === 'number'/);
+  assert.doesNotMatch(table, /candidateStartedAt|finalizeTrainingDwell/);
   assert.match(table, /inferScenarioStepSkillIds/);
-  assert.match(training, /reasoning-probe/);
-  assert.match(training, /fragile-knowledge/);
-  assert.match(training, /reasoningProbeOptions/);
-  assert.match(training, /inferScenarioStepSkillIds/);
+  assert.match(training, /reasoning-probe/); assert.match(training, /fragile-knowledge/); assert.match(training, /reasoningProbeOptions/);
   assert.match(training, /skillIds: inferScenarioStepSkillIds\(scenario, step\)/);
+  assert.match(training, /situationIds: inferSituationIdsFromScenarioStep\(scenario, step\)/);
+  assert.match(training, /trainingDwellMs: Math\.max\(0, Date\.now\(\) - startedAt\.current\)/);
   assert.match(training, /utilityModel: verifiedCashEv \? 'cash-chip-ev'/);
-  assert.match(exam, /feedback intentionally withheld|feedback withheld|不顯示正誤/);
-  assert.match(exam, /initialHistory/);
-  assert.match(exam, /submissionLock\.current/);
-  assert.match(exam, /disabled=\{disabled\}/);
+  assert.match(solver, /trainingDwellMs: Math\.max\(0, Date\.now\(\) - startedAt\.current\)/);
+  assert.match(exam, /feedback intentionally withheld|feedback withheld|不顯示正誤/); assert.match(exam, /initialHistory/); assert.match(exam, /submissionLock\.current/); assert.match(exam, /disabled=\{disabled\}/);
   assert.match(exam, /skillIds: inferScenarioStepSkillIds\(scenario, step\)/);
-  assert.doesNotMatch(exam, /<TrainingSession/);
-  assert.doesNotMatch(exam, /<SolverDecisionSession/);
+  assert.match(exam, /situationIds: inferSituationIdsFromScenarioStep\(scenario, step\)/);
+  assert.doesNotMatch(exam, /<TrainingSession/); assert.doesNotMatch(exam, /<SolverDecisionSession/);
   assert.match(tools, /#minimal-flip/);
 });
