@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Database, Infinity as InfinityIcon, ShieldCheck, Target } from 'lucide-react';
 import { HistoryItem, Scenario } from '../../types';
 import { coreScenarios } from '../../teaching/scenarioCatalog';
@@ -32,8 +32,6 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
   const [targetedQueue, setTargetedQueue] = useState<InfiniteHandCandidate[]>([]);
   const [targetedActive, setTargetedActive] = useState(false);
   const [targetedReason, setTargetedReason] = useState('');
-  const candidateStartedAt = useRef(Date.now());
-  const lastAttempt = useRef<HistoryItem | null>(null);
 
   const pool = useMemo(
     () => buildInfiniteCandidatePool(scenarioBank, safeVariants, pokerBenchRows),
@@ -67,12 +65,6 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'generator-pool', outcome: pool.length ? 'success' : 'unknown', reasonCode: pool.length ? undefined : 'truth-gate-empty', dimension: pokerBenchState, value: pool.length });
   }, [pool.length, pokerBenchState]);
 
-  useEffect(() => {
-    if (!candidate) return;
-    candidateStartedAt.current = Date.now();
-    lastAttempt.current = null;
-  }, [candidate?.id]);
-
   function choose(ids: string[], families: string[]) {
     const started = performance.now();
     const next = selectNextInfiniteCandidate(pool, history, ids, families);
@@ -96,8 +88,12 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
       const step = candidate.scenario.steps.find(candidateStep => candidateStep.id === item.stepId);
       if (step) annotated = { ...annotated, skillIds: inferScenarioStepSkillIds(candidate.scenario, step) };
     }
-    lastAttempt.current = annotated;
     onRecord(annotated);
+
+    // A timing upsert is the same completed attempt with explicit-Next dwell evidence.
+    // It must not trigger a second targeted-repair queue or duplicate telemetry.
+    if (typeof annotated.trainingDwellMs === 'number') return;
+
     const needsRepair = annotated.correct === false || annotated.reasoningProbeResult === 'fail';
     if (!needsRepair || !candidate) return;
     const repair = selectTargetedReviewCandidates(pool, candidate, [...recentCandidateIds, candidate.id], 3);
@@ -106,21 +102,8 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'candidate-select', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? repairReason : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
   }
 
-  function finalizeTrainingDwell() {
-    if (!lastAttempt.current?.attemptId) return;
-    const finalized: HistoryItem = {
-      ...lastAttempt.current,
-      trainingDwellMs: Math.max(0, Date.now() - candidateStartedAt.current),
-    };
-    lastAttempt.current = finalized;
-    // Bypass `record`: this is an upsert of timing evidence, not a new learning event,
-    // so it must not enqueue a second targeted-repair burst.
-    onRecord(finalized);
-  }
-
   function advance() {
     if (!candidate) return;
-    finalizeTrainingDwell();
     const nextIds = [...recentCandidateIds, candidate.id].slice(-64);
     const nextFamilies = [...recentFamilyIds, candidate.familyId].slice(-12);
     setRecentCandidateIds(nextIds);
