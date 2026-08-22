@@ -1,0 +1,1 @@
+import{j as i}from"./react-vendor-sXpfDjey.js";import{PokerBenchTrainer as o}from"./PokerBenchTrainer-1CY50kUi.js";import"./index-BFtVxaZD.js";import"./icons-vendor-FFGjj8M4.js";function p({onExit:r}){return i.jsx(o,{onExit:r,mode:"sizing"})}export{p as SizingTrainer};
