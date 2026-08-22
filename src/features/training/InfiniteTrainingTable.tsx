@@ -79,7 +79,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     if (item.correct !== false || !candidate) return;
     const repair = selectTargetedReviewCandidates(pool, candidate, [...recentCandidateIds, candidate.id], 3);
     setTargetedQueue(repair);
-    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'targeted-review', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? undefined : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
+    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'candidate-select', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? 'targeted-review' : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
   }
 
   function advance() {
