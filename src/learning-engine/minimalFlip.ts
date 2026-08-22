@@ -26,12 +26,13 @@ export function exactScenarioMinimalFlip(scenario: Scenario, stepId?: string): M
   const feedback = Object.values(step.feedbacks).find(item => item?.bestAction === bestAction && item.evidence?.sourceConfidence === 'exact-math');
   const reversal = feedback?.evidence?.reversals?.[0];
   if (!reversal) return undefined;
-  const alternative = step.options.find(action => action !== bestAction);
+  const alternatives = step.options.filter(action => action !== bestAction);
+  const flippedAction = alternatives.length === 1 ? alternatives[0] : '見 reversal 證據（多選項，不猜）';
   return {
     source: 'exact-math',
     change: reversal,
     fromAction: bestAction,
-    toAction: alternative || '另一個 action',
+    toAction: flippedAction,
     dimension: 'exact decision boundary',
     provenance: step.strategySource || 'Exact arithmetic encoded in the scenario evidence.',
   };
