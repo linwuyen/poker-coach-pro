@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, BrainCircuit, CheckCircle2, Lightbulb, Scale, XCircle } from 'lucide-react';
 import { CardUI } from '../../components/CardUI';
 import { getDifficultyWeight, isDelayedReview, makeMasteryKey, resolveFeedbackQuality } from '../../learning-engine';
-import { inferSituationIdsFromScenario, scenarioContextFamilyId, scenarioDecisionFamilyId } from '../../learning-engine/contextIdentity';
+import { inferSituationIdsFromScenarioStep, scenarioContextFamilyId, scenarioDecisionFamilyId } from '../../learning-engine/contextIdentity';
 import { inferScenarioStepSkillIds } from '../../learning-engine/skillGraph';
 import { ActionType, Feedback, HistoryItem, ReasoningProbeResult, Scenario, ScenarioStep } from '../../types';
 import { analyzeHandMath, evaluateHandStrength } from '../../utils/handMath';
@@ -152,7 +152,7 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
       questionLabel: scenario.title,
       gameFormat: scenario.type === 'Tournament' ? 'MTT' : 'Cash',
       contextFamilyId: scenarioContextFamilyId(scenario),
-      situationIds: inferSituationIdsFromScenario(scenario),
+      situationIds: inferSituationIdsFromScenarioStep(scenario, step),
       spotFrequencyPer100Hands: scenario.spotFrequencyPer100Hands,
       utilityUnit: verifiedCashEv ? 'bb' : undefined,
       utilityModel: verifiedCashEv ? 'cash-chip-ev' : undefined,
@@ -176,8 +176,20 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
     onRecord(updated);
   }
 
+  function finalizeCurrentDwell(): HistoryItem | undefined {
+    if (!currentItem?.attemptId) return undefined;
+    const finalized: HistoryItem = {
+      ...currentItem,
+      trainingDwellMs: Math.max(0, Date.now() - startedAt.current),
+    };
+    setSessionItems(previous => previous.map(item => item.attemptId === finalized.attemptId ? finalized : item));
+    onRecord(finalized);
+    return finalized;
+  }
+
   function next() {
-    if (!scenario) return;
+    if (!scenario || !currentItem) return;
+    finalizeCurrentDwell();
     const nextStepId = feedback?.nextStepId;
     if (nextStepId && nextStepId !== 'next_hand') {
       const nextStepIndex = scenario.steps.findIndex(candidate => candidate.id === nextStepId);
