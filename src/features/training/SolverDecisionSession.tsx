@@ -106,25 +106,14 @@ export function automaticSolverAnalysis(row: PokerBenchRow, choice: string): str
   const choiceLabel = humanizeSolverMove(choice);
   const lines: string[] = [];
 
-  if (isCorrect) {
-    if (best === 'raise' || best === 'bet' || best === 'all-in') lines.push(`你抓到這個 exact solver node 的主動線：${bestLabel}。這裡的 solver label 要求用主動投入取得價值或壓力，而不是切換成其他 action。`);
-    else if (best === 'call') lines.push(`你選對跟注。這個 exact node 的 optimal label 是保留繼續範圍並實現 equity，不把手牌轉成加注或直接棄掉。`);
-    else if (best === 'fold') lines.push('你選對棄牌。這個 exact node 的資料標記是不再投入；其他繼續線都不是這筆資料的 optimal decision。');
-    else if (best === 'check') lines.push('你選對過牌。這個 exact node 不要求主動擴大底池，保留 range 與後續街決策權是資料標記的最佳線。');
-    else lines.push(`你選對了：${bestLabel} 是這個 exact solver node 的 optimal label。`);
-  } else if (best === 'raise' || best === 'bet' || best === 'all-in') {
-    lines.push(`這個 exact solver node 的最佳線是主動施壓：${bestLabel}。你選的「${choiceLabel}」在這個節點過於被動或投入方式不同。`);
-  } else if (best === 'call') {
-    lines.push(`這個 exact solver node 的最佳線是跟注：保留繼續範圍並實現 equity，而不是在此節點改成 ${choiceLabel}。`);
-  } else if (best === 'fold') {
-    lines.push(`這個 exact solver node 的最佳線是棄牌；你選的 ${choiceLabel} 會繼續投入，但這不是資料集標示的 optimal decision。`);
-  } else if (best === 'check') {
-    lines.push(`這個 exact solver node 的最佳線是過牌；你選的 ${choiceLabel} 會主動改變底池，但資料標記在這裡不需要這麼做。`);
-  } else {
-    lines.push(`這個 exact solver node 的最佳線是 ${bestLabel}，你選的是 ${choiceLabel}。`);
-  }
+  lines.push(isCorrect
+    ? `你選對了：此 exact PokerBench row 的 optimal label 是「${bestLabel}」。`
+    : `你選的是「${choiceLabel}」；此 exact PokerBench row 的 optimal label 是「${bestLabel}」。`);
 
-  if (selected === best && !isCorrect) lines.push('你的 action 類型接近，但 sizing / exact action 不同；這題的 optimal label 對尺寸有要求。');
+  if (selected === best && !isCorrect) {
+    lines.push('你的 action 類型與 optimal label 相同，但 exact sizing / action token 不同；這筆資料只能證明 label 不相等，不能證明 EV 差距。');
+  }
+  lines.push('PokerBench 沒有提供這個 node 的自然語言 rationale；因此系統不會從 Call / Fold / Raise 類型反推「為什麼」並冒充 solver 理由。');
   lines.push('PokerBench 這筆資料只提供 exact optimal label，沒有 per-action EV 或 mixed frequency；系統不會虛構「差幾 BB」或假的 solver 頻率。');
   return lines;
 }
@@ -261,17 +250,17 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
         {correct ? <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-400" /> : <XCircle className="mt-0.5 h-6 w-6 shrink-0 text-red-400" />}
         <div className="min-w-0 flex-1 space-y-4">
           <div>
-            <div className={`font-semibold ${correct ? 'text-emerald-100' : 'text-amber-100'}`}>{correct ? '答對了 · 先看完整 Solver 解說' : '答錯 · Solver 自動分析'}</div>
+            <div className={`font-semibold ${correct ? 'text-emerald-100' : 'text-amber-100'}`}>{correct ? '答對了 · 先看完整證據解說' : '答錯 · 比對 exact solver label'}</div>
             <div className="mt-2 text-sm text-slate-300">你：<b>{humanizeSolverMove(choice || '')}</b><span className="mx-2 text-slate-600">→</span>最佳解：<b className="text-emerald-300">{humanizeSolverMove(row.correctDecision)}</b></div>
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold text-amber-200"><Lightbulb className="h-4 w-4" />這手要學什麼</div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-amber-200"><Lightbulb className="h-4 w-4" />這筆 Solver 資料能證明什麼</div>
             <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-300">{analysis.map(line => <li key={line}>• {line}</li>)}</ul>
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold text-cyan-200"><Scale className="h-4 w-4" />牌力 / Range / 數學</div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-cyan-200"><Scale className="h-4 w-4" />牌力 / 本機數學</div>
             <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
               <Fact label="目前牌力" value={handStrength?.name || '未分類'} />
               <Fact label="Combo" value={combo} />
@@ -279,8 +268,8 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
               <Fact label="底池" value={`${row.potSize} BB`} />
             </div>
             {handStrength?.draw && <p className="mt-3 text-xs text-cyan-200/80">聽牌：{handStrength.draw}</p>}
-            {handMath?.hasDraw && <p className="mt-1 text-xs text-slate-400">本機聽牌估算：{handMath.drawDescription} · {handMath.outs} outs · 下一張約 {handMath.hitProbNext}%{row.split === 'postflop' && row.evaluationAt === 'Flop' ? ` · 到 River 約 ${handMath.hitProbRiver}%` : ''}</p>}
-            <p className="mt-2 text-[11px] leading-5 text-slate-600">牌力/outs 是本機結構分析；它幫你讀懂牌面，但不冒充 PokerBench 的 solver rationale。</p>
+            {handMath?.hasDraw && <p className="mt-1 text-xs text-slate-400">本機 Hero-improvement outs：{handMath.drawDescription} · {handMath.outs} outs · 下一張約 {handMath.hitProbNext}%{row.split === 'postflop' && row.evaluationAt === 'Flop' ? ` · 到 River 約 ${handMath.hitProbRiver}%` : ''}</p>}
+            <p className="mt-2 text-[11px] leading-5 text-slate-600">牌力/outs 是本機結構分析，且只計 Hero 有實際貢獻的 draw；它幫你讀牌面，但不冒充 PokerBench 的 solver rationale。</p>
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">
@@ -302,7 +291,7 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
               <Fact label="Truth source" value={POKERBENCH_SOURCE.label} />
               <Fact label="Dataset split" value={POKERBENCH_FILES[row.split].split} />
               <Fact label="最佳解來源" value="Pinned exact optimal label" />
-              <Fact label="EV / mixed frequency" value="資料未提供，因此不顯示假精度" />
+              <Fact label="Rationale / EV / mixed frequency" value="資料未提供，因此不顯示假精度" />
             </div>
           </div>
 
