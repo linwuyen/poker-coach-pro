@@ -15,15 +15,17 @@ export function BenchmarkTrainer({ onExit }: { onExit: () => void }) {
   const pool: Scenario[] = (unseen.length ? unseen : holdout).slice(0, Math.min(12, holdout.length));
 
   const record = (item: HistoryItem) => {
+    const existing = item.attemptId ? history.find(previous => previous.attemptId === item.attemptId) : undefined;
     const benchmarkItem: HistoryItem = {
       ...item,
       trainingType: 'benchmark',
       isTransferTest: true,
-      isUnseen: !history.some(previous => previous.trainingType === 'benchmark' && previous.scenarioId === item.scenarioId && previous.stepId === item.stepId),
-      notes: `${item.notes ? `${item.notes}\n` : ''}Hidden holdout benchmark：此 scenario 不會進入 daily / 專項訓練池。`,
+      isUnseen: existing?.isUnseen ?? !history.some(previous => previous.trainingType === 'benchmark' && previous.scenarioId === item.scenarioId && previous.stepId === item.stepId),
+      notes: existing?.notes || `${item.notes ? `${item.notes}\n` : ''}Hidden holdout benchmark：此 scenario 不會進入 daily / 專項訓練池。`,
     };
     setHistory(previous => {
-      const next = [...previous, benchmarkItem];
+      const index = benchmarkItem.attemptId ? previous.findIndex(candidate => candidate.attemptId === benchmarkItem.attemptId) : -1;
+      const next = index >= 0 ? previous.map((candidate, itemIndex) => itemIndex === index ? benchmarkItem : candidate) : [...previous, benchmarkItem];
       saveHistory(next);
       return next;
     });

@@ -9,6 +9,7 @@ const CalibrationDashboard = lazy(() => import('./features/analysis/CalibrationD
 const CurrentHandAnalysis = lazy(() => import('./features/analysis/CurrentHandAnalysis').then(module => ({ default: module.CurrentHandAnalysis })));
 const EffectivenessDashboard = lazy(() => import('./features/analysis/EffectivenessDashboard').then(module => ({ default: module.EffectivenessDashboard })));
 const ExperimentDashboard = lazy(() => import('./features/analysis/ExperimentDashboard').then(module => ({ default: module.ExperimentDashboard })));
+const MinimalFlipAnalysis = lazy(() => import('./features/analysis/MinimalFlipAnalysis').then(module => ({ default: module.MinimalFlipAnalysis })));
 const PostflopTruthLab = lazy(() => import('./features/analysis/PostflopTruthLab').then(module => ({ default: module.PostflopTruthLab })));
 const SkillGraphDashboard = lazy(() => import('./features/analysis/SkillGraphDashboard').then(module => ({ default: module.SkillGraphDashboard })));
 const TruthOpsDashboard = lazy(() => import('./features/analysis/TruthOpsDashboard').then(module => ({ default: module.TruthOpsDashboard })));
@@ -19,6 +20,7 @@ const BenchmarkTrainer = lazy(() => import('./features/training/BenchmarkTrainer
 const ContrastiveTrainer = lazy(() => import('./features/training/ContrastiveTrainer').then(module => ({ default: module.ContrastiveTrainer })));
 const CounterfactualTrainer = lazy(() => import('./features/training/CounterfactualTrainer').then(module => ({ default: module.CounterfactualTrainer })));
 const DecisionBoundaryMap = lazy(() => import('./features/training/DecisionBoundaryMap').then(module => ({ default: module.DecisionBoundaryMap })));
+const ExamMode = lazy(() => import('./features/training/ExamMode').then(module => ({ default: module.ExamMode })));
 const PokerBenchTrainer = lazy(() => import('./features/training/PokerBenchTrainer').then(module => ({ default: module.PokerBenchTrainer })));
 const SemanticCounterfactualTrainer = lazy(() => import('./features/training/SemanticCounterfactualTrainer').then(module => ({ default: module.SemanticCounterfactualTrainer })));
 const SizingTrainer = lazy(() => import('./features/training/SizingTrainer').then(module => ({ default: module.SizingTrainer })));
@@ -39,6 +41,7 @@ function RootRouter() {
 
   // Player flow is the infinite table. Context-aware training/analysis routes may carry ?ctx=... in the hash.
   if (routeKey === '#current-analysis') return <CurrentHandAnalysis onExit={exitLab} />;
+  if (routeKey === '#minimal-flip') return <MinimalFlipAnalysis onExit={exitLab} />;
   if (routeKey === '#postflop-truth') return <PostflopTruthLab onExit={exitLab} />;
   if (routeKey === '#effectiveness') return <EffectivenessDashboard onExit={exitLab} />;
   if (routeKey === '#experiment') return <ExperimentDashboard onExit={exitLab} />;
@@ -54,6 +57,7 @@ function RootRouter() {
   if (routeKey === '#solver-benchmark') return <PokerBenchTrainer onExit={exitLab} mode="benchmark" />;
   if (routeKey === '#strategy-surface') return <SolverSurfaceLab onExit={exitLab} />;
   if (routeKey === '#hidden-benchmark') return <BenchmarkTrainer onExit={exitLab} />;
+  if (routeKey === '#exam-mode') return <ExamMode onExit={exitLab} />;
   if (routeKey === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
   if (routeKey === '#icm-workbench') return <ContextualRoute><IcmWorkbench onExit={exitLab} /></ContextualRoute>;
   if (routeKey === '#fgs-workbench') return <ContextualRoute><FgsWorkbench onExit={exitLab} /></ContextualRoute>;

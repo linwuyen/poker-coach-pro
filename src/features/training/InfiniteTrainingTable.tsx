@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Database, Infinity as InfinityIcon, ShieldCheck, Target } from 'lucide-react';
 import { HistoryItem, Scenario } from '../../types';
 import { coreScenarios } from '../../teaching/scenarioCatalog';
+import { candidateLearningSignal } from '../../learning-engine/closedLoop';
+import { inferScenarioStepSkillIds } from '../../learning-engine/skillGraph';
 import { buildGeneratedVariantPool } from '../../learning-engine/variantGenerator';
 import {
   buildInfiniteCandidatePool,
@@ -30,6 +32,8 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
   const [targetedQueue, setTargetedQueue] = useState<InfiniteHandCandidate[]>([]);
   const [targetedActive, setTargetedActive] = useState(false);
   const [targetedReason, setTargetedReason] = useState('');
+  const candidateStartedAt = useRef(Date.now());
+  const lastAttempt = useRef<HistoryItem | null>(null);
 
   const pool = useMemo(
     () => buildInfiniteCandidatePool(scenarioBank, safeVariants, pokerBenchRows),
@@ -39,6 +43,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     () => summarizeInfinitePool(scenarioBank, safeVariants, pokerBenchRows, pool),
     [scenarioBank, safeVariants, pokerBenchRows, pool],
   );
+  const learningSignal = useMemo(() => candidate ? candidateLearningSignal(candidate, history) : undefined, [candidate, history]);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +67,12 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'generator-pool', outcome: pool.length ? 'success' : 'unknown', reasonCode: pool.length ? undefined : 'truth-gate-empty', dimension: pokerBenchState, value: pool.length });
   }, [pool.length, pokerBenchState]);
 
+  useEffect(() => {
+    if (!candidate) return;
+    candidateStartedAt.current = Date.now();
+    lastAttempt.current = null;
+  }, [candidate?.id]);
+
   function choose(ids: string[], families: string[]) {
     const started = performance.now();
     const next = selectNextInfiniteCandidate(pool, history, ids, families);
@@ -75,15 +86,41 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
   }, [candidate, pool, history, recentCandidateIds, recentFamilyIds]);
 
   function record(item: HistoryItem) {
-    onRecord(item);
-    if (item.correct !== false || !candidate) return;
+    const signal = candidate ? candidateLearningSignal(candidate, history) : undefined;
+    let annotated: HistoryItem = {
+      ...item,
+      predictedSuccessProbability: item.predictedSuccessProbability ?? signal?.predictedSuccessProbability,
+      learningPriorityScore: item.learningPriorityScore ?? signal?.priorityScore,
+    };
+    if (candidate?.kind === 'scenario' && item.stepId) {
+      const step = candidate.scenario.steps.find(candidateStep => candidateStep.id === item.stepId);
+      if (step) annotated = { ...annotated, skillIds: inferScenarioStepSkillIds(candidate.scenario, step) };
+    }
+    lastAttempt.current = annotated;
+    onRecord(annotated);
+    const needsRepair = annotated.correct === false || annotated.reasoningProbeResult === 'fail';
+    if (!needsRepair || !candidate) return;
     const repair = selectTargetedReviewCandidates(pool, candidate, [...recentCandidateIds, candidate.id], 3);
     setTargetedQueue(repair);
-    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'candidate-select', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? 'targeted-review' : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
+    const repairReason = annotated.reasoningProbeResult === 'fail' ? 'fragile-reasoning-review' : 'targeted-review';
+    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'candidate-select', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? repairReason : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
+  }
+
+  function finalizeTrainingDwell() {
+    if (!lastAttempt.current?.attemptId) return;
+    const finalized: HistoryItem = {
+      ...lastAttempt.current,
+      trainingDwellMs: Math.max(0, Date.now() - candidateStartedAt.current),
+    };
+    lastAttempt.current = finalized;
+    // Bypass `record`: this is an upsert of timing evidence, not a new learning event,
+    // so it must not enqueue a second targeted-repair burst.
+    onRecord(finalized);
   }
 
   function advance() {
     if (!candidate) return;
+    finalizeTrainingDwell();
     const nextIds = [...recentCandidateIds, candidate.id].slice(-64);
     const nextFamilies = [...recentFamilyIds, candidate.familyId].slice(-12);
     setRecentCandidateIds(nextIds);
@@ -118,6 +155,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
         <span data-testid="infinite-source" className="rounded-full border border-slate-700 bg-slate-950/45 px-2.5 py-1">{sourceLabel}</span>
         <span className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />{candidate.truthLabel}</span>
         <span data-testid="infinite-dimensions" className="font-mono text-[11px] text-slate-500">{candidate.street} · {candidate.position || '?'} · {candidate.actionClass} · {candidate.stackBand}</span>
+        {learningSignal && <span data-testid="active-learning-signal" className="rounded-full border border-cyan-500/20 bg-cyan-500/8 px-2.5 py-1 text-cyan-200">Learning priority {Math.round(learningSignal.priorityScore * 100)}% · uncertainty {Math.round(learningSignal.uncertainty * 100)}%</span>}
         {(targetedActive || targetedQueue.length > 0) && <span data-testid="targeted-review-status" className="flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/8 px-2.5 py-1 text-amber-200"><Target className="h-3.5 w-3.5" />針對複習 · 尚有 {targetedQueue.length + (targetedActive ? 1 : 0)} 題{targetedReason ? ` · ${targetedReason}` : ''}</span>}
       </div>
       <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-slate-500">

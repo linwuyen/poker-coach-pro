@@ -1,4 +1,4 @@
-import { HistoryItem, MasteryStatus, Scenario, Street, TruthTier } from '../types';
+import { HistoryItem, MasteryStatus, Scenario, ScenarioStep, Street, TruthTier } from '../types';
 import { effectiveEvLoss, evRegretScore } from './ev';
 import { historyContextFamilyId, inferSituationIdsFromHistory } from './contextIdentity';
 
@@ -30,6 +30,7 @@ export const SKILL_GRAPH: SkillNode[] = [
   { id: 'preflop.bb-defense', label: 'Preflop · BB Defense', parent: 'preflop', evImportance: 1.15, patterns: [/BB.*防守|大盲|盲注戰/i] },
   { id: 'preflop.3bet', label: 'Preflop · 3-Bet', parent: 'preflop', evImportance: 1.2, patterns: [/3-?Bet|擠壓|Squeeze/i] },
   { id: 'preflop.4bet', label: 'Preflop · 4-Bet', parent: 'preflop', evImportance: 1.25, patterns: [/4-?Bet/i] },
+  { id: 'preflop.solver-decision', label: 'Preflop · Solver Decision', parent: 'preflop', evImportance: 1.2, patterns: [/PokerBench.*Preflop|solver.*preflop/i] },
   { id: 'tournament.push-fold', label: 'Tournament · Push/Fold', parent: 'tournament', evImportance: 1.35, patterns: [/Push|Fold|短碼|shove|全下/i] },
   { id: 'tournament.icm', label: 'Tournament · ICM / $EV', parent: 'tournament', evImportance: 1.5, patterns: [/ICM|泡沫|決賽桌|衛星|獎金/i] },
   { id: 'math.pot-odds', label: 'Math · Pot Odds', parent: 'math', evImportance: 1.25, patterns: [/Pot Odds|底池賠率|賠率/i] },
@@ -44,6 +45,7 @@ export const SKILL_GRAPH: SkillNode[] = [
   { id: 'postflop.bet-sizing', label: 'Postflop · Bet Sizing', parent: 'postflop', evImportance: 1.2, patterns: [/尺寸|Bet Sizing|overbet|超額下注/i] },
   { id: 'postflop.board-texture', label: 'Postflop · Board Texture', parent: 'postflop', evImportance: 1.15, patterns: [/濕牌|乾面|牌面|texture/i] },
   { id: 'postflop.multiway', label: 'Postflop · Multiway', parent: 'postflop', evImportance: 1.2, patterns: [/多人|Multiway/i] },
+  { id: 'postflop.solver-decision', label: 'Postflop · Solver Decision', parent: 'postflop', evImportance: 1.25, patterns: [/PokerBench.*(?:Flop|Turn|River)|solver.*postflop/i] },
   { id: 'decision.boundary', label: 'Decision · Boundary', parent: 'decision', evImportance: 1.4, patterns: [/decision boundary|反轉|敏感度|counterfactual/i] },
 ];
 
@@ -59,10 +61,14 @@ export function inferSkillIds(category: string[] = [], street?: Street): string[
   return [...new Set(ids)];
 }
 
+/** Attribute one attempt only to concepts visible at that exact decision step. */
+export function inferScenarioStepSkillIds(scenario: Pick<Scenario, 'category'>, step: Pick<ScenarioStep, 'conceptIds' | 'street'>): string[] {
+  return inferSkillIds([...(scenario.category || []), ...(step.conceptIds || [])], step.street);
+}
+
 export function inferScenarioSkillIds(scenario: Scenario): string[] {
-  const categories = [...(scenario.category || []), ...scenario.steps.flatMap(step => step.conceptIds || [])];
   const ids = new Set<string>();
-  scenario.steps.forEach(step => inferSkillIds(categories, step.street).forEach(id => ids.add(id)));
+  scenario.steps.forEach(step => inferScenarioStepSkillIds(scenario, step).forEach(id => ids.add(id)));
   return [...ids];
 }
 

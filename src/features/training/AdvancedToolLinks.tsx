@@ -8,6 +8,7 @@ interface AdvancedToolLinksProps {
 
 const CORE_TOOLS = [
   { href: '#current-analysis', label: '當前手牌總分析' },
+  { href: '#minimal-flip', label: '最小翻轉' },
   { href: '#equity-workbench', label: 'Equity / 勝率' },
   { href: '#boundary-map', label: '決策邊界' },
   { href: '#range-reading', label: 'Range 閱讀' },
@@ -50,7 +51,7 @@ export function AdvancedToolLinks({ tournament = false }: AdvancedToolLinksProps
         <summary className="cursor-pointer text-[11px] font-semibold text-slate-400">學習診斷</summary>
         <ToolGroup label="" tools={LEARNING_TOOLS} context={context} />
       </details>
-      <p className="mt-3 text-[11px] leading-5 text-slate-500">連結會把這一手的 cards / board / street / position / pot / stack / action result / truth provenance 一起帶到新分頁；缺少的 solver range、EV 或 frequency 不會被補造。</p>
+      <p className="mt-3 text-[11px] leading-5 text-slate-500">連結會把這一手的 cards / board / street / position / pot / stack / action result / truth provenance 一起帶到新分頁；最小翻轉只接受 exact reversal 或 verified one-variable solver sibling。缺少的 solver range、EV 或 frequency 不會被補造。</p>
     </div>
   );
 }
