@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, Calculator, Dices, ShieldCheck, Sparkles } from 'lucide-react';
+import { AnalysisContextBanner } from '../analysis/AnalysisContextBanner';
+import { readAnalysisContextFromHash } from '../analysis/analysisContext';
 import { calculateEquity, EquityResult, parseCardsText, WeightedRangeHand } from '../../poker/equityEngine';
 
 function parseRange(text: string): WeightedRangeHand[] {
@@ -12,6 +14,7 @@ function parseRange(text: string): WeightedRangeHand[] {
 }
 
 function run(hero: string, board: string, rangeText: string, iterations: string): EquityResult {
+  if (!rangeText.trim()) throw new Error('缺少 Villain range。這一題沒有可驗證 range 時，工具不會自己猜一個範圍。');
   return calculateEquity({
     hero: parseCardsText(hero),
     board: board.trim() ? parseCardsText(board) : [],
@@ -20,13 +23,22 @@ function run(hero: string, board: string, rangeText: string, iterations: string)
   });
 }
 
+function initialResult(hero: string, board: string, range: string): EquityResult | null {
+  if (!range.trim()) return null;
+  try { return run(hero, board, range, '25000'); } catch { return null; }
+}
+
 export function EquityWorkbench({ onExit }: { onExit: () => void }) {
-  const [hero, setHero] = useState('As Ks');
-  const [board, setBoard] = useState('Qs Js 2c');
-  const [rangeText, setRangeText] = useState('QQ 1\nJJ 1\nAKo 0.5\nAQs 0.5');
+  const context = readAnalysisContextFromHash();
+  const initialHero = context?.heroCards.length === 2 ? context.heroCards.join(' ') : 'As Ks';
+  const initialBoard = context?.boardCards.length ? context.boardCards.join(' ') : context ? '' : 'Qs Js 2c';
+  const initialRange = context?.villainRange || (context ? '' : 'QQ 1\nJJ 1\nAKo 0.5\nAQs 0.5');
+  const [hero, setHero] = useState(initialHero);
+  const [board, setBoard] = useState(initialBoard);
+  const [rangeText, setRangeText] = useState(initialRange);
   const [iterations, setIterations] = useState('25000');
-  const [result, setResult] = useState<EquityResult | null>(() => run('As Ks', 'Qs Js 2c', 'QQ 1\nJJ 1\nAKo 0.5\nAQs 0.5', '25000'));
-  const [error, setError] = useState('');
+  const [result, setResult] = useState<EquityResult | null>(() => initialResult(initialHero, initialBoard, initialRange));
+  const [error, setError] = useState(context && !initialRange ? '已帶入 Hero / Board，但來源沒有可機器解析的 Villain range；先補 range 才能計算真正 equity。' : '');
 
   const recalc = () => {
     try {
@@ -40,6 +52,7 @@ export function EquityWorkbench({ onExit }: { onExit: () => void }) {
   return <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8">
     <div className="mx-auto max-w-5xl">
       <button type="button" onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4" />返回主訓練機</button>
+      <div className="mt-4"><AnalysisContextBanner context={context} compact /></div>
       <section className="pc-hero-glow mt-6 overflow-hidden rounded-3xl border border-blue-500/20 bg-[linear-gradient(135deg,rgba(59,130,246,0.14),rgba(15,23,42,0.78))] p-6 md:p-8">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-blue-300"><Calculator className="h-4 w-4" />Exact Equity Engine</div>
         <h1 className="mt-3 text-3xl font-bold">不要再把 Hero Equity 寫死在題庫裡</h1>
@@ -51,13 +64,13 @@ export function EquityWorkbench({ onExit }: { onExit: () => void }) {
         <Field label="Hero（兩張）" value={hero} onChange={setHero} placeholder="As Ks" />
         <Field label="Board（0–5 張）" value={board} onChange={setBoard} placeholder="Qs Js 2c" />
         <label className="md:col-span-2 text-xs text-slate-500">Villain range：每行 `hand weight`，weight 0–1
-          <textarea value={rangeText} onChange={event => setRangeText(event.target.value)} rows={6} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-3 font-mono text-sm text-slate-100 outline-none focus:border-blue-500" />
+          <textarea data-testid="equity-villain-range" value={rangeText} onChange={event => setRangeText(event.target.value)} rows={6} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-3 font-mono text-sm text-slate-100 outline-none focus:border-blue-500" placeholder="QQ 1\nJJ 1\nAKo 0.5" />
         </label>
         <Field label="Monte Carlo iterations" value={iterations} onChange={setIterations} placeholder="25000" />
         <button type="button" onClick={recalc} className="pc-interactive pc-shimmer flex items-center justify-center gap-2 rounded-xl bg-blue-500 px-5 py-3 font-semibold text-white"><Dices className="h-4 w-4" />重新計算</button>
       </section>
 
-      {error && <div className="mt-5 rounded-xl border border-red-500/25 bg-red-500/7 p-4 text-sm text-red-200">{error}</div>}
+      {error && <div data-testid="equity-context-warning" className="mt-5 rounded-xl border border-amber-500/25 bg-amber-500/7 p-4 text-sm text-amber-100">{error}</div>}
       {result && <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Hero Equity" value={`${result.equity.toFixed(2)}%`} accent />
         <Metric label="Win / Tie" value={`${result.winRate.toFixed(1)} / ${result.tieRate.toFixed(1)}%`} />
