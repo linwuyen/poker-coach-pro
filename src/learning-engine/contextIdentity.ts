@@ -1,4 +1,4 @@
-import { GameFormatTag, HistoryItem, Scenario, Street } from '../types';
+import { GameFormatTag, HistoryItem, Scenario, ScenarioStep, Street } from '../types';
 
 function stable(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
@@ -112,6 +112,19 @@ export function inferSituationIdsFromScenario(scenario: Scenario): string[] {
   if (scenario.ante) ids.add('ante.on');
   scenario.steps.forEach(step => ids.add(`street.${step.street.toLowerCase()}`));
   (scenario.situationIds || []).forEach(id => ids.add(id));
+  return [...ids];
+}
+
+/**
+ * Decision-local situation evidence. Scenario-wide structural dimensions remain,
+ * but street evidence is replaced by exactly the step the player actually saw.
+ */
+export function inferSituationIdsFromScenarioStep(
+  scenario: Scenario,
+  step: Pick<ScenarioStep, 'street'>,
+): string[] {
+  const ids = new Set(inferSituationIdsFromScenario(scenario).filter(id => !id.startsWith('street.')));
+  ids.add(`street.${step.street.toLowerCase()}`);
   return [...ids];
 }
 
