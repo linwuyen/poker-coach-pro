@@ -1,4 +1,4 @@
-import { HistoryItem, MasteryStatus, Scenario, Street, TruthTier } from '../types';
+import { HistoryItem, MasteryStatus, Scenario, ScenarioStep, Street, TruthTier } from '../types';
 import { effectiveEvLoss, evRegretScore } from './ev';
 import { historyContextFamilyId, inferSituationIdsFromHistory } from './contextIdentity';
 
@@ -61,10 +61,14 @@ export function inferSkillIds(category: string[] = [], street?: Street): string[
   return [...new Set(ids)];
 }
 
+/** Attribute one attempt only to concepts visible at that exact decision step. */
+export function inferScenarioStepSkillIds(scenario: Pick<Scenario, 'category'>, step: Pick<ScenarioStep, 'conceptIds' | 'street'>): string[] {
+  return inferSkillIds([...(scenario.category || []), ...(step.conceptIds || [])], step.street);
+}
+
 export function inferScenarioSkillIds(scenario: Scenario): string[] {
-  const categories = [...(scenario.category || []), ...scenario.steps.flatMap(step => step.conceptIds || [])];
   const ids = new Set<string>();
-  scenario.steps.forEach(step => inferSkillIds(categories, step.street).forEach(id => ids.add(id)));
+  scenario.steps.forEach(step => inferScenarioStepSkillIds(scenario, step).forEach(id => ids.add(id)));
   return [...ids];
 }
 
