@@ -48,14 +48,23 @@ function verifiedEv(item: HistoryItem): boolean {
     && Number.isFinite(item.evLossBB);
 }
 
+export function normalizeSituationId(id: string): string {
+  return id.trim().replace(/^situation\./i, '');
+}
+
 function labelForSituation(id: string): string {
-  const [dimension, ...rest] = id.split('.');
-  const value = rest.join(' · ') || id;
+  const normalized = normalizeSituationId(id);
+  const [dimension, ...rest] = normalized.split('.');
+  const value = rest.join(' · ') || normalized;
   const labels: Record<string, string> = {
     format: 'Format', position: 'Position', stack: 'Stack', table: 'Table', ante: 'Ante', street: 'Street',
     board: 'Board', boundary: 'Boundary', size: 'Sizing', math: 'Math', postflop: 'Postflop', preflop: 'Preflop',
   };
   return `${labels[dimension] || dimension} · ${value}`;
+}
+
+function historySituationIds(item: HistoryItem): string[] {
+  return [...new Set(inferSituationIdsFromHistory(item).map(normalizeSituationId))];
 }
 
 /**
@@ -66,7 +75,7 @@ export function buildSituationCoverage(scenarios: Scenario[], history: HistoryIt
   const universe = new Map<string, { available: number; training: number; holdout: number }>();
   scenarios.forEach(scenario => {
     const hidden = isHiddenBenchmarkScenario(scenario);
-    inferSituationIdsFromScenario(scenario).forEach(id => {
+    inferSituationIdsFromScenario(scenario).map(normalizeSituationId).forEach(id => {
       const row = universe.get(id) || { available: 0, training: 0, holdout: 0 };
       row.available += 1;
       if (hidden) row.holdout += 1;
@@ -76,13 +85,14 @@ export function buildSituationCoverage(scenarios: Scenario[], history: HistoryIt
   });
 
   // Preserve contexts discovered from solver/transfer evidence even if the curated
-  // scenario catalog does not contain that situation id.
-  history.forEach(item => inferSituationIdsFromHistory(item).forEach(id => {
+  // scenario catalog does not contain that situation id. Normalize producer-specific
+  // `situation.*` prefixes so solver and curated evidence share the same row.
+  history.forEach(item => historySituationIds(item).forEach(id => {
     if (!universe.has(id)) universe.set(id, { available: 0, training: 0, holdout: 0 });
   }));
 
   return [...universe.entries()].map(([situationId, source]) => {
-    const items = history.filter(item => item.trainingType !== 'custom' && inferSituationIdsFromHistory(item).includes(situationId));
+    const items = history.filter(item => item.trainingType !== 'custom' && historySituationIds(item).includes(situationId));
     const transfer = items.filter(isTransfer);
     const evItems = items.filter(verifiedEv);
     const hitRate = accuracy(items);
