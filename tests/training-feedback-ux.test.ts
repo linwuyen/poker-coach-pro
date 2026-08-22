@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { AnalysisContext, analysisContextHref, readAnalysisContextFromHash, startingHandFromCodes } from '../src/features/analysis/analysisContext';
+import { AnalysisContext, analysisContextHref, extractDecisionMathContext, readAnalysisContextFromHash, startingHandFromCodes } from '../src/features/analysis/analysisContext';
 import { automaticSolverAnalysis, parseSolverCards } from '../src/features/training/SolverDecisionSession';
 import { selectTargetedReviewCandidates } from '../src/learning-engine/targetedReview';
 import { analyzeHandMath } from '../src/utils/handMath';
@@ -57,6 +57,24 @@ test('analysis context survives hash links without inventing data', () => {
   assert.deepEqual(readAnalysisContextFromHash(href), context);
 });
 
+test('decision math only promotes pot odds to a call threshold when Call is actually available', () => {
+  const nonCall = extractDecisionMathContext(
+    'Pot Odds 33% · Hero showdown equity = 41.7%',
+    ['過牌', '半池', '大注'],
+  );
+  assert.equal(nonCall.potOddsPercent, 33);
+  assert.equal(nonCall.minimumCallingEquityPercent, undefined);
+  assert.equal(nonCall.heroEquityPercent, 41.7);
+
+  const facingCall = extractDecisionMathContext(
+    'Pot Odds 25.0% · 題目直接給定 Hero showdown equity = 31.5%。',
+    ['棄牌', '跟注'],
+  );
+  assert.equal(facingCall.potOddsPercent, 25);
+  assert.equal(facingCall.minimumCallingEquityPercent, 25);
+  assert.equal(facingCall.heroEquityPercent, 31.5);
+});
+
 test('PokerBench analysis stays inside the exact-label evidence boundary', () => {
   const lines = automaticSolverAnalysis(solverRow, 'Call');
   assert.ok(lines.length >= 3);
@@ -97,6 +115,8 @@ test('training UX requires explicit next and exposes contextual analysis tools',
   const solver = readFileSync('src/features/training/SolverDecisionSession.tsx', 'utf8');
   const semantic = readFileSync('src/features/training/SemanticCounterfactualTrainer.tsx', 'utf8');
   const tools = readFileSync('src/features/training/AdvancedToolLinks.tsx', 'utf8');
+  const currentAnalysis = readFileSync('src/features/analysis/CurrentHandAnalysis.tsx', 'utf8');
+  const boundary = readFileSync('src/features/training/DecisionBoundaryMap.tsx', 'utf8');
   const main = readFileSync('src/main.tsx', 'utf8');
 
   assert.doesNotMatch(training, /setTimeout\(\(\)\s*=>\s*next\(\)/);
@@ -121,5 +141,9 @@ test('training UX requires explicit next and exposes contextual analysis tools',
   assert.match(tools, /#current-analysis/);
   assert.match(tools, /analysisContextHref/);
   assert.match(tools, /#semantic-counterfactual/);
+  assert.match(currentAnalysis, /minimumCallingEquityPercent/);
+  assert.doesNotMatch(currentAnalysis, /const minimumEquity = context\?\.potOddsPercent/);
+  assert.match(boundary, /minimumCallingEquityPercent/);
+  assert.doesNotMatch(boundary, /betSizeFromThreshold\(context\.potOddsPercent\)/);
   assert.match(main, /analysisRouteFromHash/);
 });
