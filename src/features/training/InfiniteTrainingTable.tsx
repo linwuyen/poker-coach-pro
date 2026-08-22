@@ -84,10 +84,12 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
       learningPriorityScore: item.learningPriorityScore ?? signal?.priorityScore,
     };
     onRecord(annotated);
-    if (annotated.correct !== false || !candidate) return;
+    const needsRepair = annotated.correct === false || annotated.reasoningProbeResult === 'fail';
+    if (!needsRepair || !candidate) return;
     const repair = selectTargetedReviewCandidates(pool, candidate, [...recentCandidateIds, candidate.id], 3);
     setTargetedQueue(repair);
-    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'candidate-select', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? 'targeted-review' : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
+    const repairReason = annotated.reasoningProbeResult === 'fail' ? 'fragile-reasoning-review' : 'targeted-review';
+    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'candidate-select', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? repairReason : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
   }
 
   function advance() {
