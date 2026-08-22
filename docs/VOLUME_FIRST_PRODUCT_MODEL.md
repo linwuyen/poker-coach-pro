@@ -137,6 +137,10 @@ Earlier P0→P30 work produced useful learning/truth primitives. The product now
 
 Mechanisms that existed specifically to ingest or interpret external real-game evidence are not part of the product architecture.
 
+## Closure rule
+
+A training UX change is not complete merely because it compiles. The exact PR head must pass TypeScript/validation/unit tests, production web build and bundle budget, Browser E2E, Pages validation and persistent-settings checks. Active review threads about truth/evidence correctness must be addressed before merge; tests are not weakened to make closure green.
+
 ## First-run rule
 
 First run must be playable without a questionnaire. Player preferences are optional filters/settings, not prerequisites to start training.
