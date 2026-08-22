@@ -10,7 +10,7 @@ import {
 import { normalizeSituationId } from '../src/learning-engine/coverageMatrix';
 import type { InfiniteHandCandidate } from '../src/learning-engine/infiniteHandGenerator';
 import { exactScenarioMinimalFlip } from '../src/learning-engine/minimalFlip';
-import { SKILL_GRAPH } from '../src/learning-engine/skillGraph';
+import { inferScenarioStepSkillIds, SKILL_GRAPH } from '../src/learning-engine/skillGraph';
 import { exactMathSemanticScenarios } from '../src/teaching/semanticMathScenarios';
 import { reasoningProbeOptions, shouldShowReasoningProbe } from '../src/features/training/TrainingSession';
 import type { Feedback, HistoryItem, Scenario } from '../src/types';
@@ -37,7 +37,7 @@ test('verified EV north star accepts only evaluation-grade exact/solver cash BB 
   const history: HistoryItem[] = [
     historyItem({ trainingType: 'benchmark', timestamp: now - 10 * DAY, truthTier: 'exact-math', gameFormat: 'Cash', utilityUnit: 'bb', utilityModel: 'cash-chip-ev', evLossBB: 0.8 }),
     historyItem({ trainingType: 'benchmark', timestamp: now - 2 * DAY, truthTier: 'exact-math', gameFormat: 'Cash', utilityUnit: 'bb', utilityModel: 'cash-chip-ev', evLossBB: 0.3, durationMs: 3600000 }),
-    historyItem({ trainingType: 'scenario', timestamp: now - 2 * DAY, truthTier: 'exact-math', gameFormat: 'Cash', utilityUnit: 'bb', utilityModel: 'cash-chip-ev', evLossBB: 9, durationMs: 3600000 }),
+    historyItem({ trainingType: 'scenario', timestamp: now - 2 * DAY, truthTier: 'exact-math', gameFormat: 'Cash', utilityUnit: 'bb', utilityModel: 'cash-chip-ev', evLossBB: 9, durationMs: 60000, trainingDwellMs: 3600000 }),
     historyItem({ trainingType: 'benchmark', timestamp: now - 2 * DAY, truthTier: 'expert-baseline', gameFormat: 'Cash', utilityUnit: 'bb', utilityModel: 'cash-chip-ev', evLossBB: 7 }),
     historyItem({ trainingType: 'benchmark', timestamp: now - 2 * DAY, truthTier: 'exact-math', gameFormat: 'MTT', utilityUnit: 'bb', utilityModel: 'cash-chip-ev', evLossBB: 6 }),
   ];
@@ -48,6 +48,27 @@ test('verified EV north star accepts only evaluation-grade exact/solver cash BB 
   assert.ok(Math.abs((result.deltaBBPerDecision || 0) + 0.5) < 1e-9);
   assert.equal(result.trainingHours, 1);
   assert.ok(Math.abs((result.learningRoiBBPerHour || 0) - 0.5) < 1e-9);
+});
+
+test('learning ROI never substitutes answer latency for complete training dwell', () => {
+  const now = 30 * DAY;
+  const result = verifiedEvNorthStar([
+    historyItem({ trainingType: 'benchmark', timestamp: now - 10 * DAY, truthTier: 'exact-math', gameFormat: 'Cash', utilityUnit: 'bb', utilityModel: 'cash-chip-ev', evLossBB: 0.8 }),
+    historyItem({ trainingType: 'benchmark', timestamp: now - 2 * DAY, truthTier: 'exact-math', gameFormat: 'Cash', utilityUnit: 'bb', utilityModel: 'cash-chip-ev', evLossBB: 0.3 }),
+    historyItem({ trainingType: 'scenario', timestamp: now - 2 * DAY, durationMs: 3600000 }),
+  ], now);
+  assert.equal(result.trainingHours, 0);
+  assert.equal(result.learningRoiBBPerHour, undefined);
+});
+
+test('current-step skill inference does not leak later-street skills into an attempt', () => {
+  const scenario = { category: [] };
+  const preflop = inferScenarioStepSkillIds(scenario, { conceptIds: ['RFI'], street: 'Preflop' });
+  const flop = inferScenarioStepSkillIds(scenario, { conceptIds: ['Board Texture'], street: 'Flop' });
+  assert.ok(preflop.includes('preflop.rfi'));
+  assert.ok(!preflop.some(id => id.startsWith('postflop.')));
+  assert.ok(flop.includes('postflop.board-texture'));
+  assert.ok(!flop.some(id => id.startsWith('preflop.')));
 });
 
 test('knowledge state keeps zero-evidence skills visible as coverage gaps', () => {
@@ -173,6 +194,8 @@ test('closed-loop product surfaces are actually wired into the player flow', () 
   assert.match(table, /candidateLearningSignal/);
   assert.match(table, /predictedSuccessProbability/);
   assert.match(table, /active-learning-signal/);
+  assert.match(table, /trainingDwellMs/);
+  assert.match(table, /inferScenarioStepSkillIds/);
   assert.match(training, /reasoning-probe/);
   assert.match(training, /fragile-knowledge/);
   assert.match(training, /reasoningProbeOptions/);
