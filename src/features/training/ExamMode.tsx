@@ -73,7 +73,9 @@ export function ExamMode({ onExit }: { onExit: () => void }) {
   const [index, setIndex] = useState(0);
   const [sessionItems, setSessionItems] = useState<HistoryItem[]>([]);
   const [remaining, setRemaining] = useState(TARGET_SECONDS);
+  const [submitting, setSubmitting] = useState(false);
   const startedAt = useRef(Date.now());
+  const submissionLock = useRef(false);
   const [examSessionId] = useState(() => `exam-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
   useEffect(() => {
@@ -120,6 +122,8 @@ export function ExamMode({ onExit }: { onExit: () => void }) {
 
   useEffect(() => {
     if (!candidate) return;
+    submissionLock.current = false;
+    setSubmitting(false);
     setRemaining(TARGET_SECONDS);
     startedAt.current = Date.now();
     const timer = window.setInterval(() => setRemaining(value => Math.max(0, value - 1)), 1000);
@@ -137,11 +141,13 @@ export function ExamMode({ onExit }: { onExit: () => void }) {
   }
 
   function answerScenario(action: ActionType) {
-    if (!candidate || candidate.kind !== 'scenario') return;
+    if (!candidate || candidate.kind !== 'scenario' || submissionLock.current) return;
     const scenario = candidate.scenario;
     const step = scenario.steps[candidate.stepIndex];
     const feedback = step?.feedbacks[action];
     if (!step || !feedback) return;
+    submissionLock.current = true;
+    setSubmitting(true);
     const now = Date.now();
     const correct = feedback.score >= 8;
     const hasVerifiedCashEv = scenario.type === 'Cash Game'
@@ -191,7 +197,9 @@ export function ExamMode({ onExit }: { onExit: () => void }) {
   }
 
   function answerSolver(move: string) {
-    if (!candidate || candidate.kind !== 'solver') return;
+    if (!candidate || candidate.kind !== 'solver' || submissionLock.current) return;
+    submissionLock.current = true;
+    setSubmitting(true);
     const row = candidate.row;
     const now = Date.now();
     const correct = decisionsMatch(move, row.correctDecision);
@@ -255,7 +263,12 @@ export function ExamMode({ onExit }: { onExit: () => void }) {
     return <ExamReport
       items={sessionItems}
       onExit={onExit}
-      onRestart={() => { setIndex(0); setSessionItems([]); }}
+      onRestart={() => {
+        submissionLock.current = false;
+        setSubmitting(false);
+        setIndex(0);
+        setSessionItems([]);
+      }}
     />;
   }
 
@@ -286,13 +299,13 @@ export function ExamMode({ onExit }: { onExit: () => void }) {
       </section>
 
       {candidate.kind === 'scenario'
-        ? <ScenarioExamCard candidate={candidate} onAnswer={answerScenario} />
-        : <SolverExamCard row={candidate.row} onAnswer={answerSolver} />}
+        ? <ScenarioExamCard candidate={candidate} disabled={submitting} onAnswer={answerScenario} />
+        : <SolverExamCard row={candidate.row} disabled={submitting} onAnswer={answerSolver} />}
     </div>
   </div>;
 }
 
-function ScenarioExamCard({ candidate, onAnswer }: { candidate: Extract<ExamCandidate, { kind: 'scenario' }>; onAnswer: (action: ActionType) => void }) {
+function ScenarioExamCard({ candidate, disabled, onAnswer }: { candidate: Extract<ExamCandidate, { kind: 'scenario' }>; disabled: boolean; onAnswer: (action: ActionType) => void }) {
   const { scenario, stepIndex } = candidate;
   const step = scenario.steps[stepIndex];
   return <section className="rounded-3xl border border-slate-800 bg-slate-900/55 p-6 md:p-8">
@@ -314,12 +327,12 @@ function ScenarioExamCard({ candidate, onAnswer }: { candidate: Extract<ExamCand
       <Context label="現在的問題" value={step.description} />
     </div>
     <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-      {step.options.map(action => <button data-testid="exam-action" key={action} type="button" onClick={() => onAnswer(action)} className="rounded-xl border border-slate-700 bg-slate-950/35 p-4 text-left text-sm font-semibold hover:border-amber-500/40">{ACTION_LABELS[action] || action}</button>)}
+      {step.options.map(action => <button data-testid="exam-action" key={action} type="button" disabled={disabled} onClick={() => onAnswer(action)} className="rounded-xl border border-slate-700 bg-slate-950/35 p-4 text-left text-sm font-semibold hover:border-amber-500/40 disabled:cursor-not-allowed disabled:opacity-40">{ACTION_LABELS[action] || action}</button>)}
     </div>
   </section>;
 }
 
-function SolverExamCard({ row, onAnswer }: { row: PokerBenchRow; onAnswer: (move: string) => void }) {
+function SolverExamCard({ row, disabled, onAnswer }: { row: PokerBenchRow; disabled: boolean; onAnswer: (move: string) => void }) {
   const hero = parseSolverCards(row.holding);
   const board = row.split === 'postflop' ? parseSolverCards(`${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}`) : [];
   const preflop = row.split === 'preflop' ? humanizeSolverPreflopLine(row.prevLine) : humanizeSolverPreflopLine(row.preflopAction);
@@ -342,7 +355,7 @@ function SolverExamCard({ row, onAnswer }: { row: PokerBenchRow; onAnswer: (move
       {postflop && <div><span className="text-slate-500">翻後：</span>{postflop}</div>}
     </div>
     <div className="mt-5 grid gap-2 sm:grid-cols-2">
-      {row.availableMoves.map(move => <button data-testid="exam-action" key={move} type="button" onClick={() => onAnswer(move)} className="rounded-xl border border-slate-700 bg-slate-950/35 p-4 text-left text-sm font-semibold hover:border-amber-500/40">{humanizeSolverMove(move)}</button>)}
+      {row.availableMoves.map(move => <button data-testid="exam-action" key={move} type="button" disabled={disabled} onClick={() => onAnswer(move)} className="rounded-xl border border-slate-700 bg-slate-950/35 p-4 text-left text-sm font-semibold hover:border-amber-500/40 disabled:cursor-not-allowed disabled:opacity-40">{humanizeSolverMove(move)}</button>)}
     </div>
   </section>;
 }
