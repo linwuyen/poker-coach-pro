@@ -78,7 +78,7 @@ function numberFrom(text: string, pattern: RegExp): number | undefined {
 export function extractDecisionMathContext(text: string, actionLabels: string[]): ExtractedDecisionMathContext {
   const potOddsPercent = numberFrom(text, /Pot Odds\s*([0-9]+(?:\.[0-9]+)?)\s*%/i);
   const heroEquityPercent = numberFrom(text, /Hero\s+(?:showdown\s+)?Equity\s*(?:=|:)?\s*([0-9]+(?:\.[0-9]+)?)\s*%/i);
-  const hasCallOption = actionLabels.some(label => /^(?:call|跟注)\b/i.test(label.trim()));
+  const hasCallOption = actionLabels.some(label => /^(?:call(?:\s|$)|跟注(?:\s|$))/i.test(label.trim()));
   return {
     potOddsPercent,
     minimumCallingEquityPercent: hasCallOption ? potOddsPercent : undefined,
