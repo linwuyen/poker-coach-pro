@@ -1,9 +1,10 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Lightbulb, Scale, XCircle } from 'lucide-react';
+import { ArrowLeft, BrainCircuit, CheckCircle2, Lightbulb, Scale, XCircle } from 'lucide-react';
 import { CardUI } from '../../components/CardUI';
 import { getDifficultyWeight, isDelayedReview, makeMasteryKey, resolveFeedbackQuality } from '../../learning-engine';
 import { inferSituationIdsFromScenario, scenarioContextFamilyId, scenarioDecisionFamilyId } from '../../learning-engine/contextIdentity';
-import { ActionType, Feedback, HistoryItem, Scenario, ScenarioStep } from '../../types';
+import { inferScenarioSkillIds } from '../../learning-engine/skillGraph';
+import { ActionType, Feedback, HistoryItem, ReasoningProbeResult, Scenario, ScenarioStep } from '../../types';
 import { analyzeHandMath, evaluateHandStrength } from '../../utils/handMath';
 import { createAttemptId, getReviewSchedule } from '../../utils/history';
 import { AdvancedToolLinks } from './AdvancedToolLinks';
@@ -23,6 +24,21 @@ const ACTION_LABELS: Partial<Record<ActionType, string>> = {
   Fold: '棄牌', Call: '跟注', Raise: '加注', '3-bet': '3-Bet', '4-bet (Raise)': '4-Bet',
   'All-in': '全下', Check: '過牌', 'Bet small': '小注', 'Bet half pot': '半池', 'Bet big': '大注',
 };
+
+function stableHash(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+/** Keep reasoning checks occasional and only when the scenario owns exact reversal evidence. */
+export function shouldShowReasoningProbe(item: HistoryItem, feedback: Feedback): boolean {
+  if (!item.correct || feedback.evidence?.sourceConfidence !== 'exact-math' || !feedback.evidence.reversals?.length) return false;
+  return stableHash(item.attemptId || `${item.scenarioId}:${item.timestamp}`) % 4 === 0;
+}
 
 export function TrainingSession({ scenarios, history, title, continuous = false, autoComplete = false, onRecord, onExit, onComplete }: TrainingSessionProps) {
   const [queue, setQueue] = useState<Scenario[]>(() => shuffled(scenarios));
@@ -91,6 +107,10 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
     if (!result) return;
     const now = Date.now();
     const schedule = getReviewSchedule(result.score, latestPrevious, undefined, now);
+    const verifiedCashEv = scenario.type === 'Cash Game'
+      && typeof result.evidence?.evLossBB === 'number'
+      && Number.isFinite(result.evidence.evLossBB)
+      && (result.evidence.sourceConfidence === 'verified-solver' || result.evidence.sourceConfidence === 'exact-math');
     const item: HistoryItem = {
       schemaVersion: 6,
       attemptId: createAttemptId(),
@@ -99,6 +119,7 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
       decisionFamilyId: familyId,
       stepId: step.id,
       masteryKey,
+      skillIds: inferScenarioSkillIds(scenario),
       category: [...(scenario.category || []), ...(step.conceptIds || [])],
       score: result.score,
       judgment: result.judgment,
@@ -122,12 +143,27 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
       gameFormat: scenario.type === 'Tournament' ? 'MTT' : 'Cash',
       contextFamilyId: scenarioContextFamilyId(scenario),
       situationIds: inferSituationIdsFromScenario(scenario),
+      spotFrequencyPer100Hands: scenario.spotFrequencyPer100Hands,
+      utilityUnit: verifiedCashEv ? 'bb' : undefined,
+      utilityModel: verifiedCashEv ? 'cash-chip-ev' : undefined,
       ...schedule,
     };
     setSelectedAction(action);
     setFeedback(result);
     setSessionItems(previous => [...previous, item]);
     onRecord(item);
+  }
+
+  function updateReasoningProbe(result: ReasoningProbeResult) {
+    if (!currentItem?.attemptId) return;
+    const updated: HistoryItem = {
+      ...currentItem,
+      reasoningProbeResult: result,
+      reasoningConceptIds: [...new Set([...(currentItem.reasoningConceptIds || []), 'decision.boundary'])],
+      errorType: result === 'fail' ? 'fragile-knowledge' : currentItem.errorType,
+    };
+    setSessionItems(previous => previous.map(item => item.attemptId === updated.attemptId ? updated : item));
+    onRecord(updated);
   }
 
   function next() {
@@ -164,12 +200,13 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
       step={step}
       handStrength={handStrength}
       handMath={handMath}
+      onReasoningProbe={updateReasoningProbe}
       onNext={next}
     />}
   </div>;
 }
 
-function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, step, handStrength, handMath, onNext }: {
+function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, step, handStrength, handMath, onReasoningProbe, onNext }: {
   feedback: Feedback;
   selectedAction: ActionType | null;
   currentItem: HistoryItem;
@@ -177,12 +214,16 @@ function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, 
   step: ScenarioStep;
   handStrength: ReturnType<typeof evaluateHandStrength> | null;
   handMath: ReturnType<typeof analyzeHandMath> | null;
+  onReasoningProbe: (result: ReasoningProbeResult) => void;
   onNext: () => void;
 }) {
   const isCorrect = Boolean(currentItem.correct);
   const tone = isCorrect ? 'border-emerald-500/25 bg-emerald-500/6' : 'border-red-500/25 bg-red-500/6';
   const evidence = evidenceRows(feedback);
   const otherOptions = step.options.filter(action => action !== selectedAction);
+  const reversal = feedback.evidence?.reversals?.[0];
+  const probeRequired = shouldShowReasoningProbe(currentItem, feedback);
+  const probeComplete = !probeRequired || Boolean(currentItem.reasoningProbeResult);
 
   return <section data-testid="decision-explanation" className={`rounded-2xl border p-5 ${tone}`}>
     <div className="flex gap-3">
@@ -216,6 +257,10 @@ function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, 
           <p className="mt-2 text-[11px] leading-5 text-slate-600">牌力/outs 是本機結構分析；最佳解仍以此題已驗證 truth 為準。</p>
         </div>
 
+        {probeRequired && <ReasoningProbe reversal={reversal!} result={currentItem.reasoningProbeResult} onResult={onReasoningProbe} />}
+
+        {reversal && feedback.evidence?.sourceConfidence === 'exact-math' && <div data-testid="minimal-flip-summary" className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-4"><div className="text-xs font-semibold text-fuchsia-200">最小翻轉條件</div><p className="mt-2 text-sm leading-6 text-slate-300">{reversal}</p><p className="mt-2 text-[11px] text-slate-500">這是題目本身的 exact-math reversal；完整 one-variable solver sibling 請開「最小翻轉」。</p></div>}
+
         <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
           <div className="text-xs font-semibold text-violet-200">Range / EV / Solver 證據</div>
           {evidence.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{evidence.map(([label, value]) => <Fact key={`${label}:${value}`} label={label} value={value} />)}</div> : <p className="mt-2 text-xs leading-5 text-slate-500">這題沒有額外的 per-action EV / range evidence；系統不會補造不存在的數值。</p>}
@@ -245,10 +290,23 @@ function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, 
 
         <AdvancedToolLinks tournament={scenario.type === 'Tournament'} />
 
-        <button data-testid="decision-next" type="button" onClick={onNext} className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">看完解說，下一個決策</button>
+        <button data-testid="decision-next" type="button" disabled={!probeComplete} onClick={onNext} className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40">{probeComplete ? '看完解說，下一個決策' : '先完成或跳過理解驗證'}</button>
       </div>
     </div>
   </section>;
+}
+
+function ReasoningProbe({ reversal, result, onResult }: { reversal: string; result?: ReasoningProbeResult; onResult: (result: ReasoningProbeResult) => void }) {
+  const options = [
+    { id: 'truth', text: reversal, correct: true },
+    { id: 'cosmetic', text: '只要把花色換掉，最佳解就一定翻轉。', correct: false },
+    { id: 'never', text: '這題沒有任何輸入變化能讓最佳解翻轉。', correct: false },
+  ];
+  return <div data-testid="reasoning-probe" className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+    <div className="flex items-center gap-2 text-xs font-semibold text-amber-200"><BrainCircuit className="h-4 w-4" />理解驗證 · 不是再問一次答案</div>
+    <p className="mt-2 text-sm leading-6 text-slate-300">哪一個是這題已被證據支持的「答案翻轉條件」？</p>
+    {!result ? <div className="mt-3 grid gap-2">{options.map(option => <button data-testid="reasoning-probe-option" key={option.id} type="button" onClick={() => onResult(option.correct ? 'pass' : 'fail')} className="rounded-lg border border-slate-700 bg-slate-950/35 px-3 py-2 text-left text-xs leading-5 text-slate-300 hover:border-amber-500/40">{option.text}</button>)}<button data-testid="reasoning-probe-skip" type="button" onClick={() => onResult('skipped')} className="text-left text-[11px] text-slate-500">跳過理解驗證</button></div> : <div className={`mt-3 rounded-lg border p-3 text-xs ${result === 'pass' ? 'border-emerald-500/20 bg-emerald-500/6 text-emerald-200' : result === 'fail' ? 'border-red-500/20 bg-red-500/6 text-red-200' : 'border-slate-700 text-slate-400'}`}>{result === 'pass' ? '理解驗證通過：action 與 reversal 都對。' : result === 'fail' ? 'Action 雖然答對，但 reversal mental model 不穩；這題會標記 fragile knowledge。' : '已跳過；不會把它當成理解證據。'}</div>}
+  </div>;
 }
 
 function evidenceRows(feedback: Feedback): Array<[string, string]> {
