@@ -15,7 +15,10 @@ export function AnalysisContextBanner({ context, compact = false }: { context: A
       {context.potBB !== undefined && <span>Pot {context.potBB} BB</span>}
       {context.effectiveStackBB !== undefined && <span>Effective {context.effectiveStackBB} BB</span>}
       {context.spr !== undefined && <span>SPR {context.spr}</span>}
-      {context.potOddsPercent !== undefined && <span>Pot odds {context.potOddsPercent}%</span>}
+      {context.minimumCallingEquityPercent !== undefined
+        ? <span>Call threshold {context.minimumCallingEquityPercent}%</span>
+        : context.potOddsPercent !== undefined && <span>題目 Pot Odds {context.potOddsPercent}% · 非 call threshold</span>}
+      {context.heroEquityPercent !== undefined && <span>Hero equity {context.heroEquityPercent}%</span>}
     </div>
     {!compact && <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
       {context.selectedAction && <span>你：{context.selectedAction}</span>}
