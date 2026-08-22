@@ -199,11 +199,14 @@ test('closed-loop product surfaces are actually wired into the player flow', () 
   assert.match(training, /reasoning-probe/);
   assert.match(training, /fragile-knowledge/);
   assert.match(training, /reasoningProbeOptions/);
+  assert.match(training, /inferScenarioStepSkillIds/);
+  assert.match(training, /skillIds: inferScenarioStepSkillIds\(scenario, step\)/);
   assert.match(training, /utilityModel: verifiedCashEv \? 'cash-chip-ev'/);
   assert.match(exam, /feedback intentionally withheld|feedback withheld|不顯示正誤/);
   assert.match(exam, /initialHistory/);
   assert.match(exam, /submissionLock\.current/);
   assert.match(exam, /disabled=\{disabled\}/);
+  assert.match(exam, /skillIds: inferScenarioStepSkillIds\(scenario, step\)/);
   assert.doesNotMatch(exam, /<TrainingSession/);
   assert.doesNotMatch(exam, /<SolverDecisionSession/);
   assert.match(tools, /#minimal-flip/);
