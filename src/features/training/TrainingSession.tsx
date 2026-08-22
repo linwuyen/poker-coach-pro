@@ -40,6 +40,16 @@ export function shouldShowReasoningProbe(item: HistoryItem, feedback: Feedback):
   return stableHash(item.attemptId || `${item.scenarioId}:${item.timestamp}`) % 4 === 0;
 }
 
+export function reasoningProbeOptions(reversal: string, attemptSeed: string) {
+  const base = [
+    { id: 'truth', text: reversal, correct: true },
+    { id: 'cosmetic', text: '只要把花色換掉，最佳解就一定翻轉。', correct: false },
+    { id: 'never', text: '這題沒有任何輸入變化能讓最佳解翻轉。', correct: false },
+  ];
+  const offset = stableHash(attemptSeed || reversal) % base.length;
+  return [...base.slice(offset), ...base.slice(0, offset)];
+}
+
 export function TrainingSession({ scenarios, history, title, continuous = false, autoComplete = false, onRecord, onExit, onComplete }: TrainingSessionProps) {
   const [queue, setQueue] = useState<Scenario[]>(() => shuffled(scenarios));
   const [scenarioIndex, setScenarioIndex] = useState(0);
@@ -257,7 +267,7 @@ function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, 
           <p className="mt-2 text-[11px] leading-5 text-slate-600">牌力/outs 是本機結構分析；最佳解仍以此題已驗證 truth 為準。</p>
         </div>
 
-        {probeRequired && <ReasoningProbe reversal={reversal!} result={currentItem.reasoningProbeResult} onResult={onReasoningProbe} />}
+        {probeRequired && <ReasoningProbe reversal={reversal!} attemptSeed={currentItem.attemptId || `${currentItem.scenarioId}:${currentItem.timestamp}`} result={currentItem.reasoningProbeResult} onResult={onReasoningProbe} />}
 
         {reversal && feedback.evidence?.sourceConfidence === 'exact-math' && <div data-testid="minimal-flip-summary" className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-4"><div className="text-xs font-semibold text-fuchsia-200">最小翻轉條件</div><p className="mt-2 text-sm leading-6 text-slate-300">{reversal}</p><p className="mt-2 text-[11px] text-slate-500">這是題目本身的 exact-math reversal；完整 one-variable solver sibling 請開「最小翻轉」。</p></div>}
 
@@ -296,12 +306,8 @@ function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, 
   </section>;
 }
 
-function ReasoningProbe({ reversal, result, onResult }: { reversal: string; result?: ReasoningProbeResult; onResult: (result: ReasoningProbeResult) => void }) {
-  const options = [
-    { id: 'truth', text: reversal, correct: true },
-    { id: 'cosmetic', text: '只要把花色換掉，最佳解就一定翻轉。', correct: false },
-    { id: 'never', text: '這題沒有任何輸入變化能讓最佳解翻轉。', correct: false },
-  ];
+function ReasoningProbe({ reversal, attemptSeed, result, onResult }: { reversal: string; attemptSeed: string; result?: ReasoningProbeResult; onResult: (result: ReasoningProbeResult) => void }) {
+  const options = useMemo(() => reasoningProbeOptions(reversal, attemptSeed), [reversal, attemptSeed]);
   return <div data-testid="reasoning-probe" className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
     <div className="flex items-center gap-2 text-xs font-semibold text-amber-200"><BrainCircuit className="h-4 w-4" />理解驗證 · 不是再問一次答案</div>
     <p className="mt-2 text-sm leading-6 text-slate-300">哪一個是這題已被證據支持的「答案翻轉條件」？</p>
