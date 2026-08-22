@@ -132,6 +132,7 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
   const [submitted, setSubmitted] = useState(false);
   const [correct, setCorrect] = useState(false);
   const startedAt = useRef(Date.now());
+  const submittedItem = useRef<HistoryItem | null>(null);
   const completionSent = useRef(false);
   const row = rows[index];
   const analysis = useMemo(() => row && choice && submitted ? automaticSolverAnalysis(row, choice) : [], [row, choice, submitted]);
@@ -207,6 +208,7 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
       notes: `${POKERBENCH_SOURCE.label}. Training partition only; optimal action comes from the pinned dataset. Missing per-action EV/mixed frequency is intentionally not fabricated.`,
       ...getReviewSchedule(isCorrect ? 10 : 0, previous, undefined, now),
     };
+    submittedItem.current = item;
     setChoice(move);
     setCorrect(isCorrect);
     setSubmitted(true);
@@ -214,10 +216,19 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
   }
 
   function next() {
+    if (submittedItem.current?.attemptId) {
+      const finalized: HistoryItem = {
+        ...submittedItem.current,
+        trainingDwellMs: Math.max(0, Date.now() - startedAt.current),
+      };
+      submittedItem.current = finalized;
+      onRecord(finalized);
+    }
     setIndex(value => value + 1);
     setChoice(null);
     setCorrect(false);
     setSubmitted(false);
+    submittedItem.current = null;
     startedAt.current = Date.now();
   }
 
