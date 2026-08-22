@@ -8,7 +8,7 @@ The product is not optimized for answer count or training accuracy. The primary 
 
 Only evaluation attempts with exact-math or verified-solver truth, cash-game BB utility, and real `evLossBB` evidence enter this metric. PokerBench rows that contain only an optimal action label remain accuracy evidence; they never receive invented EV. Hidden Exam / holdout time is evaluation cost, not training time, and is excluded from the Learning ROI denominator.
 
-Training time has a strict evidence contract. `durationMs` is decision latency only: question shown → action submitted. Learning ROI does **not** use or fall back to it. The denominator uses `trainingDwellMs`, measured from the question becoming active until the player explicitly chooses **Next**, so explanation reading and any required reasoning probe are included. An incomplete hand without explicit Next has no complete dwell sample and contributes no invented training time.
+Training time has a strict evidence contract. `durationMs` is decision latency only: question shown → action submitted. Learning ROI does **not** use or fall back to it. The denominator uses `trainingDwellMs`, measured from the question becoming active until the player explicitly chooses **Next**, so explanation reading and any required reasoning probe are included. Every decision in a multi-step scenario is finalized at its own explicit Next; time from earlier steps is never rolled into a later attempt. An incomplete hand without explicit Next has no complete dwell sample and contributes no invented training time.
 
 ## Control loop
 
@@ -31,6 +31,8 @@ Two complementary coverage views remain visible:
 - **Poker State-Space Coverage** compares catalog supply and player evidence across situation ids such as format, position, stack, street, board/sizing/boundary contexts, including zero-evidence and zero-training-bank data gaps.
 
 Skill attribution is decision-local. A scenario attempt receives only the skills implied by the **current step's** concepts and street. A multi-street scenario must never credit a preflop answer with skills that appear only on a later flop/turn/river step. The same rule applies to Hidden Exam evidence.
+
+Situation attribution follows the same decision-local rule. Stable structural dimensions such as format, position, stack, table size and ante may be inherited from the scenario, but street evidence is exactly the street of the current step. A flop attempt must never create turn or river evidence merely because those steps exist later in the same scenario; Hidden Exam uses the same rule.
 
 ## Evidence boundaries
 
