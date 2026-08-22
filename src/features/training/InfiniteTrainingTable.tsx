@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Database, Infinity as InfinityIcon, ShieldCheck, Target } from 'lucide-react';
 import { HistoryItem, Scenario } from '../../types';
 import { coreScenarios } from '../../teaching/scenarioCatalog';
+import { candidateLearningSignal } from '../../learning-engine/closedLoop';
 import { buildGeneratedVariantPool } from '../../learning-engine/variantGenerator';
 import {
   buildInfiniteCandidatePool,
@@ -39,6 +40,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     () => summarizeInfinitePool(scenarioBank, safeVariants, pokerBenchRows, pool),
     [scenarioBank, safeVariants, pokerBenchRows, pool],
   );
+  const learningSignal = useMemo(() => candidate ? candidateLearningSignal(candidate, history) : undefined, [candidate, history]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,8 +77,14 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
   }, [candidate, pool, history, recentCandidateIds, recentFamilyIds]);
 
   function record(item: HistoryItem) {
-    onRecord(item);
-    if (item.correct !== false || !candidate) return;
+    const signal = candidate ? candidateLearningSignal(candidate, history) : undefined;
+    const annotated: HistoryItem = {
+      ...item,
+      predictedSuccessProbability: item.predictedSuccessProbability ?? signal?.predictedSuccessProbability,
+      learningPriorityScore: item.learningPriorityScore ?? signal?.priorityScore,
+    };
+    onRecord(annotated);
+    if (annotated.correct !== false || !candidate) return;
     const repair = selectTargetedReviewCandidates(pool, candidate, [...recentCandidateIds, candidate.id], 3);
     setTargetedQueue(repair);
     appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'candidate-select', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? 'targeted-review' : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
@@ -118,6 +126,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
         <span data-testid="infinite-source" className="rounded-full border border-slate-700 bg-slate-950/45 px-2.5 py-1">{sourceLabel}</span>
         <span className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />{candidate.truthLabel}</span>
         <span data-testid="infinite-dimensions" className="font-mono text-[11px] text-slate-500">{candidate.street} · {candidate.position || '?'} · {candidate.actionClass} · {candidate.stackBand}</span>
+        {learningSignal && <span data-testid="active-learning-signal" className="rounded-full border border-cyan-500/20 bg-cyan-500/8 px-2.5 py-1 text-cyan-200">Learning priority {Math.round(learningSignal.priorityScore * 100)}% · uncertainty {Math.round(learningSignal.uncertainty * 100)}%</span>}
         {(targetedActive || targetedQueue.length > 0) && <span data-testid="targeted-review-status" className="flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/8 px-2.5 py-1 text-amber-200"><Target className="h-3.5 w-3.5" />針對複習 · 尚有 {targetedQueue.length + (targetedActive ? 1 : 0)} 題{targetedReason ? ` · ${targetedReason}` : ''}</span>}
       </div>
       <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-slate-500">
