@@ -3,7 +3,7 @@ import { ArrowLeft, BrainCircuit, CheckCircle2, Lightbulb, Scale, XCircle } from
 import { CardUI } from '../../components/CardUI';
 import { getDifficultyWeight, isDelayedReview, makeMasteryKey, resolveFeedbackQuality } from '../../learning-engine';
 import { inferSituationIdsFromScenario, scenarioContextFamilyId, scenarioDecisionFamilyId } from '../../learning-engine/contextIdentity';
-import { inferScenarioSkillIds } from '../../learning-engine/skillGraph';
+import { inferScenarioStepSkillIds } from '../../learning-engine/skillGraph';
 import { ActionType, Feedback, HistoryItem, ReasoningProbeResult, Scenario, ScenarioStep } from '../../types';
 import { analyzeHandMath, evaluateHandStrength } from '../../utils/handMath';
 import { createAttemptId, getReviewSchedule } from '../../utils/history';
@@ -129,7 +129,7 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
       decisionFamilyId: familyId,
       stepId: step.id,
       masteryKey,
-      skillIds: inferScenarioSkillIds(scenario),
+      skillIds: inferScenarioStepSkillIds(scenario, step),
       category: [...(scenario.category || []), ...(step.conceptIds || [])],
       score: result.score,
       judgment: result.judgment,
