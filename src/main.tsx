@@ -1,9 +1,11 @@
 import { StrictMode, Suspense, lazy, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import AppV2 from './app/AppV2';
+import { analysisRouteFromHash } from './features/analysis/analysisContext';
 import './index.css';
 
 const CalibrationDashboard = lazy(() => import('./features/analysis/CalibrationDashboard').then(module => ({ default: module.CalibrationDashboard })));
+const CurrentHandAnalysis = lazy(() => import('./features/analysis/CurrentHandAnalysis').then(module => ({ default: module.CurrentHandAnalysis })));
 const EffectivenessDashboard = lazy(() => import('./features/analysis/EffectivenessDashboard').then(module => ({ default: module.EffectivenessDashboard })));
 const ExperimentDashboard = lazy(() => import('./features/analysis/ExperimentDashboard').then(module => ({ default: module.ExperimentDashboard })));
 const PostflopTruthLab = lazy(() => import('./features/analysis/PostflopTruthLab').then(module => ({ default: module.PostflopTruthLab })));
@@ -27,28 +29,30 @@ function RootRouter() {
   const [route, setRoute] = useState(window.location.hash);
   useEffect(() => { const handleHashChange = () => setRoute(window.location.hash); window.addEventListener('hashchange', handleHashChange); return () => window.removeEventListener('hashchange', handleHashChange); }, []);
   const exitLab = () => { window.location.hash = ''; };
+  const routeKey = analysisRouteFromHash(route);
 
-  // Player flow is the infinite table. Remaining hash routes are internal truth/training diagnostics only.
-  if (route === '#postflop-truth') return <PostflopTruthLab onExit={exitLab} />;
-  if (route === '#effectiveness') return <EffectivenessDashboard onExit={exitLab} />;
-  if (route === '#experiment') return <ExperimentDashboard onExit={exitLab} />;
-  if (route === '#truth-ops') return <TruthOpsDashboard onExit={exitLab} />;
-  if (route === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
-  if (route === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
-  if (route === '#boundary-map') return <DecisionBoundaryMap onExit={exitLab} />;
-  if (route === '#contrastive-trainer') return <ContrastiveTrainer onExit={exitLab} />;
-  if (route === '#semantic-counterfactual') return <SemanticCounterfactualTrainer onExit={exitLab} />;
-  if (route === '#sizing-trainer') return <SizingTrainer onExit={exitLab} />;
-  if (route === '#variant-trainer') return <VariantTrainer onExit={exitLab} />;
-  if (route === '#solver-corpus') return <PokerBenchTrainer onExit={exitLab} />;
-  if (route === '#solver-benchmark') return <PokerBenchTrainer onExit={exitLab} mode="benchmark" />;
-  if (route === '#strategy-surface') return <SolverSurfaceLab onExit={exitLab} />;
-  if (route === '#hidden-benchmark') return <BenchmarkTrainer onExit={exitLab} />;
-  if (route === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
-  if (route === '#icm-workbench') return <IcmWorkbench onExit={exitLab} />;
-  if (route === '#fgs-workbench') return <FgsWorkbench onExit={exitLab} />;
-  if (route === '#skill-graph') return <SkillGraphDashboard onExit={exitLab} />;
-  if (route === '#calibration') return <CalibrationDashboard onExit={exitLab} />;
+  // Player flow is the infinite table. Context-aware training/analysis routes may carry ?ctx=... in the hash.
+  if (routeKey === '#current-analysis') return <CurrentHandAnalysis onExit={exitLab} />;
+  if (routeKey === '#postflop-truth') return <PostflopTruthLab onExit={exitLab} />;
+  if (routeKey === '#effectiveness') return <EffectivenessDashboard onExit={exitLab} />;
+  if (routeKey === '#experiment') return <ExperimentDashboard onExit={exitLab} />;
+  if (routeKey === '#truth-ops') return <TruthOpsDashboard onExit={exitLab} />;
+  if (routeKey === '#range-reading') return <RangeReadingTrainer onExit={exitLab} />;
+  if (routeKey === '#decision-boundary') return <CounterfactualTrainer onExit={exitLab} />;
+  if (routeKey === '#boundary-map') return <DecisionBoundaryMap onExit={exitLab} />;
+  if (routeKey === '#contrastive-trainer') return <ContrastiveTrainer onExit={exitLab} />;
+  if (routeKey === '#semantic-counterfactual') return <SemanticCounterfactualTrainer onExit={exitLab} />;
+  if (routeKey === '#sizing-trainer') return <SizingTrainer onExit={exitLab} />;
+  if (routeKey === '#variant-trainer') return <VariantTrainer onExit={exitLab} />;
+  if (routeKey === '#solver-corpus') return <PokerBenchTrainer onExit={exitLab} />;
+  if (routeKey === '#solver-benchmark') return <PokerBenchTrainer onExit={exitLab} mode="benchmark" />;
+  if (routeKey === '#strategy-surface') return <SolverSurfaceLab onExit={exitLab} />;
+  if (routeKey === '#hidden-benchmark') return <BenchmarkTrainer onExit={exitLab} />;
+  if (routeKey === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
+  if (routeKey === '#icm-workbench') return <IcmWorkbench onExit={exitLab} />;
+  if (routeKey === '#fgs-workbench') return <FgsWorkbench onExit={exitLab} />;
+  if (routeKey === '#skill-graph') return <SkillGraphDashboard onExit={exitLab} />;
+  if (routeKey === '#calibration') return <CalibrationDashboard onExit={exitLab} />;
   return <AppV2 />;
 }
 
