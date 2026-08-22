@@ -57,8 +57,10 @@ If confidence was not collected, the system leaves it absent. It must never synt
 - Correct and incorrect decisions both stop on the current hand and show an explanation.
 - The trainer never auto-advances away from an answer explanation; only an explicit **Next** action advances.
 - Scenario feedback shows the core reason, misconception, portable rule, local hand/math context, available range/EV/truth evidence, and why alternative options differ.
-- PokerBench feedback shows the exact optimal label for every answer, including correct answers, plus card visuals, hand/math context, option-by-option label comparison and provenance limits.
-- Missing per-action EV, mixed frequency or range evidence remains explicitly missing; the UI never fabricates solver precision.
+- PokerBench feedback shows the exact optimal label for every answer, including correct answers, plus card visuals, local hand/math context, option-by-option label comparison and provenance limits.
+- PokerBench does **not** infer a node-specific strategic rationale from the action label. If the dataset provides only an optimal label, the explanation stays at label comparison and provenance.
+- Local draw math counts only draws in which Hero contributes to the relevant flush/straight structure; a four-flush or four-straight entirely on the board is not presented as Hero outs.
+- Missing per-action EV, mixed frequency, range evidence or solver rationale remains explicitly missing; the UI never fabricates solver precision.
 - Advanced Range / Boundary / Equity / Solver tools are discoverable after the answer and open separately without destroying the current explanation.
 - The answer surface captures a portable **Analysis Context** containing only observed or already-validated fields such as hole cards, board, street, position, pot, effective stack, chosen/best action and truth provenance. Context-aware tools prefill those exact fields; missing villain range, Hero equity, solver EV or frequency remains missing.
 - A mistake queues up to three structurally related repair decisions from the same already truth-gated Infinite pool before normal sampling resumes. If fewer safe siblings exist, the repair queue is shorter; no new answer is synthesized.
@@ -127,7 +129,7 @@ Earlier P0→P30 work produced useful learning/truth primitives. The product now
 - due review and expected learning value;
 - History mastery / retention / transfer evidence;
 - immutable solver provenance;
-- local hand-strength / draw math;
+- local Hero-contributing hand-strength / draw math;
 - portable per-decision Analysis Context;
 - contextual range / equity / decision-boundary / solver workbenches;
 - immediate truth-backed targeted repair after mistakes;
@@ -147,7 +149,8 @@ Volume-first does not mean:
 - skip explanation just because the answer was correct;
 - auto-advance semantic/counterfactual reveals before the player reads them;
 - auto-grade unsupported states;
-- manufacture solver EV/frequencies;
+- manufacture solver EV/frequencies or action-type rationale;
+- treat board-only draws as Hero outs;
 - inject a default villain range merely to make an equity calculator return a number;
 - mutate stack/position/sizing/range/board and inherit an old answer without truth;
 - leak sibling/holdout data into training or repair queues;
