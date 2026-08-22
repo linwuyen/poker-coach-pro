@@ -17,7 +17,10 @@ export interface AnalysisContext {
   effectiveStackBB?: number;
   potBB?: number;
   spr?: number;
+  /** Raw percentage rendered by the source question. This field alone is not a call threshold. */
   potOddsPercent?: number;
+  /** Only populated when the current decision actually offers Call and the shown pot odds can be interpreted as a facing-call price. */
+  minimumCallingEquityPercent?: number;
   heroEquityPercent?: number;
   selectedAction?: string;
   bestAction?: string;
@@ -25,6 +28,12 @@ export interface AnalysisContext {
   truthSource?: string;
   villainRange?: string;
   heroRange?: string;
+}
+
+export interface ExtractedDecisionMathContext {
+  potOddsPercent?: number;
+  minimumCallingEquityPercent?: number;
+  heroEquityPercent?: number;
 }
 
 const SUIT_TO_CODE: Record<Suit, string> = { clubs: 'c', diamonds: 'd', hearts: 'h', spades: 's' };
@@ -60,6 +69,23 @@ function numberFrom(text: string, pattern: RegExp): number | undefined {
   return Number.isFinite(value) ? value : undefined;
 }
 
+/**
+ * Extract only math that the rendered decision can semantically prove.
+ * A raw `Pot Odds N%` token becomes a minimum call-equity threshold only when
+ * the decision surface itself exposes a Call option. This prevents Check/Bet
+ * exercises from being reinterpreted as facing-bet call geometry.
+ */
+export function extractDecisionMathContext(text: string, actionLabels: string[]): ExtractedDecisionMathContext {
+  const potOddsPercent = numberFrom(text, /Pot Odds\s*([0-9]+(?:\.[0-9]+)?)\s*%/i);
+  const heroEquityPercent = numberFrom(text, /Hero\s+(?:showdown\s+)?Equity\s*(?:=|:)?\s*([0-9]+(?:\.[0-9]+)?)\s*%/i);
+  const hasCallOption = actionLabels.some(label => /^(?:call|跟注)\b/i.test(label.trim()));
+  return {
+    potOddsPercent,
+    minimumCallingEquityPercent: hasCallOption ? potOddsPercent : undefined,
+    heroEquityPercent,
+  };
+}
+
 function latestHistoryItem(): Record<string, unknown> | undefined {
   try {
     const items = JSON.parse(localStorage.getItem('poker_training_history_v6') || '[]');
@@ -86,10 +112,12 @@ export function captureCurrentAnalysisContext(doc: Document = document): Analysi
   const heroCards = solverHole.length === 2 ? solverHole : allCards.slice(-2);
   const boardCards = solverHole.length === 2 ? solverBoard : allCards.slice(0, Math.max(0, allCards.length - 2));
   const text = session.textContent || '';
+  const actionLabels = Array.from(session.querySelectorAll<HTMLElement>('[data-testid="decision-action"], [data-testid="solver-action"]'))
+    .map(node => node.textContent?.trim() || '')
+    .filter(Boolean);
+  const decisionMath = extractDecisionMathContext(text, actionLabels);
   const trainingType = typeof history?.trainingType === 'string' ? history.trainingType : undefined;
   const source: AnalysisContext['source'] = trainingType === 'solver-corpus' ? 'pokerbench' : trainingType === 'scenario' ? 'scenario' : 'unknown';
-  const potOddsPercent = numberFrom(text, /Pot Odds\s*([0-9]+(?:\.[0-9]+)?)\s*%/i);
-  const heroEquityPercent = numberFrom(text, /Hero Equity\s*([0-9]+(?:\.[0-9]+)?)\s*%/i);
   return {
     schemaVersion: 1,
     capturedAt: Date.now(),
@@ -107,8 +135,7 @@ export function captureCurrentAnalysisContext(doc: Document = document): Analysi
     effectiveStackBB: numberFrom(text, /Effective\s*([0-9]+(?:\.[0-9]+)?)\s*BB/i),
     potBB: numberFrom(text, /Pot\s*([0-9]+(?:\.[0-9]+)?)\s*BB/i),
     spr: numberFrom(text, /SPR\s*([0-9]+(?:\.[0-9]+)?)/i),
-    potOddsPercent,
-    heroEquityPercent,
+    ...decisionMath,
     selectedAction: typeof history?.selectedAction === 'string' ? history.selectedAction : undefined,
     bestAction: typeof history?.bestAction === 'string' ? history.bestAction : undefined,
     truthTier: typeof history?.truthTier === 'string' ? history.truthTier : undefined,
