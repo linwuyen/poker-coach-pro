@@ -7,6 +7,8 @@ interface CardUIProps {
   size?: 'sm' | 'lg';
 }
 
+const SUIT_CODE: Record<CardType['suit'], string> = { spades: 's', hearts: 'h', diamonds: 'd', clubs: 'c' };
+
 export const CardUI: React.FC<CardUIProps> = ({ card, hidden, size = 'lg' }) => {
   const isSm = size === 'sm';
   const widthClass = isSm ? 'w-14 h-20' : 'w-20 h-28';
@@ -26,9 +28,10 @@ export const CardUI: React.FC<CardUIProps> = ({ card, hidden, size = 'lg' }) => 
   const isRed = card.suit === 'hearts' || card.suit === 'diamonds';
   const suitSymbol = { spades: '♠', hearts: '♥', diamonds: '♦', clubs: '♣' }[card.suit];
   const textColor = isRed ? 'text-red-600' : 'text-slate-900';
+  const cardCode = `${card.rank}${SUIT_CODE[card.suit]}`;
 
   return (
-    <div className={`${widthClass} bg-white ${paddingClass} shadow-xl ${borderClass} flex flex-col items-center justify-between`}>
+    <div data-card-code={cardCode} aria-label={cardCode} className={`${widthClass} bg-white ${paddingClass} shadow-xl ${borderClass} flex flex-col items-center justify-between`}>
       <span className={`${textColor} font-bold ${rankClass} self-start leading-none`}>{card.rank}{suitSymbol}</span>
       <span className={`${textColor} ${suitClass} leading-none`}>{suitSymbol}</span>
     </div>
