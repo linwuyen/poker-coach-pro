@@ -107,7 +107,7 @@ export function verifiedEvNorthStar(history: HistoryItem[], now = Date.now()): V
   const previousAverage = average(previous.map(item => Math.max(0, item.evLossBB || 0)));
   const delta = recentAverage === undefined || previousAverage === undefined ? undefined : recentAverage - previousAverage;
   const trainingMs = history
-    .filter(item => item.timestamp >= recentStart && item.timestamp <= now && item.trainingType !== 'custom')
+    .filter(item => item.timestamp >= recentStart && item.timestamp <= now && item.trainingType !== 'custom' && !isEvaluationAttempt(item))
     .reduce((sum, item) => sum + Math.max(0, item.durationMs || 0), 0);
   const trainingHours = trainingMs / 3600000;
   const learningRoi = delta === undefined || trainingHours <= 0 ? undefined : Math.max(0, -delta) / trainingHours;
