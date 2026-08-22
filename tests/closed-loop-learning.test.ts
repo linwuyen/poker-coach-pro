@@ -7,11 +7,12 @@ import {
   candidateLearningSignal,
   verifiedEvNorthStar,
 } from '../src/learning-engine/closedLoop';
+import { normalizeSituationId } from '../src/learning-engine/coverageMatrix';
 import type { InfiniteHandCandidate } from '../src/learning-engine/infiniteHandGenerator';
 import { exactScenarioMinimalFlip } from '../src/learning-engine/minimalFlip';
 import { SKILL_GRAPH } from '../src/learning-engine/skillGraph';
 import { exactMathSemanticScenarios } from '../src/teaching/semanticMathScenarios';
-import { shouldShowReasoningProbe } from '../src/features/training/TrainingSession';
+import { reasoningProbeOptions, shouldShowReasoningProbe } from '../src/features/training/TrainingSession';
 import type { Feedback, HistoryItem, Scenario } from '../src/types';
 
 const DAY = 86400000;
@@ -54,6 +55,29 @@ test('knowledge state keeps zero-evidence skills visible as coverage gaps', () =
   assert.equal(states.length, SKILL_GRAPH.length);
   assert.ok(states.every(state => state.dataGap));
   assert.ok(states.every(state => state.evidenceCount === 0));
+});
+
+test('solver decisions are first-class knowledge-state evidence', () => {
+  const states = buildKnowledgeStates([
+    historyItem({
+      trainingType: 'solver-corpus',
+      skillIds: ['preflop.solver-decision'],
+      category: ['PokerBench', 'Preflop'],
+      street: 'Preflop',
+      truthTier: 'verified-solver',
+      correct: true,
+    }),
+  ]);
+  const solverState = states.find(state => state.skillId === 'preflop.solver-decision');
+  assert.ok(solverState);
+  assert.equal(solverState!.evidenceCount, 1);
+  assert.equal(solverState!.understanding, 100);
+});
+
+test('coverage canonicalizes solver situation prefixes', () => {
+  assert.equal(normalizeSituationId('situation.street.river'), 'street.river');
+  assert.equal(normalizeSituationId('situation.position.btn'), 'position.btn');
+  assert.equal(normalizeSituationId('street.river'), 'street.river');
 });
 
 test('active learning favors uncertainty and due repair instead of only recent novelty', () => {
@@ -119,6 +143,18 @@ test('reasoning probe is occasional, post-answer, and exact-math gated', () => {
   assert.equal(shouldShowReasoningProbe(historyItem({ correct: true }), { ...feedback, evidence: { ...feedback.evidence, sourceConfidence: 'expert-baseline' } }), false);
 });
 
+test('reasoning probe correct option position varies by attempt while truth stays attached', () => {
+  const reversal = 'Equity 低於 25% 時翻轉為 Fold';
+  const positions = new Set<number>();
+  for (let index = 0; index < 32; index += 1) {
+    const options = reasoningProbeOptions(reversal, `attempt-${index}`);
+    assert.equal(options.filter(option => option.correct).length, 1);
+    assert.equal(options.find(option => option.correct)?.text, reversal);
+    positions.add(options.findIndex(option => option.correct));
+  }
+  assert.ok(positions.size > 1);
+});
+
 test('closed-loop product surfaces are actually wired into the player flow', () => {
   const app = readFileSync('src/app/AppV2.tsx', 'utf8');
   const main = readFileSync('src/main.tsx', 'utf8');
@@ -139,9 +175,12 @@ test('closed-loop product surfaces are actually wired into the player flow', () 
   assert.match(table, /active-learning-signal/);
   assert.match(training, /reasoning-probe/);
   assert.match(training, /fragile-knowledge/);
+  assert.match(training, /reasoningProbeOptions/);
   assert.match(training, /utilityModel: verifiedCashEv \? 'cash-chip-ev'/);
   assert.match(exam, /feedback intentionally withheld|feedback withheld|不顯示正誤/);
   assert.match(exam, /initialHistory/);
+  assert.match(exam, /submissionLock\.current/);
+  assert.match(exam, /disabled=\{disabled\}/);
   assert.doesNotMatch(exam, /<TrainingSession/);
   assert.doesNotMatch(exam, /<SolverDecisionSession/);
   assert.match(tools, /#minimal-flip/);
