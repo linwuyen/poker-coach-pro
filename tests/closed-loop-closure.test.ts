@@ -27,14 +27,17 @@ test('revealed hidden exam cannot replay the same holdout inside one session', (
   assert.match(exam, /data-testid="exam-exit-after-report"/);
 });
 
-test('hidden exam excludes previously exposed candidates both at pool build and atomic commit', () => {
+test('hidden exam excludes previously exposed candidates at pool build and revalidates them inside the exclusive commit', () => {
   const exam = readFileSync('src/features/training/ExamMode.tsx', 'utf8');
+  const history = readFileSync('src/utils/history.ts', 'utf8');
   assert.match(exam, /const\s+unseen\s*=\s*\(items:ExamCandidate\[\]\)\s*=>\s*items\.filter\(candidate\s*=>\s*!seen\(candidate\)\)/);
   assert.match(exam, /unseen\(evaluationCandidates\)/);
   assert.match(exam, /unseen\(benchmarkCandidates\)/);
   assert.match(exam, /unseen\(solverCandidates\)/);
   assert.doesNotMatch(exam, /Number\(seen\(a\)\)\s*-\s*Number\(seen\(b\)\)/);
-  assert.match(exam, /filterFreshEvaluationItems\(latest,\s*nextItems\)/);
+  assert.match(exam, /await updateHistoryExclusive\(latest=>/);
+  assert.match(exam, /filterFreshEvaluationItems\(latest,committedItems\)/);
+  assert.match(history, /locks\.request\(HISTORY_WRITE_LOCK,\s*\{\s*mode:\s*'exclusive'\s*\}/);
   assert.match(exam, /commit 當下會再次排除其他並行 Exam 已曝光的 holdout/);
 });
 
