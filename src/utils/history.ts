@@ -28,6 +28,11 @@ const normalize = (item: HistoryItem, index: number): HistoryItem => {
   return normalized;
 };
 
+function historyLocks(): HistoryLockManager | undefined {
+  if (typeof navigator === 'undefined') return undefined;
+  return (navigator as Navigator & { locks?: HistoryLockManager }).locks;
+}
+
 export function loadHistory(): HistoryItem[] {
   try {
     const current = localStorage.getItem(HISTORY_KEY);
@@ -45,6 +50,13 @@ export function loadHistory(): HistoryItem[] {
 
 export function saveHistory(items: HistoryItem[]): void { localStorage.setItem(HISTORY_KEY, JSON.stringify(items.map(normalize))); }
 
+function mutateHistory(mutator: (latest: HistoryItem[]) => HistoryItem[]): HistoryItem[] {
+  const latest = loadHistory();
+  const next = mutator(latest);
+  saveHistory(next);
+  return next;
+}
+
 /**
  * Serialize a full history read-modify-write across same-origin tabs.
  * Hidden evaluation commits must use this primitive so exposure revalidation and
@@ -52,17 +64,30 @@ export function saveHistory(items: HistoryItem[]): void { localStorage.setItem(H
  * fail closed rather than silently weakening evaluation isolation.
  */
 export async function updateHistoryExclusive(mutator: (latest: HistoryItem[]) => HistoryItem[]): Promise<HistoryItem[]> {
-  const maybeNavigator = typeof navigator === 'undefined'
-    ? undefined
-    : navigator as Navigator & { locks?: HistoryLockManager };
-  const locks = maybeNavigator?.locks;
+  const locks = historyLocks();
   if (!locks?.request) throw new Error('Exclusive history locking is unavailable in this browser.');
-  return locks.request(HISTORY_WRITE_LOCK, { mode: 'exclusive' }, () => {
-    const latest = loadHistory();
-    const next = mutator(latest);
-    saveHistory(next);
-    return next;
-  });
+  return locks.request(HISTORY_WRITE_LOCK, { mode: 'exclusive' }, () => mutateHistory(mutator));
+}
+
+/**
+ * Ordinary training/admin history writes coordinate on the same cross-tab lock when
+ * available, so they cannot overwrite an in-flight Hidden Exam transaction. Legacy
+ * browsers may fall back to the synchronous local write; Hidden Exam itself never
+ * uses this fallback and therefore remains fail-closed without Web Locks.
+ */
+export async function updateHistoryCoordinated(mutator: (latest: HistoryItem[]) => HistoryItem[]): Promise<HistoryItem[]> {
+  const locks = historyLocks();
+  if (!locks?.request) return mutateHistory(mutator);
+  return locks.request(HISTORY_WRITE_LOCK, { mode: 'exclusive' }, () => mutateHistory(mutator));
+}
+
+export function upsertHistoryItem(items: HistoryItem[], item: HistoryItem): HistoryItem[] {
+  const index = item.attemptId ? items.findIndex(existing => existing.attemptId === item.attemptId) : -1;
+  return index >= 0 ? items.map((existing, itemIndex) => itemIndex === index ? item : existing) : [...items, item];
+}
+
+export async function persistHistoryItem(item: HistoryItem): Promise<HistoryItem[]> {
+  return updateHistoryCoordinated(latest => upsertHistoryItem(latest, item));
 }
 
 export function clearHistory(): void { localStorage.removeItem(HISTORY_KEY); LEGACY_HISTORY_KEYS.forEach(key => localStorage.removeItem(key)); }
@@ -99,6 +124,7 @@ export async function importTrainingData(file: File): Promise<{ history: History
   if (!parsed || !Array.isArray(parsed.history)) throw new Error('Invalid Poker Coach backup file.');
   const history = parsed.history.map(normalize);
   const starredIds = Array.isArray(parsed.starredIds) ? parsed.starredIds.filter((id: unknown): id is string => typeof id === 'string') : [];
-  saveHistory(history); localStorage.setItem('poker_starred_ids', JSON.stringify(starredIds));
+  await updateHistoryCoordinated(() => history);
+  localStorage.setItem('poker_starred_ids', JSON.stringify(starredIds));
   return { history, starredIds, playerProfile: parsed.playerProfile };
 }
