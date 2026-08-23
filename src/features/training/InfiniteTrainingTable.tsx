@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Database, Infinity as InfinityIcon, ShieldCheck, Target } from 'lucide-react';
 import { HistoryItem, Scenario } from '../../types';
 import { coreScenarios } from '../../teaching/scenarioCatalog';
@@ -17,6 +17,8 @@ import { loadPokerBenchSplit, PokerBenchRow } from '../../solver-data/pokerbench
 import { TrainingSession } from './TrainingSession';
 import { SolverDecisionSession } from './SolverDecisionSession';
 
+type AttemptLearningAnnotation = Pick<HistoryItem, 'predictedSuccessProbability' | 'learningPriorityScore'>;
+
 export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit }: {
   scenarioBank: Scenario[];
   history: HistoryItem[];
@@ -32,6 +34,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
   const [targetedQueue, setTargetedQueue] = useState<InfiniteHandCandidate[]>([]);
   const [targetedActive, setTargetedActive] = useState(false);
   const [targetedReason, setTargetedReason] = useState('');
+  const attemptLearningAnnotations = useRef(new Map<string, AttemptLearningAnnotation>());
 
   const pool = useMemo(
     () => buildInfiniteCandidatePool(scenarioBank, safeVariants, pokerBenchRows),
@@ -78,11 +81,29 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
   }, [candidate, pool, history, recentCandidateIds, recentFamilyIds]);
 
   function record(item: HistoryItem) {
+    const priorPersisted = item.attemptId ? history.find(existing => existing.attemptId === item.attemptId) : undefined;
+    const cachedAnnotation = item.attemptId ? attemptLearningAnnotations.current.get(item.attemptId) : undefined;
     const signal = candidate ? candidateLearningSignal(candidate, history) : undefined;
+    const stableAnnotation: AttemptLearningAnnotation = {
+      predictedSuccessProbability: item.predictedSuccessProbability
+        ?? cachedAnnotation?.predictedSuccessProbability
+        ?? priorPersisted?.predictedSuccessProbability
+        ?? signal?.predictedSuccessProbability,
+      learningPriorityScore: item.learningPriorityScore
+        ?? cachedAnnotation?.learningPriorityScore
+        ?? priorPersisted?.learningPriorityScore
+        ?? signal?.priorityScore,
+    };
+    if (item.attemptId) {
+      attemptLearningAnnotations.current.set(item.attemptId, stableAnnotation);
+      if (attemptLearningAnnotations.current.size > 256) {
+        const oldestAttemptId = attemptLearningAnnotations.current.keys().next().value as string | undefined;
+        if (oldestAttemptId) attemptLearningAnnotations.current.delete(oldestAttemptId);
+      }
+    }
     let annotated: HistoryItem = {
       ...item,
-      predictedSuccessProbability: item.predictedSuccessProbability ?? signal?.predictedSuccessProbability,
-      learningPriorityScore: item.learningPriorityScore ?? signal?.priorityScore,
+      ...stableAnnotation,
     };
     if (candidate?.kind === 'scenario' && item.stepId) {
       const step = candidate.scenario.steps.find(candidateStep => candidateStep.id === item.stepId);
@@ -101,8 +122,8 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     }
     onRecord(annotated);
 
-    // A timing upsert is the same completed attempt with explicit-Next dwell evidence.
-    // It must not trigger a second targeted-repair queue or duplicate telemetry.
+    // Timing/reasoning upserts reuse the annotation cached on the first answer callback.
+    // Never recompute prediction from history after the observed outcome is already known.
     if (typeof annotated.trainingDwellMs === 'number') return;
 
     const needsRepair = annotated.correct === false || annotated.reasoningProbeResult === 'fail';
