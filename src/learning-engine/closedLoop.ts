@@ -92,12 +92,12 @@ function finiteNumber(value: unknown): value is number {
 }
 
 export function isEvaluationAttempt(item: HistoryItem): boolean {
-  return item.trainingType === 'benchmark'
+  return item.examMode === true
+    || item.trainingType === 'benchmark'
     || item.trainingType === 'solver-benchmark'
     || item.trainingType === 'transfer'
     || item.trainingType === 'counterfactual'
     || item.trainingType === 'contrastive'
-    || Boolean(item.isTransferTest)
     || item.solverCorpusRole === 'holdout';
 }
 
@@ -163,7 +163,9 @@ export function verifiedEvNorthStar(history: HistoryItem[], now = Date.now()): V
   // ROI uses only complete question-to-explicit-Next dwell intervals wholly contained
   // between the same two completed Hidden Exam snapshots used by the EV delta. Missing
   // endpoints, answer-submit timestamps, durationMs, overlapping dwell and in-exam dwell
-  // all fail closed rather than being approximated into the denominator.
+  // all fail closed rather than being approximated into the denominator. Transfer
+  // evidence on ordinary training (for example solver-corpus) is still training dwell;
+  // `isTransferTest` alone never promotes it to an evaluation attempt.
   const trainingMs = hasAlignedTrainingInterval
     ? history
       .filter(item => item.trainingType !== 'custom'
