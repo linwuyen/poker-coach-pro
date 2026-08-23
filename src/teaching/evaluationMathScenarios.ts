@@ -47,6 +47,19 @@ function sequenceValue(index: number, modulus: number, multiplier: number, offse
   return (Math.imul(normalized, multiplier) + offset) % modulus;
 }
 
+function mixedIndexBit(index: number): number {
+  const normalized = Math.max(0, Math.trunc(index));
+  const low = normalized >>> 0;
+  const high = Math.floor(normalized / 0x100000000) >>> 0;
+  let hash = (low ^ Math.imul(high, 0x9e3779b1)) >>> 0;
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x7feb352d) >>> 0;
+  hash ^= hash >>> 15;
+  hash = Math.imul(hash, 0x846ca68b) >>> 0;
+  hash ^= hash >>> 16;
+  return hash & 1;
+}
+
 function evaluationPotOddsScenario(index: number): Scenario {
   // Large coprime cycles keep the generated cash-BB inputs realistic while supplying
   // a practical lifetime of fresh exact-math variants. Every displayed input is
@@ -54,7 +67,9 @@ function evaluationPotOddsScenario(index: number): Scenario {
   const potBeforeCall = (800 + sequenceValue(index, 997, 619) * 4) / 100;
   const callCost = (150 + sequenceValue(index, 991, 487, 31)) / 100;
   const breakEven = callCost / (potBeforeCall + callCost);
-  const direction = index % 2 === 0 ? -1 : 1;
+  // Correct-action direction is derived from an avalanche-mixed hidden index bit rather
+  // than sequence parity, so no displayed/order identifier can act as an answer key.
+  const direction = mixedIndexBit(index) === 0 ? -1 : 1;
   const marginBps = 125 + (sequenceValue(index, 983, 337, 17) % 176);
   const breakEvenBps = Math.round(breakEven * 10000);
   const equityBps = Math.max(500, Math.min(9000, breakEvenBps + direction * marginBps));
@@ -72,7 +87,7 @@ function evaluationPotOddsScenario(index: number): Scenario {
   return {
     id: `eval-math-pot-odds-${sequence}`,
     decisionFamilyId: `eval-math-pot-odds-${sequence}`,
-    title: `Hidden Exact EV #${sequence} · Equity ${pct(equity)} vs ${pct(breakEven)}`,
+    title: `Hidden Exact EV · Equity ${pct(equity)} vs ${pct(breakEven)}`,
     category: ['Exact Math', 'Pot Odds', 'River', 'Hidden Evaluation'],
     difficulty: sequenceValue(index, 7, 5) < 3 ? '中階' : '進階',
     type: 'Cash Game',
