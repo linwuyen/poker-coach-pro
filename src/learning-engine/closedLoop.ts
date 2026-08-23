@@ -2,8 +2,6 @@ import type { HistoryItem } from '../types';
 import type { InfiniteHandCandidate } from './infiniteHandGenerator';
 import { calculateSkillMastery, getSkillNode, inferScenarioSkillIds, inferSkillIds, SKILL_GRAPH } from './skillGraph';
 
-const DAY_MS = 86400000;
-
 export interface VerifiedEvNorthStar {
   samples: number;
   averageEvLossBB?: number;
@@ -60,6 +58,14 @@ export interface AdaptiveCalibrationReport {
   bins: CalibrationBin[];
 }
 
+interface VerifiedEvSnapshot {
+  sessionId: string;
+  items: HistoryItem[];
+  startedAt: number;
+  completedAt: number;
+  averageEvLossBB: number;
+}
+
 function correct(item: HistoryItem): boolean {
   return item.correct ?? item.score >= 8;
 }
@@ -101,28 +107,59 @@ export function isVerifiedEvaluationEv(item: HistoryItem): boolean {
     && Number.isFinite(item.evLossBB);
 }
 
+function completedVerifiedEvSnapshots(history: HistoryItem[], now: number): VerifiedEvSnapshot[] {
+  const bounds = new Map<string, { startedAt: number; completedAt: number }>();
+  const verifiedBySession = new Map<string, HistoryItem[]>();
+
+  for (const item of history) {
+    if (!item.examMode || !item.examSessionId || item.timestamp > now) continue;
+    const existing = bounds.get(item.examSessionId);
+    bounds.set(item.examSessionId, existing ? {
+      startedAt: Math.min(existing.startedAt, item.timestamp),
+      completedAt: Math.max(existing.completedAt, item.timestamp),
+    } : { startedAt: item.timestamp, completedAt: item.timestamp });
+    if (!isVerifiedEvaluationEv(item)) continue;
+    const verified = verifiedBySession.get(item.examSessionId) || [];
+    verified.push(item);
+    verifiedBySession.set(item.examSessionId, verified);
+  }
+
+  return [...verifiedBySession.entries()].map(([sessionId, items]) => {
+    const sessionBounds = bounds.get(sessionId)!;
+    return {
+      sessionId,
+      items,
+      startedAt: sessionBounds.startedAt,
+      completedAt: sessionBounds.completedAt,
+      averageEvLossBB: average(items.map(item => Math.max(0, item.evLossBB || 0)))!,
+    };
+  }).sort((left, right) => left.completedAt - right.completedAt || left.startedAt - right.startedAt || left.sessionId.localeCompare(right.sessionId));
+}
+
 export function verifiedEvNorthStar(history: HistoryItem[], now = Date.now()): VerifiedEvNorthStar {
-  const verified = history.filter(isVerifiedEvaluationEv);
-  const recentStart = now - 7 * DAY_MS;
-  const previousStart = now - 14 * DAY_MS;
-  const recent = verified.filter(item => item.timestamp >= recentStart && item.timestamp <= now);
-  const previous = verified.filter(item => item.timestamp >= previousStart && item.timestamp < recentStart);
+  const verified = history.filter(item => item.timestamp <= now && isVerifiedEvaluationEv(item));
+  const snapshots = completedVerifiedEvSnapshots(history, now);
+  const recentSnapshot = snapshots.length ? snapshots[snapshots.length - 1] : undefined;
+  const previousSnapshot = snapshots.length >= 2 ? snapshots[snapshots.length - 2] : undefined;
+  const recent = recentSnapshot?.items || [];
+  const previous = previousSnapshot?.items || [];
   const allAverage = average(verified.map(item => Math.max(0, item.evLossBB || 0)));
-  const recentAverage = average(recent.map(item => Math.max(0, item.evLossBB || 0)));
-  const previousAverage = average(previous.map(item => Math.max(0, item.evLossBB || 0)));
+  const recentAverage = recentSnapshot?.averageEvLossBB;
+  const previousAverage = previousSnapshot?.averageEvLossBB;
   const delta = recentAverage === undefined || previousAverage === undefined ? undefined : recentAverage - previousAverage;
-  const previousMeasurementAt = previous.length ? Math.max(...previous.map(item => item.timestamp)) : undefined;
-  const recentMeasurementAt = recent.length ? Math.max(...recent.map(item => item.timestamp)) : undefined;
+  const previousMeasurementAt = previousSnapshot?.completedAt;
+  const recentMeasurementStartsAt = recentSnapshot?.startedAt;
   const hasAlignedTrainingInterval = previousMeasurementAt !== undefined
-    && recentMeasurementAt !== undefined
-    && recentMeasurementAt > previousMeasurementAt;
-  // Learning ROI only uses complete question-to-Next dwell evidence strictly between
-  // the compared evaluation measurements. Submit latency (`durationMs`) never falls
-  // back here, and training after the recent evaluation cannot explain its EV delta.
+    && recentMeasurementStartsAt !== undefined
+    && recentMeasurementStartsAt > previousMeasurementAt;
+  // Learning ROI compares the same two completed Hidden Exam snapshots used by the EV
+  // delta. Only complete question-to-Next dwell strictly between exams is causal input:
+  // after the previous exam completes and before the recent exam begins. Submit latency
+  // (`durationMs`), training during an exam, and training after the recent exam never count.
   const trainingMs = hasAlignedTrainingInterval
     ? history
       .filter(item => item.timestamp > previousMeasurementAt
-        && item.timestamp < recentMeasurementAt
+        && item.timestamp < recentMeasurementStartsAt
         && item.trainingType !== 'custom'
         && !isEvaluationAttempt(item))
       .reduce((sum, item) => sum + Math.max(0, item.trainingDwellMs || 0), 0)
