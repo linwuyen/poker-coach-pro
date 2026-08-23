@@ -111,11 +111,22 @@ export function verifiedEvNorthStar(history: HistoryItem[], now = Date.now()): V
   const recentAverage = average(recent.map(item => Math.max(0, item.evLossBB || 0)));
   const previousAverage = average(previous.map(item => Math.max(0, item.evLossBB || 0)));
   const delta = recentAverage === undefined || previousAverage === undefined ? undefined : recentAverage - previousAverage;
-  // Learning ROI only uses complete question-to-Next dwell evidence. Submit latency
-  // (`durationMs`) intentionally does not fall back here because it excludes explanation/probe time.
-  const trainingMs = history
-    .filter(item => item.timestamp >= recentStart && item.timestamp <= now && item.trainingType !== 'custom' && !isEvaluationAttempt(item))
-    .reduce((sum, item) => sum + Math.max(0, item.trainingDwellMs || 0), 0);
+  const previousMeasurementAt = previous.length ? Math.max(...previous.map(item => item.timestamp)) : undefined;
+  const recentMeasurementAt = recent.length ? Math.max(...recent.map(item => item.timestamp)) : undefined;
+  const hasAlignedTrainingInterval = previousMeasurementAt !== undefined
+    && recentMeasurementAt !== undefined
+    && recentMeasurementAt > previousMeasurementAt;
+  // Learning ROI only uses complete question-to-Next dwell evidence strictly between
+  // the compared evaluation measurements. Submit latency (`durationMs`) never falls
+  // back here, and training after the recent evaluation cannot explain its EV delta.
+  const trainingMs = hasAlignedTrainingInterval
+    ? history
+      .filter(item => item.timestamp > previousMeasurementAt
+        && item.timestamp < recentMeasurementAt
+        && item.trainingType !== 'custom'
+        && !isEvaluationAttempt(item))
+      .reduce((sum, item) => sum + Math.max(0, item.trainingDwellMs || 0), 0)
+    : 0;
   const trainingHours = trainingMs / 3600000;
   const learningRoi = delta === undefined || trainingHours <= 0 ? undefined : Math.max(0, -delta) / trainingHours;
   return {
