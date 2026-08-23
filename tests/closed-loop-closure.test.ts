@@ -19,6 +19,14 @@ test('hidden exam waits for the full mixed holdout pool before question one', ()
   assert.match(exam, /initialHistory/);
 });
 
+test('revealed hidden exam cannot replay the same holdout inside one session', () => {
+  const exam = readFileSync('src/features/training/ExamMode.tsx', 'utf8');
+  assert.match(exam, /if\s*\(\s*complete\s*\)\s*return\s*<ExamReport\s+items=\{sessionItems\}\s+onExit=\{onExit\}\s*\/>/);
+  assert.doesNotMatch(exam, /onRestart|再測一次/);
+  assert.match(exam, /答案已揭露；本次 holdout session 不允許立即重考/);
+  assert.match(exam, /data-testid="exam-exit-after-report"/);
+});
+
 test('minimal flip does not guess a target action when exact evidence has multiple alternatives', () => {
   const base = exactMathSemanticScenarios[0];
   const scenario = JSON.parse(JSON.stringify(base)) as Scenario;
