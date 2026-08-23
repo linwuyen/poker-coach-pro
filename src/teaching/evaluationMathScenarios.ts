@@ -87,7 +87,7 @@ function evaluationPotOddsScenario(index: number): Scenario {
   return {
     id: `eval-math-pot-odds-${sequence}`,
     decisionFamilyId: `eval-math-pot-odds-${sequence}`,
-    title: `Hidden Exact EV · Equity ${pct(equity)} vs ${pct(breakEven)}`,
+    title: 'Hidden Exact EV · River Call Decision',
     category: ['Exact Math', 'Pot Odds', 'River', 'Hidden Evaluation'],
     difficulty: sequenceValue(index, 7, 5) < 3 ? '中階' : '進階',
     type: 'Cash Game',
@@ -108,7 +108,6 @@ function evaluationPotOddsScenario(index: number): Scenario {
       communityCards: BOARD.map(card => ({ ...card })),
       description: `Pot before call ${potBeforeCall.toFixed(2)}BB · Call ${callCost.toFixed(2)}BB · Given equity ${pct(equity)}。`,
       potSize: potBeforeCall,
-      potOdds: pct(breakEven),
       options: ['Fold', 'Call'],
       assumptions: ['Showdown equity 是題目提供的精確輸入。', 'Fold 的增量 EV = 0BB。', '此題只存在於 Hidden Exam evaluation generator，不進正常 training pool。'],
       strategySource: 'Exact arithmetic from stated pot, call cost and equity; isolated evaluation generator.',
