@@ -33,6 +33,10 @@ function historyLocks(): HistoryLockManager | undefined {
   return (navigator as Navigator & { locks?: HistoryLockManager }).locks;
 }
 
+function writeHistoryRaw(items: HistoryItem[]): void {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(items.map(normalize)));
+}
+
 export function loadHistory(): HistoryItem[] {
   try {
     const current = localStorage.getItem(HISTORY_KEY);
@@ -41,19 +45,43 @@ export function loadHistory(): HistoryItem[] {
       const legacy = localStorage.getItem(key);
       if (!legacy) continue;
       const migrated = (JSON.parse(legacy) as HistoryItem[]).map(normalize);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(migrated));
+      writeHistoryRaw(migrated);
       return migrated;
     }
     return [];
   } catch { return []; }
 }
 
-export function saveHistory(items: HistoryItem[]): void { localStorage.setItem(HISTORY_KEY, JSON.stringify(items.map(normalize))); }
+export function upsertHistoryItem(items: HistoryItem[], item: HistoryItem): HistoryItem[] {
+  const index = item.attemptId ? items.findIndex(existing => existing.attemptId === item.attemptId) : -1;
+  return index >= 0 ? items.map((existing, itemIndex) => itemIndex === index ? item : existing) : [...items, item];
+}
+
+export function mergeHistorySnapshots(latest: HistoryItem[], incoming: HistoryItem[]): HistoryItem[] {
+  return incoming.reduce((merged, entry) => upsertHistoryItem(merged, entry), [...latest]);
+}
+
+/**
+ * Legacy synchronous callers provide a snapshot rather than a mutator. When Web Locks
+ * exists, serialize that write on the same lock as Hidden Exam and merge it into the
+ * then-current history so a stale snapshot cannot delete attempts committed by another
+ * tab. Replacement semantics belong to updateHistoryCoordinated(() => replacement).
+ */
+export function saveHistory(items: HistoryItem[]): void {
+  const locks = historyLocks();
+  if (!locks?.request) {
+    writeHistoryRaw(items);
+    return;
+  }
+  void locks.request(HISTORY_WRITE_LOCK, { mode: 'exclusive' }, () => {
+    writeHistoryRaw(mergeHistorySnapshots(loadHistory(), items));
+  });
+}
 
 function mutateHistory(mutator: (latest: HistoryItem[]) => HistoryItem[]): HistoryItem[] {
   const latest = loadHistory();
   const next = mutator(latest);
-  saveHistory(next);
+  writeHistoryRaw(next);
   return next;
 }
 
@@ -79,11 +107,6 @@ export async function updateHistoryCoordinated(mutator: (latest: HistoryItem[]) 
   const locks = historyLocks();
   if (!locks?.request) return mutateHistory(mutator);
   return locks.request(HISTORY_WRITE_LOCK, { mode: 'exclusive' }, () => mutateHistory(mutator));
-}
-
-export function upsertHistoryItem(items: HistoryItem[], item: HistoryItem): HistoryItem[] {
-  const index = item.attemptId ? items.findIndex(existing => existing.attemptId === item.attemptId) : -1;
-  return index >= 0 ? items.map((existing, itemIndex) => itemIndex === index ? item : existing) : [...items, item];
 }
 
 export async function persistHistoryItem(item: HistoryItem): Promise<HistoryItem[]> {
