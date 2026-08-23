@@ -20,12 +20,17 @@ function historyItem(values: Partial<HistoryItem> = {}): HistoryItem {
 
 test('verified EV north star accepts only evaluation-grade exact/solver cash BB evidence and aligns ROI dwell between completed exam snapshots',()=>{
   const now=30*DAY;
+  const previousStart=now-10*DAY-3600000;
+  const previousEnd=now-10*DAY+3600000;
+  const recentStart=now-2*DAY-3600000;
+  const recentEnd=now-2*DAY+3600000;
+  const dwellStart=now-6*DAY;
   const history:HistoryItem[]=[
-    historyItem({trainingType:'benchmark',timestamp:now-10*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.8,examMode:true,examSessionId:'exam-a'}),
-    historyItem({trainingType:'benchmark',timestamp:now-2*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.3,durationMs:3600000,examMode:true,examSessionId:'exam-b'}),
-    historyItem({trainingType:'scenario',timestamp:now-6*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:9,durationMs:60000,trainingDwellMs:3600000}),
-    historyItem({trainingType:'scenario',timestamp:now-12*DAY,trainingDwellMs:3*3600000}),
-    historyItem({trainingType:'scenario',timestamp:now-1*DAY,trainingDwellMs:5*3600000}),
+    historyItem({trainingType:'benchmark',timestamp:now-10*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.8,examMode:true,examSessionId:'exam-a',examStartedAt:previousStart,examCompletedAt:previousEnd}),
+    historyItem({trainingType:'benchmark',timestamp:now-2*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.3,durationMs:3600000,examMode:true,examSessionId:'exam-b',examStartedAt:recentStart,examCompletedAt:recentEnd}),
+    historyItem({trainingType:'scenario',timestamp:dwellStart+60000,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:9,durationMs:60000,trainingDwellMs:3600000,trainingDwellStartedAt:dwellStart,trainingDwellCompletedAt:dwellStart+3600000}),
+    historyItem({trainingType:'scenario',timestamp:now-12*DAY,trainingDwellMs:3*3600000,trainingDwellStartedAt:now-12*DAY,trainingDwellCompletedAt:now-12*DAY+3*3600000}),
+    historyItem({trainingType:'scenario',timestamp:now-1*DAY,trainingDwellMs:5*3600000,trainingDwellStartedAt:now-1*DAY,trainingDwellCompletedAt:now-1*DAY+5*3600000}),
     historyItem({trainingType:'benchmark',timestamp:now-2*DAY,truthTier:'expert-baseline',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:7}),
     historyItem({trainingType:'benchmark',timestamp:now-2*DAY,truthTier:'exact-math',gameFormat:'MTT',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:6}),
   ];
@@ -71,8 +76,8 @@ test('exact-math evaluation generator replenishes fresh holdout variants beyond 
 test('learning ROI never substitutes answer latency for complete training dwell',()=>{
   const now=30*DAY;
   const result=verifiedEvNorthStar([
-    historyItem({trainingType:'benchmark',timestamp:now-10*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.8,examMode:true,examSessionId:'exam-a'}),
-    historyItem({trainingType:'benchmark',timestamp:now-2*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.3,examMode:true,examSessionId:'exam-b'}),
+    historyItem({trainingType:'benchmark',timestamp:now-10*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.8,examMode:true,examSessionId:'exam-a',examStartedAt:now-10*DAY-1000,examCompletedAt:now-10*DAY+1000}),
+    historyItem({trainingType:'benchmark',timestamp:now-2*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.3,examMode:true,examSessionId:'exam-b',examStartedAt:now-2*DAY-1000,examCompletedAt:now-2*DAY+1000}),
     historyItem({trainingType:'scenario',timestamp:now-6*DAY,durationMs:3600000}),
   ],now);
   assert.equal(result.trainingHours,0);
@@ -182,6 +187,7 @@ test('closed-loop product surfaces are actually wired into the player flow',()=>
   const training=readFileSync('src/features/training/TrainingSession.tsx','utf8');
   const solver=readFileSync('src/features/training/SolverDecisionSession.tsx','utf8');
   const exam=readFileSync('src/features/training/ExamMode.tsx','utf8');
+  const history=readFileSync('src/utils/history.ts','utf8');
   const tools=readFileSync('src/features/training/AdvancedToolLinks.tsx','utf8');
   assert.match(app,/verifiedEvNorthStar/);
   assert.match(app,/buildKnowledgeStates/);
@@ -194,6 +200,8 @@ test('closed-loop product surfaces are actually wired into the player flow',()=>
   assert.match(table,/predictedSuccessProbability/);
   assert.match(table,/active-learning-signal/);
   assert.match(table,/typeof\s+annotated\.trainingDwellMs\s*===\s*'number'/);
+  assert.match(table,/trainingDwellStartedAt/);
+  assert.match(table,/trainingDwellCompletedAt/);
   assert.doesNotMatch(table,/candidateStartedAt|finalizeTrainingDwell/);
   assert.match(table,/inferScenarioStepSkillIds/);
   assert.match(training,/reasoning-probe/);
@@ -208,7 +216,11 @@ test('closed-loop product surfaces are actually wired into the player flow',()=>
   assert.match(exam,/stableHash\(`exact:\$\{examSessionId\}`\)/);
   assert.match(exam,/highestExactEvaluationSequence\(initialHistory\)/);
   assert.match(exam,/nextIndex\s*>=\s*pool\.length/);
-  assert.match(exam,/saveHistory\(\[\.\.\.latest,\.\.\.fresh\]\)/);
+  assert.match(exam,/await updateHistoryExclusive\(latest=>/);
+  assert.match(exam,/filterFreshEvaluationItems\(latest,committedItems\)/);
+  assert.match(exam,/examStartedAt/);
+  assert.match(exam,/examCompletedAt/);
+  assert.match(history,/locks\.request\(HISTORY_WRITE_LOCK,\s*\{\s*mode:\s*'exclusive'\s*\}/);
   assert.match(exam,/中途退出不留下 transfer\/benchmark evidence/);
   assert.match(exam,/initialHistory/);
   assert.match(exam,/submissionLock\.current/);
