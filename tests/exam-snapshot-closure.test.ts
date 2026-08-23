@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { filterFreshEvaluationItems } from '../src/features/training/ExamMode';
 import { verifiedEvNorthStar } from '../src/learning-engine/closedLoop';
 import type { HistoryItem } from '../src/types';
+import { mergeHistorySnapshots } from '../src/utils/history';
 
 function item(values: Partial<HistoryItem> = {}): HistoryItem {
   return {
@@ -49,13 +49,6 @@ function verifiedExam(
   });
 }
 
-function sourceFiles(root: string): string[] {
-  return readdirSync(root).flatMap(name => {
-    const path = join(root, name);
-    return statSync(path).isDirectory() ? sourceFiles(path) : /\.(ts|tsx)$/.test(name) ? [path] : [];
-  });
-}
-
 test('completed concurrent exam rejects identities exposed since its initial snapshot', () => {
   const latest: HistoryItem[] = [
     item({ attemptId:'first-scenario', trainingType:'benchmark', scenarioId:'shared-scenario', stepId:'river', examMode:true, examSessionId:'exam-a' }),
@@ -77,19 +70,30 @@ test('Hidden Exam commit revalidates exposure inside one exclusive cross-tab his
   const historySource = readFileSync('src/utils/history.ts', 'utf8');
   const examSource = readFileSync('src/features/training/ExamMode.tsx', 'utf8');
   assert.match(historySource, /locks\.request\(HISTORY_WRITE_LOCK,\s*\{\s*mode:\s*'exclusive'\s*\}/);
-  assert.match(historySource, /const latest = loadHistory\(\);[\s\S]*const next = mutator\(latest\);[\s\S]*saveHistory\(next\)/);
+  assert.match(historySource, /const latest = loadHistory\(\);[\s\S]*const next = mutator\(latest\);[\s\S]*writeHistoryRaw\(next\)/);
   assert.match(historySource, /Exclusive history locking is unavailable in this browser/);
   assert.match(examSource, /await updateHistoryExclusive\(latest=>/);
   assert.match(examSource, /filterFreshEvaluationItems\(latest,committedItems\)/);
   assert.doesNotMatch(examSource, /saveHistory\(\[\.\.\.latest,\.\.\.fresh\]\)/);
 });
 
-test('all production history writers coordinate through the central history lock primitive', () => {
-  const directWriters = sourceFiles('src')
-    .filter(path => path !== join('src','utils','history.ts'))
-    .filter(path => /\bsaveHistory\s*\(/.test(readFileSync(path, 'utf8')))
-    .sort();
-  assert.deepEqual(directWriters, []);
+test('legacy snapshot writers share the lock and cannot delete a latest-only exam commit', () => {
+  const latest = [
+    item({ attemptId:'exam-only', trainingType:'benchmark', scenarioId:'exam', stepId:'river', examMode:true, examSessionId:'exam-a' }),
+    item({ attemptId:'shared', scenarioId:'shared', score:4, correct:false }),
+  ];
+  const staleIncoming = [
+    item({ attemptId:'shared', scenarioId:'shared', score:10, correct:true }),
+    item({ attemptId:'new-training', scenarioId:'training-new' }),
+  ];
+  const merged = mergeHistorySnapshots(latest, staleIncoming);
+  assert.deepEqual(merged.map(entry => entry.attemptId), ['exam-only', 'shared', 'new-training']);
+  assert.equal(merged.find(entry => entry.attemptId === 'shared')?.score, 10);
+
+  const historySource = readFileSync('src/utils/history.ts', 'utf8');
+  assert.match(historySource, /export function saveHistory[\s\S]*locks\.request\(HISTORY_WRITE_LOCK,\s*\{\s*mode:\s*'exclusive'\s*\}/);
+  assert.match(historySource, /mergeHistorySnapshots\(loadHistory\(\),\s*items\)/);
+  assert.match(historySource, /Replacement semantics belong to updateHistoryCoordinated/);
 });
 
 test('Learning ROI compares only latest two completed exam snapshots and dwell wholly between their endpoints', () => {
