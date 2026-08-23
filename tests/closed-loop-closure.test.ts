@@ -27,6 +27,16 @@ test('revealed hidden exam cannot replay the same holdout inside one session', (
   assert.match(exam, /data-testid="exam-exit-after-report"/);
 });
 
+test('hidden exam excludes every candidate already exposed in completed history', () => {
+  const exam = readFileSync('src/features/training/ExamMode.tsx', 'utf8');
+  assert.match(exam, /const\s+unseen\s*=\s*\(items:ExamCandidate\[\]\)\s*=>\s*items\.filter\(candidate\s*=>\s*!seen\(candidate\)\)/);
+  assert.match(exam, /unseen\(evaluationCandidates\)/);
+  assert.match(exam, /unseen\(benchmarkCandidates\)/);
+  assert.match(exam, /unseen\(solverCandidates\)/);
+  assert.doesNotMatch(exam, /Number\(seen\(a\)\)\s*-\s*Number\(seen\(b\)\)/);
+  assert.match(exam, /已揭露題目不會再進後續 Hidden Exam/);
+});
+
 test('minimal flip does not guess a target action when exact evidence has multiple alternatives', () => {
   const base = exactMathSemanticScenarios[0];
   const scenario = JSON.parse(JSON.stringify(base)) as Scenario;
