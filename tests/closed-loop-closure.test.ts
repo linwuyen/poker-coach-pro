@@ -27,14 +27,15 @@ test('revealed hidden exam cannot replay the same holdout inside one session', (
   assert.match(exam, /data-testid="exam-exit-after-report"/);
 });
 
-test('hidden exam excludes every candidate already exposed in completed history', () => {
+test('hidden exam excludes previously exposed candidates both at pool build and atomic commit', () => {
   const exam = readFileSync('src/features/training/ExamMode.tsx', 'utf8');
   assert.match(exam, /const\s+unseen\s*=\s*\(items:ExamCandidate\[\]\)\s*=>\s*items\.filter\(candidate\s*=>\s*!seen\(candidate\)\)/);
   assert.match(exam, /unseen\(evaluationCandidates\)/);
   assert.match(exam, /unseen\(benchmarkCandidates\)/);
   assert.match(exam, /unseen\(solverCandidates\)/);
   assert.doesNotMatch(exam, /Number\(seen\(a\)\)\s*-\s*Number\(seen\(b\)\)/);
-  assert.match(exam, /已揭露題目不會再進後續 Hidden Exam/);
+  assert.match(exam, /filterFreshEvaluationItems\(latest,\s*nextItems\)/);
+  assert.match(exam, /commit 當下會再次排除其他並行 Exam 已曝光的 holdout/);
 });
 
 test('minimal flip does not guess a target action when exact evidence has multiple alternatives', () => {
