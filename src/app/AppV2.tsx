@@ -59,7 +59,7 @@ export default function AppV2() {
       {page === 'train' && <TrainPage onStart={startInfinite} onExam={startExam} />}
       {page === 'analysis' && <ProgressPage history={history} metrics={metrics} weaknesses={weaknesses} mastery={mastery} dueCount={dueCount} northStar={northStar} knowledge={knowledge} calibration={calibration} onStart={startInfinite} onExam={startExam} />}
     </>}
-    <SettingsDrawer open={settingsOpen} profile={profile} history={history} starredIds={starredIds} onClose={() => setSettingsOpen(true)} onEditProfile={() => { setSettingsOpen(false); setOnboardingOpen(true); }} onRestore={restoreBackup} />
+    <SettingsDrawer open={settingsOpen} profile={profile} history={history} starredIds={starredIds} onClose={() => setSettingsOpen(false)} onEditProfile={() => { setSettingsOpen(false); setOnboardingOpen(true); }} onRestore={restoreBackup} />
     {onboardingOpen && <Onboarding initial={profile} onComplete={completeOnboarding} />}
   </AppShell>;
 }
