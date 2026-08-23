@@ -16,7 +16,6 @@ const TruthOpsDashboard = lazy(() => import('./features/analysis/TruthOpsDashboa
 const EquityWorkbench = lazy(() => import('./features/learning/EquityWorkbench').then(module => ({ default: module.EquityWorkbench })));
 const RangeReadingTrainer = lazy(() => import('./features/range/RangeReadingTrainer').then(module => ({ default: module.RangeReadingTrainer })));
 const SolverSurfaceLab = lazy(() => import('./features/strategy/SolverSurfaceLab').then(module => ({ default: module.SolverSurfaceLab })));
-const BenchmarkTrainer = lazy(() => import('./features/training/BenchmarkTrainer').then(module => ({ default: module.BenchmarkTrainer })));
 const ContrastiveTrainer = lazy(() => import('./features/training/ContrastiveTrainer').then(module => ({ default: module.ContrastiveTrainer })));
 const CounterfactualTrainer = lazy(() => import('./features/training/CounterfactualTrainer').then(module => ({ default: module.CounterfactualTrainer })));
 const DecisionBoundaryMap = lazy(() => import('./features/training/DecisionBoundaryMap').then(module => ({ default: module.DecisionBoundaryMap })));
@@ -54,10 +53,8 @@ function RootRouter() {
   if (routeKey === '#sizing-trainer') return <ContextualRoute><SizingTrainer onExit={exitLab} /></ContextualRoute>;
   if (routeKey === '#variant-trainer') return <ContextualRoute><VariantTrainer onExit={exitLab} /></ContextualRoute>;
   if (routeKey === '#solver-corpus') return <ContextualRoute><PokerBenchTrainer onExit={exitLab} /></ContextualRoute>;
-  if (routeKey === '#solver-benchmark') return <PokerBenchTrainer onExit={exitLab} mode="benchmark" />;
+  if (routeKey === '#solver-benchmark' || routeKey === '#hidden-benchmark' || routeKey === '#exam-mode') return <ExamMode onExit={exitLab} />;
   if (routeKey === '#strategy-surface') return <SolverSurfaceLab onExit={exitLab} />;
-  if (routeKey === '#hidden-benchmark') return <BenchmarkTrainer onExit={exitLab} />;
-  if (routeKey === '#exam-mode') return <ExamMode onExit={exitLab} />;
   if (routeKey === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
   if (routeKey === '#icm-workbench') return <ContextualRoute><IcmWorkbench onExit={exitLab} /></ContextualRoute>;
   if (routeKey === '#fgs-workbench') return <ContextualRoute><FgsWorkbench onExit={exitLab} /></ContextualRoute>;
