@@ -88,6 +88,17 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
       const step = candidate.scenario.steps.find(candidateStep => candidateStep.id === item.stepId);
       if (step) annotated = { ...annotated, skillIds: inferScenarioStepSkillIds(candidate.scenario, step) };
     }
+    // TrainingSession and SolverDecisionSession both measure submit latency and complete
+    // dwell from the same question-activation clock. Once explicit Next supplies dwell,
+    // these two persisted endpoints are therefore exactly reconstructible rather than
+    // approximated from the later record callback wall clock.
+    if (typeof annotated.trainingDwellMs === 'number' && typeof annotated.durationMs === 'number') {
+      const trainingDwellStartedAt = annotated.trainingDwellStartedAt
+        ?? annotated.timestamp - Math.max(0, annotated.durationMs);
+      const trainingDwellCompletedAt = annotated.trainingDwellCompletedAt
+        ?? trainingDwellStartedAt + Math.max(0, annotated.trainingDwellMs);
+      annotated = { ...annotated, trainingDwellStartedAt, trainingDwellCompletedAt };
+    }
     onRecord(annotated);
 
     // A timing upsert is the same completed attempt with explicit-Next dwell evidence.
