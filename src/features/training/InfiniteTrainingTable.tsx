@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Database, Infinity as InfinityIcon, ShieldCheck, Target } from 'lucide-react';
 import { HistoryItem, Scenario } from '../../types';
 import { coreScenarios } from '../../teaching/scenarioCatalog';
+import { candidateLearningSignal } from '../../learning-engine/closedLoop';
+import { inferScenarioStepSkillIds } from '../../learning-engine/skillGraph';
 import { buildGeneratedVariantPool } from '../../learning-engine/variantGenerator';
 import {
   buildInfiniteCandidatePool,
@@ -14,6 +16,8 @@ import { appendReliabilityEvent } from '../../observability/reliability';
 import { loadPokerBenchSplit, PokerBenchRow } from '../../solver-data/pokerbench';
 import { TrainingSession } from './TrainingSession';
 import { SolverDecisionSession } from './SolverDecisionSession';
+
+type AttemptLearningAnnotation = Pick<HistoryItem, 'predictedSuccessProbability' | 'learningPriorityScore'>;
 
 export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit }: {
   scenarioBank: Scenario[];
@@ -30,6 +34,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
   const [targetedQueue, setTargetedQueue] = useState<InfiniteHandCandidate[]>([]);
   const [targetedActive, setTargetedActive] = useState(false);
   const [targetedReason, setTargetedReason] = useState('');
+  const attemptLearningAnnotations = useRef(new Map<string, AttemptLearningAnnotation>());
 
   const pool = useMemo(
     () => buildInfiniteCandidatePool(scenarioBank, safeVariants, pokerBenchRows),
@@ -39,6 +44,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
     () => summarizeInfinitePool(scenarioBank, safeVariants, pokerBenchRows, pool),
     [scenarioBank, safeVariants, pokerBenchRows, pool],
   );
+  const learningSignal = useMemo(() => candidate ? candidateLearningSignal(candidate, history) : undefined, [candidate, history]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,11 +81,57 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
   }, [candidate, pool, history, recentCandidateIds, recentFamilyIds]);
 
   function record(item: HistoryItem) {
-    onRecord(item);
-    if (item.correct !== false || !candidate) return;
+    const priorPersisted = item.attemptId ? history.find(existing => existing.attemptId === item.attemptId) : undefined;
+    const cachedAnnotation = item.attemptId ? attemptLearningAnnotations.current.get(item.attemptId) : undefined;
+    const signal = candidate ? candidateLearningSignal(candidate, history) : undefined;
+    const stableAnnotation: AttemptLearningAnnotation = {
+      predictedSuccessProbability: item.predictedSuccessProbability
+        ?? cachedAnnotation?.predictedSuccessProbability
+        ?? priorPersisted?.predictedSuccessProbability
+        ?? signal?.predictedSuccessProbability,
+      learningPriorityScore: item.learningPriorityScore
+        ?? cachedAnnotation?.learningPriorityScore
+        ?? priorPersisted?.learningPriorityScore
+        ?? signal?.priorityScore,
+    };
+    if (item.attemptId) {
+      attemptLearningAnnotations.current.set(item.attemptId, stableAnnotation);
+      if (attemptLearningAnnotations.current.size > 256) {
+        const oldestAttemptId = attemptLearningAnnotations.current.keys().next().value as string | undefined;
+        if (oldestAttemptId) attemptLearningAnnotations.current.delete(oldestAttemptId);
+      }
+    }
+    let annotated: HistoryItem = {
+      ...item,
+      ...stableAnnotation,
+    };
+    if (candidate?.kind === 'scenario' && item.stepId) {
+      const step = candidate.scenario.steps.find(candidateStep => candidateStep.id === item.stepId);
+      if (step) annotated = { ...annotated, skillIds: inferScenarioStepSkillIds(candidate.scenario, step) };
+    }
+    // TrainingSession and SolverDecisionSession both measure submit latency and complete
+    // dwell from the same question-activation clock. Once explicit Next supplies dwell,
+    // these two persisted endpoints are therefore exactly reconstructible rather than
+    // approximated from the later record callback wall clock.
+    if (typeof annotated.trainingDwellMs === 'number' && typeof annotated.durationMs === 'number') {
+      const trainingDwellStartedAt = annotated.trainingDwellStartedAt
+        ?? annotated.timestamp - Math.max(0, annotated.durationMs);
+      const trainingDwellCompletedAt = annotated.trainingDwellCompletedAt
+        ?? trainingDwellStartedAt + Math.max(0, annotated.trainingDwellMs);
+      annotated = { ...annotated, trainingDwellStartedAt, trainingDwellCompletedAt };
+    }
+    onRecord(annotated);
+
+    // Timing/reasoning upserts reuse the annotation cached on the first answer callback.
+    // Never recompute prediction from history after the observed outcome is already known.
+    if (typeof annotated.trainingDwellMs === 'number') return;
+
+    const needsRepair = annotated.correct === false || annotated.reasoningProbeResult === 'fail';
+    if (!needsRepair || !candidate) return;
     const repair = selectTargetedReviewCandidates(pool, candidate, [...recentCandidateIds, candidate.id], 3);
     setTargetedQueue(repair);
-    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'candidate-select', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? 'targeted-review' : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
+    const repairReason = annotated.reasoningProbeResult === 'fail' ? 'fragile-reasoning-review' : 'targeted-review';
+    appendReliabilityEvent(localStorage, { schemaVersion: 1, timestamp: Date.now(), operation: 'candidate-select', outcome: repair.length ? 'success' : 'unknown', reasonCode: repair.length ? repairReason : 'no-structural-siblings', dimension: `${candidate.street.toLowerCase()}:${candidate.actionClass}`, value: repair.length });
   }
 
   function advance() {
@@ -118,6 +170,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit 
         <span data-testid="infinite-source" className="rounded-full border border-slate-700 bg-slate-950/45 px-2.5 py-1">{sourceLabel}</span>
         <span className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />{candidate.truthLabel}</span>
         <span data-testid="infinite-dimensions" className="font-mono text-[11px] text-slate-500">{candidate.street} · {candidate.position || '?'} · {candidate.actionClass} · {candidate.stackBand}</span>
+        {learningSignal && <span data-testid="active-learning-signal" className="rounded-full border border-cyan-500/20 bg-cyan-500/8 px-2.5 py-1 text-cyan-200">Learning priority {Math.round(learningSignal.priorityScore * 100)}% · uncertainty {Math.round(learningSignal.uncertainty * 100)}%</span>}
         {(targetedActive || targetedQueue.length > 0) && <span data-testid="targeted-review-status" className="flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/8 px-2.5 py-1 text-amber-200"><Target className="h-3.5 w-3.5" />針對複習 · 尚有 {targetedQueue.length + (targetedActive ? 1 : 0)} 題{targetedReason ? ` · ${targetedReason}` : ''}</span>}
       </div>
       <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] text-slate-500">

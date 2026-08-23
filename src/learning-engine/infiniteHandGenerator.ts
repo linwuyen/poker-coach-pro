@@ -1,5 +1,6 @@
 import { DecisionActionKind, HistoryItem, Scenario, Street } from '../types';
 import { isHiddenBenchmarkScenario } from './benchmark';
+import { candidateLearningSignal } from './closedLoop';
 import { scenarioContextFamilyId } from './contextIdentity';
 import { solverDecisionFamilyId } from './semanticPairs';
 import { solverCorpusRole } from './solverCurriculum';
@@ -258,22 +259,6 @@ export function summarizeInfinitePool(
   };
 }
 
-function historyMatches(candidate: InfiniteHandCandidate, item: HistoryItem): boolean {
-  if (item.decisionFamilyId === candidate.familyId || item.contextFamilyId === candidate.familyId) return true;
-  if (candidate.kind === 'scenario') return item.scenarioId === candidate.scenario.id;
-  return item.datasetRowId === candidate.row.id;
-}
-
-function learningWeight(candidate: InfiniteHandCandidate, history: HistoryItem[], now: number): number {
-  const relevant = history.filter(item => historyMatches(candidate, item)).slice(-40);
-  if (!relevant.length) return 1.35;
-  const misses = relevant.filter(item => item.correct === false).length;
-  const due = relevant.filter(item => typeof item.nextReviewAt === 'number' && item.nextReviewAt <= now).length;
-  const errorBoost = 1 + (misses / relevant.length) * 2.5;
-  const dueBoost = 1 + Math.min(2, due) * 0.75;
-  return errorBoost * dueBoost;
-}
-
 /** Reward strategic dimensions that have been underrepresented in the recent session. */
 export function coverageNoveltyWeight(candidate: InfiniteHandCandidate, recent: InfiniteHandCandidate[]): number {
   if (!recent.length) return 1;
@@ -328,8 +313,9 @@ export function selectNextInfiniteCandidate(
   const source = weightedPick(availableSources, item => {
     const group = sourceGroups.get(item) || [];
     const averageNovelty = group.length ? group.reduce((sum, candidate) => sum + coverageNoveltyWeight(candidate, recentCandidates), 0) / group.length : 1;
-    return SOURCE_TARGET[item] * averageNovelty;
+    const averageLearning = group.length ? group.reduce((sum, candidate) => sum + candidateLearningSignal(candidate, history, now).weight, 0) / group.length : 1;
+    return SOURCE_TARGET[item] * averageNovelty * averageLearning;
   }, random);
   const sourcePool = sourceGroups.get(source) || eligible;
-  return weightedPick(sourcePool, candidate => learningWeight(candidate, history, now) * coverageNoveltyWeight(candidate, recentCandidates), random);
+  return weightedPick(sourcePool, candidate => candidateLearningSignal(candidate, history, now).weight * coverageNoveltyWeight(candidate, recentCandidates), random);
 }

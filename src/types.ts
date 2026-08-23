@@ -44,6 +44,7 @@ export type StrategyMode = 'theory' | 'exploit';
 export type ContextMatchStatus = 'exact' | 'approximate' | 'unsupported';
 export type SolverCorpusRole = 'training' | 'sibling' | 'holdout';
 export type DecisionErrorType = 'none' | 'knowledge-gap' | 'mental-model' | 'sizing-boundary' | 'action-boundary' | 'lucky-guess' | 'fragile-knowledge';
+export type ReasoningProbeResult = 'pass' | 'fail' | 'skipped';
 
 export interface FeedbackEvidence {
   objective?: string;
@@ -140,7 +141,13 @@ export interface HistoryItem {
   bestDecision?: PokerDecisionAction;
   street?: Street;
   position?: string;
+  /** Decision latency: question shown until action submit. */
   durationMs?: number;
+  /** Complete learning dwell: question shown until explicit Next, including explanation/probe reading. */
+  trainingDwellMs?: number;
+  /** Exact wall-clock interval for complete learning dwell; absent means ROI timing is not auditable. */
+  trainingDwellStartedAt?: number;
+  trainingDwellCompletedAt?: number;
   confidence?: ConfidenceLevel;
   correct?: boolean;
   feedbackQuality?: FeedbackQuality;
@@ -171,6 +178,14 @@ export interface HistoryItem {
   contextMatchStatus?: ContextMatchStatus;
   strategyDistance?: number;
   reasoningConceptIds?: string[];
+  reasoningProbeResult?: ReasoningProbeResult;
+  predictedSuccessProbability?: number;
+  learningPriorityScore?: number;
+  examSessionId?: string;
+  examMode?: boolean;
+  /** Exact Hidden Exam session interval stamped atomically on every completed-session item. */
+  examStartedAt?: number;
+  examCompletedAt?: number;
   errorType?: DecisionErrorType;
   solverCorpusRole?: SolverCorpusRole;
   curriculumLevel?: 1 | 2 | 3 | 4 | 5;
