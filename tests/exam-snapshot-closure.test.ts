@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import test from 'node:test';
 import { filterFreshEvaluationItems } from '../src/features/training/ExamMode';
 import { verifiedEvNorthStar } from '../src/learning-engine/closedLoop';
@@ -48,6 +49,13 @@ function verifiedExam(
   });
 }
 
+function sourceFiles(root: string): string[] {
+  return readdirSync(root).flatMap(name => {
+    const path = join(root, name);
+    return statSync(path).isDirectory() ? sourceFiles(path) : /\.(ts|tsx)$/.test(name) ? [path] : [];
+  });
+}
+
 test('completed concurrent exam rejects identities exposed since its initial snapshot', () => {
   const latest: HistoryItem[] = [
     item({ attemptId:'first-scenario', trainingType:'benchmark', scenarioId:'shared-scenario', stepId:'river', examMode:true, examSessionId:'exam-a' }),
@@ -74,6 +82,14 @@ test('Hidden Exam commit revalidates exposure inside one exclusive cross-tab his
   assert.match(examSource, /await updateHistoryExclusive\(latest=>/);
   assert.match(examSource, /filterFreshEvaluationItems\(latest,committedItems\)/);
   assert.doesNotMatch(examSource, /saveHistory\(\[\.\.\.latest,\.\.\.fresh\]\)/);
+});
+
+test('all production history writers coordinate through the central history lock primitive', () => {
+  const directWriters = sourceFiles('src')
+    .filter(path => path !== join('src','utils','history.ts'))
+    .filter(path => /\bsaveHistory\s*\(/.test(readFileSync(path, 'utf8')))
+    .sort();
+  assert.deepEqual(directWriters, []);
 });
 
 test('Learning ROI compares only latest two completed exam snapshots and dwell wholly between their endpoints', () => {
