@@ -196,6 +196,8 @@ test('closed-loop product surfaces are actually wired into the player flow',()=>
   assert.match(app,/#exam-mode/);
   assert.match(main,/#exam-mode/);
   assert.match(main,/#minimal-flip/);
+  assert.match(main,/#solver-benchmark' \|\| routeKey === '#hidden-benchmark' \|\| routeKey === '#exam-mode'/);
+  assert.doesNotMatch(main,/BenchmarkTrainer/);
   assert.match(table,/candidateLearningSignal/);
   assert.match(table,/predictedSuccessProbability/);
   assert.match(table,/active-learning-signal/);
@@ -221,7 +223,8 @@ test('closed-loop product surfaces are actually wired into the player flow',()=>
   assert.match(exam,/examStartedAt/);
   assert.match(exam,/examCompletedAt/);
   assert.match(history,/locks\.request\(HISTORY_WRITE_LOCK,\s*\{\s*mode:\s*'exclusive'\s*\}/);
-  assert.match(exam,/中途退出不留下 transfer\/benchmark evidence/);
+  assert.match(history,/mergeHistorySnapshots\(loadHistory\(\),\s*items\)/);
+  assert.match(exam,/中途退出或 lock 失敗都不留下 evaluation evidence/);
   assert.match(exam,/initialHistory/);
   assert.match(exam,/submissionLock\.current/);
   assert.match(exam,/disabled=\{disabled\}/);
