@@ -12,7 +12,7 @@ import { solverCorpusRole } from '../../learning-engine/solverCurriculum';
 import { buildExactMathEvaluationScenarios } from '../../teaching/evaluationMathScenarios';
 import { decisionsMatch, loadPokerBenchSplit, parsePokerDecision, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow } from '../../solver-data/pokerbench';
 import { ActionType, HistoryItem, Scenario } from '../../types';
-import { createAttemptId, loadHistory, saveHistory } from '../../utils/history';
+import { createAttemptId, loadHistory, updateHistoryExclusive } from '../../utils/history';
 import { humanizeSolverMove, humanizeSolverPostflopLine, humanizeSolverPreflopLine, parseSolverCards } from './SolverDecisionSession';
 
 const EXAM_SIZE = 25;
@@ -51,6 +51,7 @@ export function ExamMode({onExit}:{onExit:()=>void}){
   const [remaining,setRemaining]=useState(TARGET_SECONDS);
   const [submitting,setSubmitting]=useState(false);
   const startedAt=useRef(Date.now());
+  const examStartedAt=useRef(Date.now());
   const submissionLock=useRef(false);
   const [examSessionId]=useState(()=>`exam-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
 
@@ -74,33 +75,40 @@ export function ExamMode({onExit}:{onExit:()=>void}){
   const complete=!loadingSolver&&pool.length>0&&index>=pool.length;
   useEffect(()=>{if(!candidate)return;submissionLock.current=false;setSubmitting(false);setRemaining(TARGET_SECONDS);startedAt.current=Date.now();const timer=window.setInterval(()=>setRemaining(v=>Math.max(0,v-1)),1000);return()=>window.clearInterval(timer);},[candidate?.id]);
 
-  function persist(item:HistoryItem){
+  async function persist(item:HistoryItem):Promise<void>{
     const nextItems=[...sessionItems,item];
     const nextIndex=index+1;
-    setSessionItems(nextItems);
-    // Evaluation evidence is atomic: an abandoned prefix never reaches persistent history.
-    // Exposure is revalidated against the latest persistent history at commit time so
-    // concurrently opened exams cannot persist the same holdout twice as unseen evidence.
     if(nextIndex>=pool.length){
-      const latest=loadHistory();
-      const fresh=filterFreshEvaluationItems(latest,nextItems);
-      saveHistory([...latest,...fresh]);
+      let committedItems:HistoryItem[]=[];
+      await updateHistoryExclusive(latest=>{
+        const examCompletedAt=Date.now();
+        committedItems=nextItems.map(entry=>({...entry,examStartedAt:examStartedAt.current,examCompletedAt}));
+        const fresh=filterFreshEvaluationItems(latest,committedItems);
+        return [...latest,...fresh];
+      });
+      // Do not reveal the report until the exclusive commit succeeds.
+      setSessionItems(committedItems);
+      setIndex(nextIndex);
+      return;
     }
+    setSessionItems(nextItems);
     setIndex(nextIndex);
   }
 
-  function answerScenario(action:ActionType){
+  async function answerScenario(action:ActionType){
     if(!candidate||candidate.kind!=='scenario'||submissionLock.current)return;
     const scenario=candidate.scenario;const step=scenario.steps[candidate.stepIndex];const feedback=step?.feedbacks[action];if(!step||!feedback)return;
     submissionLock.current=true;setSubmitting(true);const now=Date.now();const correct=feedback.score>=8;
     const hasVerifiedCashEv=scenario.type==='Cash Game'&&typeof feedback.evidence?.evLossBB==='number'&&Number.isFinite(feedback.evidence.evLossBB)&&(feedback.evidence.sourceConfidence==='exact-math'||feedback.evidence.sourceConfidence==='verified-solver');
-    persist({schemaVersion:6,attemptId:createAttemptId(),trainingType:'benchmark',scenarioId:scenario.id,decisionFamilyId:scenario.decisionFamilyId||scenario.id,stepId:step.id,masteryKey:makeMasteryKey(scenario.decisionFamilyId||scenario.id,step.id),skillIds:inferScenarioStepSkillIds(scenario,step),situationIds:inferSituationIdsFromScenarioStep(scenario,step),category:[...(scenario.category||[]),...(step.conceptIds||[]),'Hidden Exam'],score:feedback.score,judgment:feedback.judgment,timestamp:now,selectedAction:action,bestAction:feedback.bestAction,street:step.street,position:scenario.position,durationMs:now-startedAt.current,correct,feedbackQuality:correct?'best':'major-error',chosenEvBB:feedback.evidence?.actionEvBB,bestEvBB:feedback.evidence?.bestEvBB,evLossBB:feedback.evidence?.evLossBB,truthTier:feedback.evidence?.sourceConfidence||'expert-baseline',difficultyWeight:getDifficultyWeight(scenario.difficulty),isReview:false,isDelayedReview:false,isUnseen:!initialHistory.some(entry=>entry.trainingType==='benchmark'&&entry.scenarioId===scenario.id&&entry.stepId===step.id),isTransferTest:true,transferLevel:'structural',questionLabel:scenario.title,gameFormat:scenario.type==='Tournament'?'MTT':'Cash',contextFamilyId:scenarioContextFamilyId(scenario),utilityUnit:hasVerifiedCashEv?'bb':undefined,utilityModel:hasVerifiedCashEv?'cash-chip-ev':undefined,examSessionId,examMode:true,notes:`Hidden exam. ${remaining===0?'30-second target exceeded.':'Answered inside 30-second target.'} Feedback withheld until exam completion; persistence is atomic.`});
+    const item:HistoryItem={schemaVersion:6,attemptId:createAttemptId(),trainingType:'benchmark',scenarioId:scenario.id,decisionFamilyId:scenario.decisionFamilyId||scenario.id,stepId:step.id,masteryKey:makeMasteryKey(scenario.decisionFamilyId||scenario.id,step.id),skillIds:inferScenarioStepSkillIds(scenario,step),situationIds:inferSituationIdsFromScenarioStep(scenario,step),category:[...(scenario.category||[]),...(step.conceptIds||[]),'Hidden Exam'],score:feedback.score,judgment:feedback.judgment,timestamp:now,selectedAction:action,bestAction:feedback.bestAction,street:step.street,position:scenario.position,durationMs:now-startedAt.current,correct,feedbackQuality:correct?'best':'major-error',chosenEvBB:feedback.evidence?.actionEvBB,bestEvBB:feedback.evidence?.bestEvBB,evLossBB:feedback.evidence?.evLossBB,truthTier:feedback.evidence?.sourceConfidence||'expert-baseline',difficultyWeight:getDifficultyWeight(scenario.difficulty),isReview:false,isDelayedReview:false,isUnseen:!initialHistory.some(entry=>entry.trainingType==='benchmark'&&entry.scenarioId===scenario.id&&entry.stepId===step.id),isTransferTest:true,transferLevel:'structural',questionLabel:scenario.title,gameFormat:scenario.type==='Tournament'?'MTT':'Cash',contextFamilyId:scenarioContextFamilyId(scenario),utilityUnit:hasVerifiedCashEv?'bb':undefined,utilityModel:hasVerifiedCashEv?'cash-chip-ev':undefined,examSessionId,examMode:true,examStartedAt:examStartedAt.current,notes:`Hidden exam. ${remaining===0?'30-second target exceeded.':'Answered inside 30-second target.'} Feedback withheld until exam completion; persistence is atomic.`};
+    try{await persist(item);}catch{submissionLock.current=false;setSubmitting(false);}
   }
 
-  function answerSolver(move:string){
+  async function answerSolver(move:string){
     if(!candidate||candidate.kind!=='solver'||submissionLock.current)return;
     submissionLock.current=true;setSubmitting(true);const row=candidate.row;const now=Date.now();const correct=decisionsMatch(move,row.correctDecision);const selected=parsePokerDecision(move);const best=parsePokerDecision(row.correctDecision);const family=solverDecisionFamilyId(row);
-    persist({schemaVersion:6,attemptId:createAttemptId(),trainingType:'solver-benchmark',scenarioId:`exam-solver:${row.split}:${row.id}`,decisionFamilyId:family,stepId:'solver-decision',masteryKey:makeMasteryKey(family,'solver-decision'),skillIds:[row.split==='preflop'?'preflop.solver-decision':'postflop.solver-decision'],situationIds:[`situation.position.${row.heroPosition.toLowerCase()}`,row.split==='preflop'?'situation.street.preflop':`situation.street.${row.evaluationAt.toLowerCase()}`],category:['PokerBench','Hidden Exam',row.split==='preflop'?'Preflop':row.evaluationAt],score:correct?10:0,judgment:correct?'正確':'錯誤',timestamp:now,selectedAction:move,bestAction:row.correctDecision,selectedDecision:selected.action,bestDecision:best.action,street:row.split==='preflop'?'Preflop':row.evaluationAt,position:row.heroPosition,durationMs:now-startedAt.current,correct,feedbackQuality:correct?'best':'major-error',truthTier:'verified-solver',truthSourceId:POKERBENCH_SOURCE.id,truthSourceRef:POKERBENCH_SOURCE.dataset,truthSourceLicense:POKERBENCH_SOURCE.license,truthSourceRevision:POKERBENCH_SOURCE.revision,datasetSplit:POKERBENCH_FILES[row.split].split,datasetRowId:row.id,isReview:false,isDelayedReview:false,isUnseen:!initialHistory.some(entry=>entry.trainingType==='solver-benchmark'&&entry.datasetRowId===row.id),isTransferTest:true,transferLevel:'structural',solverCorpusRole:'holdout',gameFormat:'Cash',examSessionId,examMode:true,questionLabel:`Hidden Solver · ${row.holding}`,notes:`${POKERBENCH_SOURCE.label} holdout row. Exact optimal label only; feedback withheld until exam completion; persistence is atomic.`});
+    const item:HistoryItem={schemaVersion:6,attemptId:createAttemptId(),trainingType:'solver-benchmark',scenarioId:`exam-solver:${row.split}:${row.id}`,decisionFamilyId:family,stepId:'solver-decision',masteryKey:makeMasteryKey(family,'solver-decision'),skillIds:[row.split==='preflop'?'preflop.solver-decision':'postflop.solver-decision'],situationIds:[`situation.position.${row.heroPosition.toLowerCase()}`,row.split==='preflop'?'situation.street.preflop':`situation.street.${row.evaluationAt.toLowerCase()}`],category:['PokerBench','Hidden Exam',row.split==='preflop'?'Preflop':row.evaluationAt],score:correct?10:0,judgment:correct?'正確':'錯誤',timestamp:now,selectedAction:move,bestAction:row.correctDecision,selectedDecision:selected.action,bestDecision:best.action,street:row.split==='preflop'?'Preflop':row.evaluationAt,position:row.heroPosition,durationMs:now-startedAt.current,correct,feedbackQuality:correct?'best':'major-error',truthTier:'verified-solver',truthSourceId:POKERBENCH_SOURCE.id,truthSourceRef:POKERBENCH_SOURCE.dataset,truthSourceLicense:POKERBENCH_SOURCE.license,truthSourceRevision:POKERBENCH_SOURCE.revision,datasetSplit:POKERBENCH_FILES[row.split].split,datasetRowId:row.id,isReview:false,isDelayedReview:false,isUnseen:!initialHistory.some(entry=>entry.trainingType==='solver-benchmark'&&entry.datasetRowId===row.id),isTransferTest:true,transferLevel:'structural',solverCorpusRole:'holdout',gameFormat:'Cash',examSessionId,examMode:true,examStartedAt:examStartedAt.current,questionLabel:`Hidden Solver · ${row.holding}`,notes:`${POKERBENCH_SOURCE.label} holdout row. Exact optimal label only; feedback withheld until exam completion; persistence is atomic.`};
+    try{await persist(item);}catch{submissionLock.current=false;setSubmitting(false);}
   }
 
   if(loadingSolver)return <div className="grid min-h-screen place-items-center bg-slate-950 text-sm text-slate-500">正在建立 hidden exam pool…</div>;
@@ -117,7 +125,7 @@ export function ExamMode({onExit}:{onExit:()=>void}){
         </div>
         <div className={`flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-xs ${remaining>0?'border-slate-700 text-slate-300':'border-red-500/30 bg-red-500/8 text-red-300'}`}><Timer className="h-4 w-4"/>{remaining}s</div>
       </header>
-      <section className="rounded-3xl border border-amber-500/20 bg-amber-500/5 p-5"><div className="flex items-center gap-2 text-xs font-semibold text-amber-200"><EyeOff className="h-4 w-4"/>Exam isolation</div><p className="mt-2 text-sm leading-6 text-slate-400">每個新的 Exam snapshot 都建立新的 isolated exact-math EV variant block，再與 initial history 尚未曝光的 hidden scenario holdout、PokerBench holdout 混合。每題作答只暫存在本次 session；完成整場後才原子寫入 evaluation history，且 commit 當下會再次排除其他並行 Exam 已曝光的 holdout。中途退出不留下 transfer/benchmark evidence。</p></section>
+      <section className="rounded-3xl border border-amber-500/20 bg-amber-500/5 p-5"><div className="flex items-center gap-2 text-xs font-semibold text-amber-200"><EyeOff className="h-4 w-4"/>Exam isolation</div><p className="mt-2 text-sm leading-6 text-slate-400">每個新的 Exam snapshot 都建立新的 isolated exact-math EV variant block，再與 initial history 尚未曝光的 hidden scenario holdout、PokerBench holdout 混合。每題作答只暫存在本次 session；完成整場後才取得 cross-tab exclusive history lock，在同一個 lock 內重讀 exposure、過濾重複 holdout、原子寫入，成功後才揭露報告。中途退出或 lock 失敗都不留下 evaluation evidence。</p></section>
       {candidate.kind==='scenario'?<ScenarioExamCard candidate={candidate} disabled={submitting} onAnswer={answerScenario}/>:<SolverExamCard row={candidate.row} disabled={submitting} onAnswer={answerSolver}/>} 
     </div>
   </div>;
