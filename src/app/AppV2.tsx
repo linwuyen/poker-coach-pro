@@ -10,7 +10,7 @@ import { SettingsDrawer } from '../features/settings/SettingsDrawer';
 import { loadPlayerProfile, savePlayerProfile } from '../domain/playerProfile';
 import { calculateMastery, getLearningMetrics, getWeaknessInsights, isHistoryCorrect, WeaknessInsight } from '../learning-engine';
 import { adaptiveCalibrationReport, buildKnowledgeStates, SkillKnowledgeState, verifiedEvNorthStar, VerifiedEvNorthStar } from '../learning-engine/closedLoop';
-import { loadHistory, saveHistory, TrainingBackup } from '../utils/history';
+import { loadHistory, persistHistoryItem, TrainingBackup, updateHistoryCoordinated, upsertHistoryItem } from '../utils/history';
 
 const TRAINING_TYPES = new Set(['scenario', 'counterfactual', 'solver-corpus', 'transfer']);
 
@@ -37,15 +37,18 @@ export default function AppV2() {
   const changePage = (next: AppPage) => { setSessionOpen(false); setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const startInfinite = () => { setSessionOpen(true); setPage('train'); window.scrollTo({ top: 0 }); };
   const startExam = () => { window.location.hash = '#exam-mode'; };
-  const recordHistory = (item: HistoryItem) => setHistory(previous => {
-    const index = item.attemptId ? previous.findIndex(existing => existing.attemptId === item.attemptId) : -1;
-    const updated = index >= 0 ? previous.map((existing, itemIndex) => itemIndex === index ? item : existing) : [...previous, item];
-    saveHistory(updated);
-    return updated;
-  });
+  const recordHistory = (item: HistoryItem) => {
+    setHistory(previous => upsertHistoryItem(previous, item));
+    void persistHistoryItem(item)
+      .then(committed => setHistory(committed))
+      .catch(() => setHistory(loadHistory()));
+  };
   const completeOnboarding = (next: PlayerProfile) => { setProfile(savePlayerProfile(next)); setOnboardingOpen(false); };
   const restoreBackup = (backup: TrainingBackup) => {
-    saveHistory(backup.history); setHistory(backup.history);
+    setHistory(backup.history);
+    void updateHistoryCoordinated(() => backup.history)
+      .then(committed => setHistory(committed))
+      .catch(() => setHistory(loadHistory()));
     localStorage.setItem('poker_starred_ids', JSON.stringify(backup.starredIds || []));
     if (backup.playerProfile) setProfile(savePlayerProfile(backup.playerProfile));
   };
@@ -56,7 +59,7 @@ export default function AppV2() {
       {page === 'train' && <TrainPage onStart={startInfinite} onExam={startExam} />}
       {page === 'analysis' && <ProgressPage history={history} metrics={metrics} weaknesses={weaknesses} mastery={mastery} dueCount={dueCount} northStar={northStar} knowledge={knowledge} calibration={calibration} onStart={startInfinite} onExam={startExam} />}
     </>}
-    <SettingsDrawer open={settingsOpen} profile={profile} history={history} starredIds={starredIds} onClose={() => setSettingsOpen(false)} onEditProfile={() => { setSettingsOpen(false); setOnboardingOpen(true); }} onRestore={restoreBackup} />
+    <SettingsDrawer open={settingsOpen} profile={profile} history={history} starredIds={starredIds} onClose={() => setSettingsOpen(true)} onEditProfile={() => { setSettingsOpen(false); setOnboardingOpen(true); }} onRestore={restoreBackup} />
     {onboardingOpen && <Onboarding initial={profile} onComplete={completeOnboarding} />}
   </AppShell>;
 }
