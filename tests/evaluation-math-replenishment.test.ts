@@ -3,7 +3,7 @@ import test from 'node:test';
 import { buildExactMathEvaluationScenarios } from '../src/teaching/evaluationMathScenarios';
 import { scenarios as scenarioCatalog } from '../src/teaching/scenarioCatalog';
 
-test('replenished exact-math holdouts do not expose a sequence-to-answer shortcut', () => {
+test('replenished exact-math holdouts do not expose answer shortcuts before evaluation', () => {
   const generated = buildExactMathEvaluationScenarios(64000, 128);
   const catalogIds = new Set(scenarioCatalog.map(scenario => scenario.id));
   const bestActionsByIdParity = [new Set<string>(), new Set<string>()];
@@ -13,6 +13,9 @@ test('replenished exact-math holdouts do not expose a sequence-to-answer shortcu
   assert.ok(generated.every(scenario => scenario.benchmarkRole === 'holdout'));
   assert.ok(generated.every(scenario => !catalogIds.has(scenario.id)));
   assert.ok(generated.every(scenario => !/#\d+/.test(scenario.title)));
+  assert.ok(generated.every(scenario => !/%|break-even|門檻/i.test(scenario.title)));
+  assert.ok(generated.every(scenario => scenario.steps[0].potOdds === undefined));
+  assert.ok(generated.every(scenario => !/break-even|門檻/i.test(scenario.steps[0].description)));
 
   for (const scenario of generated) {
     const match = /^eval-math-pot-odds-(\d+)$/.exec(scenario.id);
