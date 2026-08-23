@@ -145,6 +145,9 @@ export interface HistoryItem {
   durationMs?: number;
   /** Complete learning dwell: question shown until explicit Next, including explanation/probe reading. */
   trainingDwellMs?: number;
+  /** Exact wall-clock interval for complete learning dwell; absent means ROI timing is not auditable. */
+  trainingDwellStartedAt?: number;
+  trainingDwellCompletedAt?: number;
   confidence?: ConfidenceLevel;
   correct?: boolean;
   feedbackQuality?: FeedbackQuality;
@@ -180,6 +183,9 @@ export interface HistoryItem {
   learningPriorityScore?: number;
   examSessionId?: string;
   examMode?: boolean;
+  /** Exact Hidden Exam session interval stamped atomically on every completed-session item. */
+  examStartedAt?: number;
+  examCompletedAt?: number;
   errorType?: DecisionErrorType;
   solverCorpusRole?: SolverCorpusRole;
   curriculumLevel?: 1 | 2 | 3 | 4 | 5;
