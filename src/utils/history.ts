@@ -2,7 +2,12 @@ import { ConfidenceLevel, HistoryItem, PlayerProfile } from '../types';
 import { getHistoryMasteryKey, isHistoryCorrect } from '../learning-engine';
 
 export const HISTORY_KEY = 'poker_training_history_v6';
+const HISTORY_WRITE_LOCK = `${HISTORY_KEY}:exclusive-write`;
 const LEGACY_HISTORY_KEYS = ['poker_training_history_v5', 'poker_training_history_v4', 'poker_training_history_v3', 'poker_training_history_v2'];
+
+type HistoryLockManager = {
+  request<T>(name: string, options: { mode: 'exclusive' }, callback: () => T | Promise<T>): Promise<T>;
+};
 
 const normalize = (item: HistoryItem, index: number): HistoryItem => {
   const timestamp = Number.isFinite(item.timestamp) ? item.timestamp : Date.now();
@@ -39,6 +44,27 @@ export function loadHistory(): HistoryItem[] {
 }
 
 export function saveHistory(items: HistoryItem[]): void { localStorage.setItem(HISTORY_KEY, JSON.stringify(items.map(normalize))); }
+
+/**
+ * Serialize a full history read-modify-write across same-origin tabs.
+ * Hidden evaluation commits must use this primitive so exposure revalidation and
+ * persistence observe one exclusive snapshot. If Web Locks is unavailable, callers
+ * fail closed rather than silently weakening evaluation isolation.
+ */
+export async function updateHistoryExclusive(mutator: (latest: HistoryItem[]) => HistoryItem[]): Promise<HistoryItem[]> {
+  const maybeNavigator = typeof navigator === 'undefined'
+    ? undefined
+    : navigator as Navigator & { locks?: HistoryLockManager };
+  const locks = maybeNavigator?.locks;
+  if (!locks?.request) throw new Error('Exclusive history locking is unavailable in this browser.');
+  return locks.request(HISTORY_WRITE_LOCK, { mode: 'exclusive' }, () => {
+    const latest = loadHistory();
+    const next = mutator(latest);
+    saveHistory(next);
+    return next;
+  });
+}
+
 export function clearHistory(): void { localStorage.removeItem(HISTORY_KEY); LEGACY_HISTORY_KEYS.forEach(key => localStorage.removeItem(key)); }
 export function createAttemptId(): string { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 
