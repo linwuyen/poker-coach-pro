@@ -18,11 +18,11 @@ function historyItem(values: Partial<HistoryItem> = {}): HistoryItem {
   return { schemaVersion:6, attemptId:values.attemptId||Math.random().toString(36), trainingType:'scenario', scenarioId:'family-a', category:['Exact Math','Pot Odds'], score:10, judgment:'正確', timestamp:1, correct:true, ...values };
 }
 
-test('verified EV north star accepts only evaluation-grade exact/solver cash BB evidence and aligns ROI dwell between measurements',()=>{
+test('verified EV north star accepts only evaluation-grade exact/solver cash BB evidence and aligns ROI dwell between completed exam snapshots',()=>{
   const now=30*DAY;
   const history:HistoryItem[]=[
-    historyItem({trainingType:'benchmark',timestamp:now-10*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.8}),
-    historyItem({trainingType:'benchmark',timestamp:now-2*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.3,durationMs:3600000}),
+    historyItem({trainingType:'benchmark',timestamp:now-10*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.8,examMode:true,examSessionId:'exam-a'}),
+    historyItem({trainingType:'benchmark',timestamp:now-2*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.3,durationMs:3600000,examMode:true,examSessionId:'exam-b'}),
     historyItem({trainingType:'scenario',timestamp:now-6*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:9,durationMs:60000,trainingDwellMs:3600000}),
     historyItem({trainingType:'scenario',timestamp:now-12*DAY,trainingDwellMs:3*3600000}),
     historyItem({trainingType:'scenario',timestamp:now-1*DAY,trainingDwellMs:5*3600000}),
@@ -71,8 +71,8 @@ test('exact-math evaluation generator replenishes fresh holdout variants beyond 
 test('learning ROI never substitutes answer latency for complete training dwell',()=>{
   const now=30*DAY;
   const result=verifiedEvNorthStar([
-    historyItem({trainingType:'benchmark',timestamp:now-10*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.8}),
-    historyItem({trainingType:'benchmark',timestamp:now-2*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.3}),
+    historyItem({trainingType:'benchmark',timestamp:now-10*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.8,examMode:true,examSessionId:'exam-a'}),
+    historyItem({trainingType:'benchmark',timestamp:now-2*DAY,truthTier:'exact-math',gameFormat:'Cash',utilityUnit:'bb',utilityModel:'cash-chip-ev',evLossBB:0.3,examMode:true,examSessionId:'exam-b'}),
     historyItem({trainingType:'scenario',timestamp:now-6*DAY,durationMs:3600000}),
   ],now);
   assert.equal(result.trainingHours,0);
