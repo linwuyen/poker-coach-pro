@@ -38,7 +38,8 @@ test('hidden exam excludes previously exposed candidates at pool build and reval
   assert.match(exam, /await updateHistoryExclusive\(latest=>/);
   assert.match(exam, /filterFreshEvaluationItems\(latest,committedItems\)/);
   assert.match(history, /locks\.request\(HISTORY_WRITE_LOCK,\s*\{\s*mode:\s*'exclusive'\s*\}/);
-  assert.match(exam, /commit 當下會再次排除其他並行 Exam 已曝光的 holdout/);
+  assert.match(exam, /取得 cross-tab exclusive history lock/);
+  assert.match(exam, /中途退出或 lock 失敗都不留下 evaluation evidence/);
 });
 
 test('minimal flip does not guess a target action when exact evidence has multiple alternatives', () => {
