@@ -42,28 +42,39 @@ function exactFeedback(
   };
 }
 
+function sequenceValue(index: number, modulus: number, multiplier: number, offset = 0): number {
+  const normalized = Math.abs(Math.trunc(index)) % modulus;
+  return (Math.imul(normalized, multiplier) + offset) % modulus;
+}
+
 function evaluationPotOddsScenario(index: number): Scenario {
-  // Odd/quarter-BB inputs are deliberately disjoint from the training exact-math bank.
-  const potBeforeCall = 9 + index * 1.25;
-  const callCost = 2.25 + (index % 4) * 1.25;
+  // Large coprime cycles keep the generated cash-BB inputs realistic while supplying
+  // a practical lifetime of fresh exact-math variants. Every displayed input is
+  // quantized before EV is calculated, so the visible problem is the exact truth source.
+  const potBeforeCall = (800 + sequenceValue(index, 997, 619) * 4) / 100;
+  const callCost = (150 + sequenceValue(index, 991, 487, 31)) / 100;
   const breakEven = callCost / (potBeforeCall + callCost);
   const direction = index % 2 === 0 ? -1 : 1;
-  const equity = Math.max(0.05, Math.min(0.9, breakEven + direction * (0.017 + (index % 3) * 0.005)));
+  const marginBps = 125 + (sequenceValue(index, 983, 337, 17) % 176);
+  const breakEvenBps = Math.round(breakEven * 10000);
+  const equityBps = Math.max(500, Math.min(9000, breakEvenBps + direction * marginBps));
+  const equity = equityBps / 10000;
   const callEv = equity * (potBeforeCall + callCost) - callCost;
   const bestAction: ActionType = callEv >= 0 ? 'Call' : 'Fold';
   const bestEvBB = Math.max(0, callEv);
-  const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
+  const pct = (value: number) => `${(value * 100).toFixed(2)}%`;
   const why = callEv >= 0
     ? `Given equity ${pct(equity)} is above break-even ${pct(breakEven)}; Call EV = +${callEv.toFixed(3)}BB.`
     : `Given equity ${pct(equity)} is below break-even ${pct(breakEven)}; Call EV = ${callEv.toFixed(3)}BB while Fold EV = 0BB.`;
   const reversal = `若 showdown equity 跨過 ${pct(breakEven)}，最佳動作會在 Fold / Call 之間反轉。`;
+  const sequence = Math.max(0, Math.trunc(index)) + 1;
 
   return {
-    id: `eval-math-pot-odds-${index + 1}`,
-    decisionFamilyId: `eval-math-pot-odds-${index + 1}`,
-    title: `Hidden Exact EV #${index + 1} · Equity ${pct(equity)} vs ${pct(breakEven)}`,
+    id: `eval-math-pot-odds-${sequence}`,
+    decisionFamilyId: `eval-math-pot-odds-${sequence}`,
+    title: `Hidden Exact EV #${sequence} · Equity ${pct(equity)} vs ${pct(breakEven)}`,
     category: ['Exact Math', 'Pot Odds', 'River', 'Hidden Evaluation'],
-    difficulty: index < 6 ? '中階' : '進階',
+    difficulty: sequenceValue(index, 7, 5) < 3 ? '中階' : '進階',
     type: 'Cash Game',
     blinds: '1/2',
     ante: false,
@@ -84,8 +95,8 @@ function evaluationPotOddsScenario(index: number): Scenario {
       potSize: potBeforeCall,
       potOdds: pct(breakEven),
       options: ['Fold', 'Call'],
-      assumptions: ['Showdown equity 是題目提供的精確輸入。', 'Fold 的增量 EV = 0BB。', '此題只存在於 Hidden Exam evaluation bank，不進正常 training pool。'],
-      strategySource: 'Exact arithmetic from stated pot, call cost and equity; isolated evaluation bank.',
+      assumptions: ['Showdown equity 是題目提供的精確輸入。', 'Fold 的增量 EV = 0BB。', '此題只存在於 Hidden Exam evaluation generator，不進正常 training pool。'],
+      strategySource: 'Exact arithmetic from stated pot, call cost and equity; isolated evaluation generator.',
       conceptIds: ['math.pot-odds', 'math.equity', 'decision.boundary'],
       feedbacks: {
         Fold: exactFeedback(bestAction, 'Fold', why, 0, bestEvBB, reversal),
@@ -95,7 +106,12 @@ function evaluationPotOddsScenario(index: number): Scenario {
   };
 }
 
-export const exactMathEvaluationScenarios: Scenario[] = Array.from(
-  { length: 16 },
-  (_, index) => evaluationPotOddsScenario(index),
-);
+export function buildExactMathEvaluationScenarios(startIndex = 0, count = 16): Scenario[] {
+  const start = Math.max(0, Math.trunc(startIndex));
+  const size = Math.max(0, Math.trunc(count));
+  return Array.from({ length: size }, (_, offset) => evaluationPotOddsScenario(start + offset));
+}
+
+// Stable seed bank kept for regression/audit. Production Hidden Exam requests a fresh
+// deterministic block per exam snapshot through buildExactMathEvaluationScenarios(...).
+export const exactMathEvaluationScenarios: Scenario[] = buildExactMathEvaluationScenarios(0, 16);
