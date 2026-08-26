@@ -1,4 +1,4 @@
-name: Persistent Settings Refactor
+name: State Persistence Regression
 
 on:
   push:
@@ -26,8 +26,8 @@ jobs:
       - name: Dependency security audit
         run: npm audit --audit-level=high
 
-      - name: Verify codemod is fully applied
-        run: node scripts/refactor-persistent-settings.mjs
+      - name: Validate persistence contracts
+        run: npx tsx --test tests/settingsPersistence.test.ts tests/history.test.ts
 
-      - name: Validate application
-        run: npm run check && npm run build:web
+      - name: Type-check persistence integration
+        run: npm run lint
