@@ -13,6 +13,10 @@ function definedFeedbacks(scenario: Scenario) {
   return scenario.steps.flatMap(step => Object.values(step.feedbacks).filter(Boolean));
 }
 
+function round3(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
 function assertExactMathEvidence(scenario: Scenario): void {
   assert.ok(scenario.steps.length > 0, `${scenario.id}: exact-math scenario has no steps`);
   for (const step of scenario.steps) {
@@ -20,12 +24,24 @@ function assertExactMathEvidence(scenario: Scenario): void {
     const feedbacks = Object.values(step.feedbacks).filter(Boolean);
     assert.ok(feedbacks.length >= 2, `${scenario.id}/${step.id}: exact-math decision needs at least two graded actions`);
     for (const feedback of feedbacks) {
-      assert.equal(feedback!.evidence?.sourceConfidence, 'exact-math', `${scenario.id}/${step.id}: every graded action must retain exact-math provenance`);
-      assert.equal(typeof feedback!.evidence?.actionEvBB, 'number', `${scenario.id}/${step.id}: action EV must be recomputable`);
-      assert.equal(typeof feedback!.evidence?.bestEvBB, 'number', `${scenario.id}/${step.id}: best EV must be recomputable`);
-      assert.equal(typeof feedback!.evidence?.evLossBB, 'number', `${scenario.id}/${step.id}: EV loss must be explicit`);
-      assert.ok(feedback!.evidence?.objective, `${scenario.id}/${step.id}: exact-math objective is missing`);
-      assert.ok(feedback!.evidence?.reversals?.length, `${scenario.id}/${step.id}: exact reversal evidence is missing`);
+      const evidence = feedback!.evidence;
+      assert.equal(evidence?.sourceConfidence, 'exact-math', `${scenario.id}/${step.id}: every graded action must retain exact-math provenance`);
+
+      const actionEvBB = evidence?.actionEvBB;
+      const bestEvBB = evidence?.bestEvBB;
+      const evLossBB = evidence?.evLossBB;
+      assert.ok(Number.isFinite(actionEvBB), `${scenario.id}/${step.id}: action EV must be finite`);
+      assert.ok(Number.isFinite(bestEvBB), `${scenario.id}/${step.id}: best EV must be finite`);
+      assert.ok(Number.isFinite(evLossBB), `${scenario.id}/${step.id}: EV loss must be finite`);
+
+      const expectedEvLossBB = round3(bestEvBB! - actionEvBB!);
+      assert.ok(
+        Math.abs(evLossBB! - expectedEvLossBB) <= Number.EPSILON * 8,
+        `${scenario.id}/${step.id}: EV loss identity mismatch; expected ${expectedEvLossBB}BB from bestEvBB - actionEvBB, got ${evLossBB}BB`,
+      );
+      assert.ok(evLossBB! >= 0, `${scenario.id}/${step.id}: exact EV loss cannot be negative`);
+      assert.ok(evidence?.objective, `${scenario.id}/${step.id}: exact-math objective is missing`);
+      assert.ok(evidence?.reversals?.length, `${scenario.id}/${step.id}: exact reversal evidence is missing`);
     }
   }
 }
