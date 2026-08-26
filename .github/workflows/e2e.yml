@@ -22,5 +22,5 @@ jobs:
         run: npm audit --audit-level=high
       - name: Production web build
         run: npm run build:web
-      - name: Real Chrome HH ingestion smoke
+      - name: Real Chrome player-flow smoke
         run: npm run e2e:browser
