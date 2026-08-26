@@ -34,6 +34,7 @@ export interface SkillKnowledgeState {
 export interface CandidateLearningSignal {
   predictedSuccessProbability: number;
   uncertainty: number;
+  errorPressure: number;
   duePressure: number;
   evSeverity: number;
   transferGap: number;
@@ -268,6 +269,10 @@ export function candidateLearningSignal(candidate: InfiniteHandCandidate, histor
   const failures = relevant.length - successes;
   const predictedSuccessProbability = (2 + successes) / (4 + successes + failures);
   const uncertainty = 1 - Math.abs(predictedSuccessProbability - 0.5) * 2;
+  // Uncertainty answers "do we know the learner state?". It must not also stand in for
+  // "is the learner weak?" because repeated failures make the posterior more certain and
+  // therefore reduce uncertainty. Keep persistent weakness as a separate pressure term.
+  const errorPressure = 1 - predictedSuccessProbability;
   const dueCount = relevant.filter(item => typeof item.nextReviewAt === 'number' && item.nextReviewAt <= now).length;
   const duePressure = clamp01(dueCount / 2);
   const losses = relevant
@@ -285,16 +290,18 @@ export function candidateLearningSignal(candidate: InfiniteHandCandidate, histor
     ? clamp01(candidate.scenario.spotFrequencyPer100Hands / 10)
     : 0.5;
   const priorityScore = clamp01(
-    0.30 * uncertainty
-    + 0.20 * evSeverity
-    + 0.15 * duePressure
-    + 0.13 * transferGap
-    + 0.12 * reasoningGap
+    0.22 * uncertainty
+    + 0.18 * errorPressure
+    + 0.18 * evSeverity
+    + 0.14 * duePressure
+    + 0.10 * transferGap
+    + 0.08 * reasoningGap
     + 0.10 * spotFrequency,
   );
   return {
     predictedSuccessProbability,
     uncertainty,
+    errorPressure,
     duePressure,
     evSeverity,
     transferGap,

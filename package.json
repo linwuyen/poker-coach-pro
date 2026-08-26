@@ -10,8 +10,12 @@
   "scripts": {
     "dev": "tsx server.ts",
     "validate": "tsx scripts/validate-scenarios.ts && tsx scripts/validate-range-questions.ts",
+    "audit:truth": "tsx scripts/audit-truth.ts",
+    "audit:surface": "tsx scripts/audit-product-surface.ts",
+    "audit:reachability": "tsx scripts/audit-reachability.ts",
+    "benchmark:selector": "tsx scripts/benchmark-selector.ts",
     "test": "tsx --test tests/*.test.ts",
-    "check": "npm run lint && npm run validate && npm test",
+    "check": "npm run lint && npm run validate && npm run audit:truth && npm run audit:surface && npm run audit:reachability && npm run benchmark:selector && npm test",
     "audit": "npm audit --audit-level=high",
     "build:web": "npm run validate && vite build",
     "check:bundle": "node scripts/check-bundle-budget.mjs",

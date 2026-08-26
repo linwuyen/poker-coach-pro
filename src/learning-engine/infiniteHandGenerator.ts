@@ -1,4 +1,4 @@
-import { DecisionActionKind, HistoryItem, Scenario, Street } from '../types';
+import { DecisionActionKind, HistoryItem, Scenario, Street, TruthTier } from '../types';
 import { isHiddenBenchmarkScenario } from './benchmark';
 import { candidateLearningSignal } from './closedLoop';
 import { scenarioContextFamilyId } from './contextIdentity';
@@ -10,12 +10,14 @@ export type InfiniteHandSource = 'curated' | 'safe-variant' | 'pokerbench';
 export type InfiniteFormat = 'cash' | 'tournament' | 'solver';
 export type InfiniteStackBand = '<15' | '15-25' | '25-50' | '50-80' | '80-125' | '125+' | 'unknown';
 export type InfiniteActionClass = DecisionActionKind | 'unknown';
+export type InfiniteTruthTier = Extract<TruthTier, 'verified-solver' | 'exact-math' | 'expert-baseline'>;
 
 interface InfiniteCandidateBase {
   id: string;
   source: InfiniteHandSource;
   familyId: string;
   presentationFingerprint: string;
+  truthTier: InfiniteTruthTier;
   truthLabel: string;
   street: Street;
   position: string;
@@ -100,6 +102,13 @@ export function scenarioBestAction(scenario: Scenario, stepIndex = 0): string | 
   return bestFeedback ? best[0] : undefined;
 }
 
+export function scenarioTruthTier(scenario: Scenario): Extract<InfiniteTruthTier, 'exact-math' | 'expert-baseline'> {
+  const feedbacks = scenario.steps.flatMap(step => Object.values(step.feedbacks).filter(Boolean));
+  return feedbacks.length > 0 && feedbacks.every(feedback => feedback!.evidence?.sourceConfidence === 'exact-math')
+    ? 'exact-math'
+    : 'expert-baseline';
+}
+
 export function isTruthBackedScenario(scenario: Scenario): boolean {
   if (!scenario.steps.length) return false;
   return scenario.steps.every((step, index) => {
@@ -154,13 +163,20 @@ export function pokerBenchPresentationFingerprint(row: PokerBenchRow): string {
 
 function scenarioCandidate(scenario: Scenario, source: 'curated' | 'safe-variant'): InfiniteScenarioCandidate {
   const firstStep = scenario.steps[0];
+  const truthTier = scenarioTruthTier(scenario);
+  const truthLabel = truthTier === 'exact-math'
+    ? 'exact-math ground truth'
+    : source === 'safe-variant'
+      ? 'strategy-equivalent expert baseline'
+      : 'reviewed expert baseline';
   return {
     kind: 'scenario',
     id: `${source}:${scenario.id}`,
     source,
     familyId: scenarioContextFamilyId(scenario),
     presentationFingerprint: scenarioPresentationFingerprint(scenario),
-    truthLabel: source === 'safe-variant' ? 'strategy-equivalent truth' : 'validated teaching truth',
+    truthTier,
+    truthLabel,
     street: firstStep.street,
     position: scenario.position.toUpperCase(),
     format: scenario.type === 'Tournament' ? 'tournament' : 'cash',
@@ -177,6 +193,7 @@ function solverCandidate(row: PokerBenchRow): InfiniteSolverCandidate {
     source: 'pokerbench',
     familyId: solverDecisionFamilyId(row),
     presentationFingerprint: pokerBenchPresentationFingerprint(row),
+    truthTier: 'verified-solver',
     truthLabel: 'verified solver label',
     street: row.split === 'preflop' ? 'Preflop' : row.evaluationAt,
     position: row.heroPosition.toUpperCase(),
