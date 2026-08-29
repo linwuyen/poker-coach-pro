@@ -1,4 +1,4 @@
-import type { Card, Rank, Suit } from '../../types';
+import type { Card, Feedback, HistoryItem, Rank, Scenario, ScenarioStep, Suit } from '../../types';
 
 export interface AnalysisContext {
   schemaVersion: 1;
@@ -84,6 +84,53 @@ export function extractDecisionMathContext(text: string, actionLabels: string[])
     potOddsPercent,
     minimumCallingEquityPercent: hasCallOption ? potOddsPercent : undefined,
     heroEquityPercent,
+  };
+}
+
+/**
+ * Build scenario context from the same immutable decision objects that rendered
+ * the question and produced the answer. Do not join current DOM cards with the
+ * latest persisted history item: history persistence is asynchronous and that
+ * race can create impossible hybrid hands (previous metadata + current cards).
+ */
+export function buildScenarioAnalysisContext(
+  scenario: Scenario,
+  step: ScenarioStep,
+  item: HistoryItem,
+  feedback: Feedback,
+): AnalysisContext {
+  const heroCards = scenario.holeCards.map(cardToCode);
+  const boardCards = step.communityCards.map(cardToCode);
+  const decisionMath = extractDecisionMathContext(
+    step.potOdds ? `Pot Odds ${step.potOdds}` : '',
+    step.options,
+  );
+  const effectiveStackBB = numberFrom(scenario.effectiveStack, /([0-9]+(?:\.[0-9]+)?)\s*BB/i) ?? scenario.userBB;
+
+  return {
+    schemaVersion: 1,
+    capturedAt: Date.now(),
+    source: 'scenario',
+    trainingType: item.trainingType,
+    scenarioId: scenario.id,
+    stepId: step.id,
+    title: scenario.title,
+    heroCards,
+    boardCards,
+    startingHand: startingHandFromCodes(heroCards),
+    street: step.street,
+    position: scenario.position,
+    gameFormat: scenario.type === 'Tournament' ? 'MTT' : 'Cash',
+    effectiveStackBB,
+    potBB: step.potSize,
+    spr: step.spr,
+    ...decisionMath,
+    selectedAction: item.selectedAction,
+    bestAction: item.bestAction || feedback.bestAction,
+    truthTier: item.truthTier || feedback.evidence?.sourceConfidence,
+    truthSource: item.truthSourceRef || item.truthSourceId || step.strategySource,
+    villainRange: feedback.evidence?.villainRange,
+    heroRange: feedback.evidence?.heroRange,
   };
 }
 
