@@ -55,7 +55,7 @@ function RootRouter() {
   if (routeKey === '#solver-corpus') return <ContextualRoute><PokerBenchTrainer onExit={exitLab} /></ContextualRoute>;
   if (routeKey === '#solver-benchmark' || routeKey === '#hidden-benchmark' || routeKey === '#exam-mode') return <ExamMode onExit={exitLab} />;
   if (routeKey === '#strategy-surface') return <SolverSurfaceLab onExit={exitLab} />;
-  if (routeKey === '#equity-workbench') return <EquityWorkbench onExit={exitLab} />;
+  if (routeKey === '#equity-workbench') return <EquityWorkbench key={route} onExit={exitLab} />;
   if (routeKey === '#icm-workbench') return <ContextualRoute><IcmWorkbench onExit={exitLab} /></ContextualRoute>;
   if (routeKey === '#fgs-workbench') return <ContextualRoute><FgsWorkbench onExit={exitLab} /></ContextualRoute>;
   if (routeKey === '#skill-graph') return <ContextualRoute><SkillGraphDashboard onExit={exitLab} /></ContextualRoute>;
