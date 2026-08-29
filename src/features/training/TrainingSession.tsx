@@ -7,6 +7,7 @@ import { inferScenarioStepSkillIds } from '../../learning-engine/skillGraph';
 import { ActionType, Feedback, HistoryItem, ReasoningProbeResult, Scenario, ScenarioStep } from '../../types';
 import { analyzeHandMath, evaluateHandStrength } from '../../utils/handMath';
 import { createAttemptId, getReviewSchedule } from '../../utils/history';
+import { buildScenarioAnalysisContext } from '../analysis/analysisContext';
 import { AdvancedToolLinks } from './AdvancedToolLinks';
 
 interface TrainingSessionProps {
@@ -246,6 +247,7 @@ function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, 
   const reversal = feedback.evidence?.reversals?.[0];
   const probeRequired = shouldShowReasoningProbe(currentItem, feedback);
   const probeComplete = !probeRequired || Boolean(currentItem.reasoningProbeResult);
+  const analysisContext = buildScenarioAnalysisContext(scenario, step, currentItem, feedback);
 
   return <section data-testid="decision-explanation" className={`rounded-2xl border p-5 ${tone}`}>
     <div className="flex gap-3">
@@ -310,7 +312,7 @@ function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, 
           <p className="mt-2 text-sm leading-6 text-emerald-100/85">{feedback.remember}</p>
         </div>
 
-        <AdvancedToolLinks tournament={scenario.type === 'Tournament'} />
+        <AdvancedToolLinks tournament={scenario.type === 'Tournament'} context={analysisContext} />
 
         <button data-testid="decision-next" type="button" disabled={!probeComplete} onClick={onNext} className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40">{probeComplete ? '看完解說，下一個決策' : '先完成或跳過理解驗證'}</button>
       </div>

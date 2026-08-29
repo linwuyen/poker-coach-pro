@@ -4,6 +4,7 @@ import { analysisContextHref, AnalysisContext, captureCurrentAnalysisContext, pr
 
 interface AdvancedToolLinksProps {
   tournament?: boolean;
+  context?: AnalysisContext | null;
 }
 
 const CORE_TOOLS = [
@@ -33,9 +34,13 @@ const TOURNAMENT_TOOLS = [
   { href: '#fgs-workbench', label: 'FGS' },
 ] as const;
 
-export function AdvancedToolLinks({ tournament = false }: AdvancedToolLinksProps) {
-  const [context, setContext] = useState<AnalysisContext | null>(null);
-  useEffect(() => { setContext(captureCurrentAnalysisContext()); }, []);
+export function AdvancedToolLinks({ tournament = false, context: providedContext }: AdvancedToolLinksProps) {
+  const [capturedContext, setCapturedContext] = useState<AnalysisContext | null>(null);
+  useEffect(() => {
+    if (providedContext !== undefined) return;
+    setCapturedContext(captureCurrentAnalysisContext());
+  }, [providedContext]);
+  const context = providedContext === undefined ? capturedContext : providedContext;
   const summary = context ? `${context.heroCards.map(prettyCardCode).join(' ')} · ${context.street || '?'} · ${context.position || '?'}` : '正在擷取當前題目…';
 
   return (
