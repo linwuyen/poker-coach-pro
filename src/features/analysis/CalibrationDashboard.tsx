@@ -4,6 +4,7 @@ import { classifyHistoryError } from '../../learning-engine/errorModel';
 import { loadHistory } from '../../utils/history';
 
 const ERROR_LABELS: Record<string, string> = {
+  'label-mismatch': '資料集標籤不一致（EV 未知）',
   'knowledge-gap': '不知道',
   'mental-model': '高信心錯誤模型',
   'sizing-boundary': '尺寸邊界',
@@ -22,7 +23,7 @@ export function CalibrationDashboard({ onExit }: { onExit: () => void }) {
 
   return <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8"><div className="mx-auto max-w-5xl">
     <button type="button" onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4" />返回主訓練機</button>
-    <section className="pc-hero-glow mt-6 rounded-3xl border border-cyan-500/20 bg-[linear-gradient(135deg,rgba(6,182,212,0.12),rgba(15,23,42,0.78))] p-6 md:p-8"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300"><Gauge className="h-4 w-4" />Decision Calibration</div><h1 className="mt-3 text-3xl font-bold">知道自己什麼時候不可靠，也是一種牌技</h1><p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">把信心 1–4 對照實際正確率。高信心錯誤優先視為 mental-model leak；低信心答對則不會被當成穩定 mastery。</p></section>
+    <section className="pc-hero-glow mt-6 rounded-3xl border border-cyan-500/20 bg-[linear-gradient(135deg,rgba(6,182,212,0.12),rgba(15,23,42,0.78))] p-6 md:p-8"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300"><Gauge className="h-4 w-4" />Decision Calibration</div><h1 className="mt-3 text-3xl font-bold">知道自己什麼時候不可靠，也是一種牌技</h1><p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">把信心 1–4 對照題目評分結果。只有動作標籤的資料，衡量的是標籤一致率；不一致不足以證明策略錯誤或 EV 損失。</p></section>
 
     <section className="mt-6 grid gap-4 md:grid-cols-4"><Metric label="狀態" value={label} /><Metric label="ECE" value={`${(report.expectedCalibrationError * 100).toFixed(1)}%`} /><Metric label="Overconfidence" value={`${(report.overconfidence * 100).toFixed(1)}%`} /><Metric label="Underconfidence" value={`${(report.underconfidence * 100).toFixed(1)}%`} /></section>
 

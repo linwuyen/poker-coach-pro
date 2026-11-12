@@ -1,6 +1,7 @@
 import type { HistoryItem, Scenario } from '../types';
 import { isHiddenBenchmarkScenario } from './benchmark';
 import { inferSituationIdsFromHistory, inferSituationIdsFromScenario } from './contextIdentity';
+import { firstTransferEvidence } from './transferBenchmark';
 
 export interface SituationCoverageState {
   situationId: string;
@@ -28,15 +29,6 @@ function average(values: number[]): number | undefined {
 
 function accuracy(items: HistoryItem[]): number | undefined {
   return items.length ? items.filter(correct).length / items.length * 100 : undefined;
-}
-
-function isTransfer(item: HistoryItem): boolean {
-  return Boolean(item.isTransferTest)
-    || item.trainingType === 'transfer'
-    || item.trainingType === 'counterfactual'
-    || item.trainingType === 'contrastive'
-    || item.trainingType === 'solver-benchmark'
-    || item.solverCorpusRole === 'holdout';
 }
 
 function verifiedEv(item: HistoryItem): boolean {
@@ -72,6 +64,7 @@ function historySituationIds(item: HistoryItem): string[] {
  * Zero-attempt states remain visible instead of disappearing from reports.
  */
 export function buildSituationCoverage(scenarios: Scenario[], history: HistoryItem[]): SituationCoverageState[] {
+  const transferEvidence = new Set(firstTransferEvidence(history));
   const universe = new Map<string, { available: number; training: number; holdout: number }>();
   scenarios.forEach(scenario => {
     const hidden = isHiddenBenchmarkScenario(scenario);
@@ -93,7 +86,7 @@ export function buildSituationCoverage(scenarios: Scenario[], history: HistoryIt
 
   return [...universe.entries()].map(([situationId, source]) => {
     const items = history.filter(item => item.trainingType !== 'custom' && historySituationIds(item).includes(situationId));
-    const transfer = items.filter(isTransfer);
+    const transfer = items.filter(item => transferEvidence.has(item));
     const evItems = items.filter(verifiedEv);
     const hitRate = accuracy(items);
     const transferRate = accuracy(transfer);

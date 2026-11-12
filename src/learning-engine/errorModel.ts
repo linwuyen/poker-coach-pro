@@ -1,7 +1,9 @@
-import { ConfidenceLevel, HistoryItem, PokerDecisionAction } from '../types';
+import { ConfidenceLevel, FeedbackQuality, HistoryItem, PokerDecisionAction } from '../types';
+import { firstTransferEvidence } from './transferBenchmark';
 
 export type DecisionErrorType =
   | 'none'
+  | 'label-mismatch'
   | 'knowledge-gap'
   | 'mental-model'
   | 'sizing-boundary'
@@ -14,6 +16,7 @@ export interface ErrorDiagnosisInput {
   confidence?: ConfidenceLevel;
   selectedDecision?: PokerDecisionAction;
   bestDecision?: PokerDecisionAction;
+  feedbackQuality?: FeedbackQuality;
 }
 
 export interface LearningOutcomeSummary {
@@ -26,6 +29,7 @@ export interface LearningOutcomeSummary {
 }
 
 export function classifyDecisionError(input: ErrorDiagnosisInput): DecisionErrorType {
+  if (input.feedbackQuality === 'label-mismatch') return 'label-mismatch';
   if (input.correct) {
     if (input.confidence === 1) return 'lucky-guess';
     if (input.confidence === 2) return 'fragile-knowledge';
@@ -44,6 +48,7 @@ export function classifyHistoryError(item: HistoryItem): DecisionErrorType {
     confidence: item.confidence,
     selectedDecision: item.selectedDecision,
     bestDecision: item.bestDecision,
+    feedbackQuality: item.datasetRowId && !(item.correct ?? item.score >= 8) && item.evLossBB === undefined ? 'label-mismatch' : item.feedbackQuality,
   });
 }
 
@@ -82,7 +87,7 @@ function delayedRetentionPosterior(items: HistoryItem[]): { probability: number;
 }
 
 function transferPosterior(items: HistoryItem[]): { probability: number; samples: number } {
-  const candidates = items.filter(item => item.isTransferTest || item.trainingType === 'transfer' || item.trainingType === 'counterfactual' || item.trainingType === 'solver-benchmark' || item.transferLevel);
+  const candidates = firstTransferEvidence(items);
   let successes = 0;
   let failures = 0;
   candidates.forEach(item => {

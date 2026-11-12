@@ -8,7 +8,7 @@ import { historyDecisionFamilyId } from '../../learning-engine/contextIdentity';
 import { buildSemanticDecisionPairs, describeSemanticChange, SemanticDecisionPair, semanticDimensionLabel, solverDecisionFamilyId } from '../../learning-engine/semanticPairs';
 import { solverCorpusRole } from '../../learning-engine/solverCurriculum';
 import { fingerprintPokerBenchRow } from '../../solver-data/contextFingerprint';
-import { decisionsMatch, loadPokerBenchSplit, parsePokerDecision, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow, PokerBenchSplit } from '../../solver-data/pokerbench';
+import { decisionsMatch, loadPokerBenchSplit, parsePokerDecision, pokerBenchDecisionGrade, pokerBenchHistoryMatchesRow, pokerBenchVisibleBoard, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow, PokerBenchSplit } from '../../solver-data/pokerbench';
 import { createAttemptId, getReviewSchedule, loadHistory, saveHistory } from '../../utils/history';
 import { humanizeSolverMove, parseSolverCards } from './SolverDecisionSession';
 
@@ -105,14 +105,15 @@ export function SemanticCounterfactualTrainer({ onExit }: { onExit: () => void }
 
 function SolverSpot({ row, onChoice }: { row: PokerBenchRow; onChoice: (choice: string) => void }) {
   const holdingCards = parseSolverCards(row.holding);
-  const boardCards = row.split === 'postflop' ? parseSolverCards(`${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}`) : [];
+  const boardCards = parseSolverCards(pokerBenchVisibleBoard(row));
   return <section className="rounded-2xl border border-slate-800 bg-slate-900/55 p-5 md:p-6">
     <div className="rounded-2xl border border-emerald-500/15 bg-slate-950/35 p-5 text-center">
       <div className="flex min-h-20 items-center justify-center gap-2">{boardCards.length ? boardCards.map((card, index) => <CardUI key={`${card.rank}-${card.suit}-${index}`} card={card} size="sm" />) : <span className="rounded-xl border border-dashed border-slate-700 px-5 py-3 text-xs text-slate-500">Preflop</span>}</div>
       <div className="mt-5 flex justify-center gap-2">{holdingCards.map((card, index) => <CardUI key={`${card.rank}-${card.suit}-${index}`} card={card} size="sm" />)}</div>
       <div className="mt-2 text-xs text-emerald-200">Hero · {row.heroPosition}</div>
     </div>
-    <div className="mt-3 grid gap-2 text-sm text-slate-400 sm:grid-cols-3"><span>Pot {row.potSize} BB</span><span>{row.split === 'preflop' ? `${row.numPlayers} 人桌 · bet depth ${row.numBets}` : row.evaluationAt}</span><span>{row.split === 'postflop' ? `${boardCards.length} board cards` : 'Preflop'}</span></div>
+    <p className="mt-3 text-xs leading-6 text-slate-400">{POKERBENCH_SOURCE.contextNote}</p>
+    <div className="mt-3 grid gap-2 text-sm text-slate-400 sm:grid-cols-3"><span>Pot {row.potSize} BB</span><span>{row.split === 'preflop' ? `牌局中剩餘 ${row.numPlayers} 人 · bet depth ${row.numBets}` : row.evaluationAt}</span><span>{row.split === 'postflop' ? `${boardCards.length} board cards` : 'Preflop'}</span></div>
     <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/35 p-4 text-sm leading-6 text-slate-300">{row.split === 'preflop' ? row.prevLine || 'First in' : <><div>Preflop: {row.preflopAction || '-'}</div><div>Postflop: {row.postflopAction || '-'}</div></>}</div>
     <div className="mt-5 grid gap-2 sm:grid-cols-2">{row.availableMoves.map(move => <button data-testid="semantic-action" key={move} onClick={() => onChoice(move)} className="rounded-xl border border-slate-700 bg-slate-950/35 p-4 text-left text-sm font-semibold text-slate-300 hover:border-emerald-500/40">{humanizeSolverMove(move)}</button>)}</div>
   </section>;
@@ -132,13 +133,15 @@ function RevealCard({ label, choice, best }: { label: string; choice: string; be
 function makeHistoryItem(pair: SemanticDecisionPair, row: PokerBenchRow, answer: LockedAnswer, history: HistoryItem[], now: number, offset: number): HistoryItem {
   const split = row.split;
   const family = solverDecisionFamilyId(row);
-  const previous = history.filter(item => historyDecisionFamilyId(item) === family).sort((a, b) => b.timestamp - a.timestamp)[0];
+  const previous = history.filter(item => historyDecisionFamilyId(item) === family || pokerBenchHistoryMatchesRow(item, row)).sort((a, b) => b.timestamp - a.timestamp)[0];
   const selected = parsePokerDecision(answer.choice);
   const best = parsePokerDecision(row.correctDecision);
-  const correct = decisionsMatch(answer.choice, row.correctDecision);
+  const grade = pokerBenchDecisionGrade(answer.choice, row.correctDecision);
+  const correct = grade.correct;
   const fingerprint = fingerprintPokerBenchRow(row);
   return {
     schemaVersion: 6,
+    decisionContextVersion: 2,
     attemptId: createAttemptId(),
     trainingType: 'counterfactual',
     scenarioId: `semantic:${POKERBENCH_FILES[split].split}:${row.id}`,
@@ -149,8 +152,7 @@ function makeHistoryItem(pair: SemanticDecisionPair, row: PokerBenchRow, answer:
     skillIds: ['decision.boundary', split === 'preflop' ? 'preflop.solver-decision' : 'postflop.solver-decision'],
     situationIds: [`situation.position.${row.heroPosition.toLowerCase()}`, `semantic.dimension.${pair.dimension}`, ...(split === 'postflop' ? [`situation.street.${row.evaluationAt.toLowerCase()}`] : ['situation.street.preflop'])],
     category: ['PokerBench', 'Semantic Counterfactual', semanticDimensionLabel(pair.dimension), split === 'preflop' ? 'Preflop' : row.evaluationAt],
-    score: correct ? 10 : 0,
-    judgment: correct ? '正確' : '錯誤',
+    ...grade,
     timestamp: now + offset,
     selectedAction: answer.choice,
     bestAction: row.correctDecision,
@@ -159,8 +161,6 @@ function makeHistoryItem(pair: SemanticDecisionPair, row: PokerBenchRow, answer:
     street: split === 'preflop' ? 'Preflop' : row.evaluationAt,
     position: row.heroPosition,
     durationMs: answer.durationMs,
-    correct,
-    feedbackQuality: correct ? 'best' : 'major-error',
     truthTier: 'verified-solver',
     truthSourceId: POKERBENCH_SOURCE.id,
     truthSourceRef: POKERBENCH_SOURCE.dataset,
@@ -174,9 +174,10 @@ function makeHistoryItem(pair: SemanticDecisionPair, row: PokerBenchRow, answer:
     isUnseen: !previous,
     isTransferTest: true,
     transferLevel: 'context',
+    gameFormat: 'Cash',
     contextFingerprint: fingerprint.id,
     contextMatchStatus: 'exact',
-    errorType: classifyDecisionError({ correct, selectedDecision: selected.action, bestDecision: best.action }),
+    errorType: classifyDecisionError({ correct, feedbackQuality: grade.feedbackQuality, selectedDecision: selected.action, bestDecision: best.action }),
     solverCorpusRole: solverCorpusRole(row),
     contrastivePairId: pair.id,
     questionLabel: `自動變化題 · ${row.holding}`,

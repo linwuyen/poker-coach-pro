@@ -1,7 +1,7 @@
 import { analyzeBoardTexture } from './boardTexture';
 import { solverCorpusRole, SolverCorpusRole } from './solverCurriculum';
 import { fingerprintPokerBenchRow } from '../solver-data/contextFingerprint';
-import { canonicalHolding, normalizeDecision, PokerBenchRow } from '../solver-data/pokerbench';
+import { canonicalHolding, normalizeDecision, pokerBenchVisibleBoard, PokerBenchRow } from '../solver-data/pokerbench';
 
 export type SemanticDimension = 'holding' | 'position' | 'bet-size' | 'action-line' | 'board' | 'street' | 'aggressor';
 
@@ -35,12 +35,12 @@ function moveTree(row: PokerBenchRow): string {
 
 function boardKey(row: PokerBenchRow): string {
   if (row.split !== 'postflop') return '';
-  return `${row.boardFlop}|${row.boardTurn || ''}|${row.boardRiver || ''}`.toLowerCase();
+  return pokerBenchVisibleBoard(row).toLowerCase();
 }
 
 function boardTexture(row: PokerBenchRow): string {
   if (row.split !== 'postflop') return '';
-  return analyzeBoardTexture(`${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}`).textureId;
+  return analyzeBoardTexture(pokerBenchVisibleBoard(row)).textureId;
 }
 
 function semanticDimensions(row: PokerBenchRow): SemanticDimension[] {

@@ -1,7 +1,8 @@
 import { ConfidenceLevel, Feedback, FeedbackQuality, HistoryItem, MasteryStatus, Scenario } from '../types';
 import { calculateSkillMastery } from './skillGraph';
 import { canonicalDecisionFamilyId, historyContextFamilyId, historyDecisionFamilyId } from './contextIdentity';
-import { transferBenchmarkReport } from './transferBenchmark';
+import { hasValidTransferEvidence, transferBenchmarkReport } from './transferBenchmark';
+export { hasValidTransferEvidence } from './transferBenchmark';
 
 const DAY = 86400000;
 const CONFIDENCE_PROBABILITY: Record<ConfidenceLevel, number> = { 1: 0.35, 2: 0.55, 3: 0.75, 4: 0.9 };
@@ -29,6 +30,8 @@ export interface WeaknessInsight {
 }
 
 export interface LearningMetrics {
+  transferSamples: number;
+  delayedSamples: number;
   totalDecisions: number;
   unseenAccuracy: number;
   delayedRetention: number;
@@ -100,6 +103,36 @@ export function latestByScenario(history: HistoryItem[]): Map<string, HistoryIte
   return latest;
 }
 
+/** One schedule per decision; old attempts never remain independently overdue. */
+export function currentDueReviews(history: HistoryItem[], now = Date.now()): HistoryItem[] {
+  const practice = history.filter(item => isLearningAttempt(item) && !item.examMode && item.trainingType !== 'benchmark' && item.trainingType !== 'solver-benchmark');
+  // Dataset rows remain the same question when a corrected context changes its
+  // fingerprint/mastery key. Old corpus records implicitly used PokerBench.
+  const datasetBase = (item: HistoryItem) => JSON.stringify([item.truthSourceId || 'pokerbench-aaai2025', item.datasetRowId]);
+  const knownSplits = new Map<string, Set<string>>();
+  for (const item of practice) {
+    if (!item.datasetRowId || !item.datasetSplit) continue;
+    const base = datasetBase(item);
+    const splits = knownSplits.get(base) || new Set<string>();
+    splits.add(item.datasetSplit);
+    knownSplits.set(base, splits);
+  }
+  const latest = new Map<string, HistoryItem>();
+  for (const item of practice) {
+    let key = getHistoryMasteryKey(item);
+    if (item.datasetRowId) {
+      const splits = knownSplits.get(datasetBase(item));
+      // Missing legacy splits join only an unambiguous source+row; distinct
+      // known splits never clear one another's schedules.
+      const split = item.datasetSplit || (splits?.size === 1 ? [...splits][0] : '');
+      key = JSON.stringify(['dataset', datasetBase(item), split]);
+    }
+    const previous = latest.get(key);
+    if (!previous || previous.timestamp < item.timestamp) latest.set(key, item);
+  }
+  return [...latest.values()].filter(item => isDue(item, now));
+}
+
 export function calculateMastery(history: HistoryItem[], now = Date.now()): MasteryRecord[] {
   const groups = new Map<string, HistoryItem[]>();
   history.filter(isLearningAttempt).forEach(item => {
@@ -121,7 +154,7 @@ export function calculateMastery(history: HistoryItem[], now = Date.now()): Mast
       const recency = Math.exp(-ageDays / 45);
       const difficulty = item.difficultyWeight || 1;
       const delayedBoost = item.isDelayedReview ? 1.25 : 1;
-      const transferBoost = item.isTransferTest ? 1.2 : 1;
+      const transferBoost = hasValidTransferEvidence(item) ? 1.2 : 1;
       const weight = recency * difficulty * delayedBoost * transferBoost;
       const correct = isHistoryCorrect(item) ? 1 : 0;
       weightedCorrect += correct * weight;
@@ -164,7 +197,7 @@ function effectiveSampleCount(items: HistoryItem[]): number {
   const contexts = new Set(items.map(item => historyContextFamilyId(item) || `scenario:${historyDecisionFamilyId(item)}`)).size;
   const days = new Set(items.map(item => new Date(item.timestamp).toISOString().slice(0, 10))).size;
   const delayed = items.filter(item => item.isDelayedReview).length;
-  const transfer = items.filter(item => item.isTransferTest || item.transferLevel).length;
+  const transfer = items.filter(hasValidTransferEvidence).length;
   return Math.min(items.length, contexts * 1.4 + days * 0.45 + delayed * 0.35 + transfer * 0.45);
 }
 
@@ -211,22 +244,11 @@ export function getLearningMetrics(history: HistoryItem[]): LearningMetrics {
   if (explicitAttempts) {
     const correct = explicitTransfer.near.correct + explicitTransfer.context.correct + explicitTransfer.structural.correct;
     transferScore = correct / explicitAttempts;
-  } else {
-    const categoryScenarioMap = new Map<string, Map<string, boolean[]>>();
-    items.forEach(item => (item.category || []).forEach(category => {
-      const scenarios = categoryScenarioMap.get(category) || new Map<string, boolean[]>();
-      const family = historyDecisionFamilyId(item);
-      scenarios.set(family, [...(scenarios.get(family) || []), isHistoryCorrect(item)]);
-      categoryScenarioMap.set(category, scenarios);
-    }));
-    const transferGroups = [...categoryScenarioMap.values()].filter(group => group.size >= 2);
-    transferScore = transferGroups.length ? average(transferGroups.map(group => {
-      const scenarioRates = [...group.values()].map(values => values.filter(Boolean).length / values.length);
-      return Math.min(...scenarioRates);
-    })) : 0;
   }
 
   return {
+    transferSamples: explicitAttempts,
+    delayedSamples: delayed.length,
     totalDecisions: items.length,
     unseenAccuracy: percent(unseen),
     delayedRetention: percent(delayed),
@@ -266,9 +288,8 @@ export function resolveFeedbackQuality(feedback: Feedback): FeedbackQuality {
     return 'major-error';
   }
   if (feedback.score >= 9) return 'best';
-  if (feedback.score >= 8) return 'acceptable';
-  if (feedback.score >= 5) return 'suboptimal';
-  return 'major-error';
+  if (feedback.score >= 8 || feedback.judgment === '可接受') return 'acceptable';
+  return 'label-mismatch';
 }
 
 export function feedbackScoreFromEvLoss(evLossBB: number): number {

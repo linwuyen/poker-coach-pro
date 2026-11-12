@@ -1,4 +1,5 @@
 import { HistoryItem } from '../types';
+import { firstAssessmentEvidence, firstTransferEvidence } from './transferBenchmark';
 
 export type LearningExperimentMetric = 'holdout-accuracy' | 'transfer-accuracy' | 'delayed-retention' | 'verified-ev-loss';
 
@@ -167,10 +168,12 @@ function metricValue(item: HistoryItem, metric: LearningExperimentMetric): numbe
 
 export function evaluateLearningExperiment(history: HistoryItem[], rawSpec: LearningExperimentSpec): LearningExperimentResult {
   const spec = validateLearningExperiment(rawSpec);
+  const evidence = spec.metric === 'transfer-accuracy' ? firstTransferEvidence(history)
+    : spec.metric === 'holdout-accuracy' ? firstAssessmentEvidence(history) : history;
   const byArm = new Map(spec.arms.map(arm => [arm.id, { values: [] as number[], blockIds: new Set<string>() }]));
   spec.blocks.forEach(block => {
     const effectiveStart = block.startAt + spec.washoutMs;
-    history.forEach(item => {
+    evidence.forEach(item => {
       if (item.timestamp < effectiveStart || item.timestamp >= block.endAt) return;
       const value = metricValue(item, spec.metric);
       if (value === undefined) return;

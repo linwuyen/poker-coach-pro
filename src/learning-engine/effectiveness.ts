@@ -1,4 +1,5 @@
 import { HistoryItem } from '../types';
+import { firstAssessmentEvidence, firstTransferEvidence } from './transferBenchmark';
 
 const DAY_MS = 86400000;
 
@@ -59,18 +60,15 @@ function isHoldout(item: HistoryItem): boolean {
   return item.trainingType === 'benchmark' || item.trainingType === 'solver-benchmark' || item.solverCorpusRole === 'holdout';
 }
 
-function isTransfer(item: HistoryItem): boolean {
-  return Boolean(item.isTransferTest) || item.trainingType === 'transfer' || item.trainingType === 'counterfactual' || item.trainingType === 'solver-benchmark' || item.trainingType === 'contrastive';
-}
-
 function isTrainingDecision(item: HistoryItem): boolean {
   return item.trainingType !== 'custom' && !isHoldout(item);
 }
 
 export function effectivenessWindowMetrics(history: HistoryItem[], window: EffectivenessWindow): EffectivenessWindowMetrics {
   const items = history.filter(item => item.timestamp >= window.start && item.timestamp < window.end && item.trainingType !== 'custom');
-  const holdout = items.filter(isHoldout);
-  const transfer = items.filter(isTransfer);
+  const inWindow = new Set(items);
+  const holdout = firstAssessmentEvidence(history).filter(item => inWindow.has(item) && isHoldout(item));
+  const transfer = firstTransferEvidence(history).filter(item => inWindow.has(item));
   const delayed = items.filter(item => item.isDelayedReview);
   return {
     window,

@@ -5,13 +5,17 @@ const S = (r: Rank) => C(r, 'spades');
 const H = (r: Rank) => C(r, 'hearts');
 const D = (r: Rank) => C(r, 'diamonds');
 const C_ = (r: Rank) => C(r, 'clubs');
+const riverPriceLedger = { contributionsBB: [0.4, 2.5, 2.5, 15], rakeBB: 0, callCostBB: 15 };
+const riverPricePot = riverPriceLedger.contributionsBB.reduce((sum, value) => sum + value, 0);
+const riverPriceThreshold = riverPriceLedger.callCostBB / (riverPricePot + riverPriceLedger.callCostBB);
+const riverPriceCallEv = Math.round((0.4 * (riverPricePot + riverPriceLedger.callCostBB) - riverPriceLedger.callCostBB) * 1000) / 1000;
 
 export const scenarios: Scenario[] = [
   {
     id: '1', title: 'AJo HJ 中頂對', category: ['Value Bet', '控池', 'SPR'], villainProfile: 'Loose Aggressive (LAG)', heroImage: 'Tight Aggressive (TAG)', difficulty: '中階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'HJ', holeCards: [S('A'), D('J')], preAction: '前位棄牌', effectiveStack: '100BB',
     steps: [
       { id: '1', street: 'Turn', communityCards: [H('J'), C_('8'), D('5'), S('9')], spr: 4.5, potOdds: '33%', description: '你在 HJ Open 3BB，BTN Call。Flop 你 C-bet 半池，BTN Call。Turn 掉 9，底池 12BB。你該怎麼做？', potSize: 12, options: ['Check', 'Bet half pot', 'Bet big'], feedbacks: {
-        'Check': { judgment: '正確', score: 10, bestAction: 'Check', why: '牌面變濕，AJo 只是頂對中等 kicker，無法拿三條街價值。', conceptualError: '無', remember: '不要把頂對中等 kicker 打爆，學會控池。', nextStepId: 'next_hand' },
+        'Check': { judgment: '正確', score: 10, bestAction: 'Check', why: 'AJo 是頂對頂踢。轉牌連結變強，本題以保留對手較弱範圍與控制底池為教學重點，建議過牌；能否繼續下注仍取決於雙方範圍與尺寸。', conceptualError: '無', remember: '頂對頂踢仍要比較對手的繼續範圍，不能只按絕對牌力下注。', nextStepId: 'next_hand' },
         'Bet half pot': { judgment: '偏鬆', score: 5, bestAction: 'Check', why: '下注會被更好的牌跟，較差的牌棄牌。', conceptualError: '過度高估頂對。', remember: '邊緣牌要控池。', nextStepId: 'next_hand' },
         'Bet big': { judgment: '錯誤', score: 0, bestAction: 'Check', why: '這牌面下大注等於自我隔離。', conceptualError: '把中等牌力當堅果打。', remember: 'SPR 高時頂對不值一個 stack。', nextStepId: 'next_hand' }
       }}
@@ -251,12 +255,12 @@ export const scenarios: Scenario[] = [
   },
 
   {
-    id: '25', title: '頂對頂踢 ICM 壓力', category: ['ICM 壓力', '錦標賽'], difficulty: '進階', type: 'Tournament', blinds: '5k/10k', ante: true, userStack: '300k', userBB: 30, position: 'MP', holeCards: [S('A'), C_('Q')], preAction: '泡沫期 (Bubble)，你 Open 2BB，BTN (大籌碼 100BB) 3-bet 6BB', effectiveStack: '30BB',
+    id: '25', title: 'AQo 面對泡泡期 3-bet', category: ['ICM 壓力', '錦標賽'], difficulty: '進階', type: 'Tournament', blinds: '5k/10k', ante: true, userStack: '300k', userBB: 30, position: 'MP', holeCards: [S('A'), C_('Q')], preAction: '泡沫期 (Bubble)，你 Open 2BB，BTN (大籌碼 100BB) 3-bet 6BB', effectiveStack: '30BB',
     steps: [
       { id: '1', street: 'Preflop', communityCards: [], description: '面對大籌碼的 3-bet，你有 30BB。', potSize: 10.5, options: ["Fold","Call","All-in"], feedbacks: {
-        'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: 'ICM 泡沫期生存第一，大籌碼利用泡沫壓榨，AQo 雖然強但不值得冒淘汰風險。', conceptualError: '無', remember: '泡沫期面對大籌碼要極端保守。', nextStepId: 'next_hand' },
-        'All-in': { judgment: '錯誤', score: 2, bestAction: 'Fold', why: '泡沫期撞上大籌碼的強範圍就出局了。', conceptualError: '無視 ICM。', remember: '生存比籌碼翻倍重要。', nextStepId: 'next_hand' },
-        'Call': { judgment: '錯誤', score: 4, bestAction: 'Fold', why: 'OOP 玩 3-bet pot 在泡沫期是折磨。', conceptualError: '猶豫不決。', remember: '泡沫期少平跟。', nextStepId: 'next_hand' }
+        'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: '若對手的 3-bet 偏價值且你的出局風險溢價高，棄牌是保守的教學建議。本題缺少完整獎金、全場籌碼與對手範圍，無法證明這是唯一 ICM 最佳解。', conceptualError: '無', remember: '泡泡期先比較獎金結構、短碼與對手範圍，不能只因被大碼加注就棄牌。', nextStepId: 'next_hand' },
+        'All-in': { judgment: '可接受', score: 8, bestAction: 'Fold', why: '若對手有足夠的 3-bet/fold，推回去可能合理；缺少範圍與獎金資料，不能把它判定為重大錯誤。', conceptualError: '需要驗證對手棄牌率與 ICM 成本。', remember: '只有籌碼量與手牌不足以決定泡泡期全下範圍。', nextStepId: 'next_hand' },
+        'Call': { judgment: '可接受', score: 8, bestAction: 'Fold', why: '平跟的價值取決於對手範圍、翻後勝率實現與獎金風險；本題只展示保守分支，不提供排除平跟的 solver 證據。', conceptualError: '需要補足情境再比較。', remember: '把未驗證的建議和可計算的 ICM 結論分開。', nextStepId: 'next_hand' }
       }}
     ]
   },
@@ -434,12 +438,12 @@ export const scenarios: Scenario[] = [
     ]
   },
   {
-    id: '43', title: 'SPR 1 頂對自動套池', category: ['SPR'], difficulty: '新手', type: 'Tournament', blinds: '1000/2000', ante: true, tourneyInfo: '後期', userStack: '24000', userBB: 12, position: 'BB', holeCards: [H('K'), H('7')], preAction: 'BTN Min-open 2BB，SB 棄牌，你 Call', effectiveStack: '12BB',
+    id: '43', title: '低 SPR 頂對的範圍與獎金條件', category: ['SPR'], difficulty: '新手', type: 'Tournament', blinds: '1000/2000', ante: true, tourneyInfo: '後期', userStack: '24000', userBB: 12, position: 'BB', holeCards: [H('K'), H('7')], preAction: 'BTN Min-open 2BB，SB 棄牌，你 Call', effectiveStack: '12BB',
     steps: [
       { id: '1', street: 'Flop', communityCards: [C_('K'), D('9'), H('5')], spr: 1.8, description: '底池 5.5BB。Flop (K♣ 9♦ 5♥) 你中頂對。你過牌，BTN 下注 3BB。你剩 10BB (SPR < 2)。', potSize: 8.5, options: ['Fold', 'Call', 'All-in'], feedbacks: {
-        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: 'SPR 不到 2，頂對就是你的全部身家牌。check-raise 全下保護勝率，不讓對手的兩張高牌或聽牌便宜追。', conceptualError: '無', remember: 'SPR 低於 2：頂對以上 = 自動套池，沒有猶豫空間。', nextStepId: 'next_hand' },
-        'Call': { judgment: '可接受', score: 5, bestAction: 'All-in', why: '反正轉牌也是全下，晚推不如早推，早推還能收掉他的浮牌勝率。', conceptualError: '拖延已注定的決策。', remember: '碼淺時把錢先推進去的人拿走棄牌率。', nextStepId: 'next_hand' },
-        'Fold': { judgment: '錯誤', score: 0, bestAction: 'All-in', why: 'SPR 這麼低的頂對是堅果級牌力，棄牌是災難。', conceptualError: '用深籌碼的恐懼打淺籌碼的牌。', remember: '碼越淺，一對的價值越高。', nextStepId: 'next_hand' }
+        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: '低 SPR 降低打光籌碼所需的相對牌力。本題的全下建議假設對手會用足夠較差牌跟注，且沒有顯著 ICM 壓力；這些條件改變時必須重算。', conceptualError: '無', remember: '低 SPR 是重要條件；頂對是否打光仍取決於範圍、牌面與獎金風險。', nextStepId: 'next_hand' },
+        'Call': { judgment: '可接受', score: 8, bestAction: 'All-in', why: '平跟能保留對手的詐唬與較弱下注範圍。沒有完整範圍與各動作 EV，不能斷言早推一定更好。', conceptualError: '無', remember: '比較全下收價值與平跟保留詐唬的取捨。', nextStepId: 'next_hand' },
+        'Fold': { judgment: '偏緊', score: 4, bestAction: 'All-in', why: '在本題偏寬的對手下注假設下，棄掉頂對可能太緊；若對手極度偏價值或 ICM 壓力很高，棄牌仍可能合理。', conceptualError: '需核對對手範圍與 ICM。', remember: 'SPR 不能單獨證明跟注、全下或棄牌。', nextStepId: 'next_hand' }
       }}
     ]
   },
@@ -487,7 +491,7 @@ export const scenarios: Scenario[] = [
     id: '48', title: 'A9s 8BB UTG 全下', category: ['短碼策略', '錦標賽', 'Preflop'], difficulty: '新手', type: 'Tournament', blinds: '1500/3000', ante: true, tourneyInfo: '後期', userStack: '24000', userBB: 8, position: 'UTG', holeCards: [S('A'), S('9')], preAction: '你在 UTG，8BB', effectiveStack: '8BB',
     steps: [
       { id: '1', street: 'Preflop', communityCards: [], description: '你在 UTG 持 A9s，只剩 8BB。', potSize: 2.5, options: ['Fold', 'Call', 'All-in'], feedbacks: {
-        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: '8BB 的 UTG push 範圍雖然緊，A9s 穩穩在內：A 的 blocker、不錯的攤牌價值、加上急迫的盲注壓力。', conceptualError: '無', remember: '10BB 以下沒有 open raise，只有 Push 或 Fold。', nextStepId: 'next_hand' },
+        'All-in': { judgment: '正確', score: 10, bestAction: 'All-in', why: '本題以一般 chip-EV 的短碼全下策略作教學，A9s 有 A 阻擋牌與同花潛力；實際推牌範圍仍須對應桌上人數、ante、對手跟注與獎金風險。', conceptualError: '無', remember: 'Push/Fold 是短碼學習的簡化模型；少於 10BB 仍可能存在小加注或 limp 策略。', nextStepId: 'next_hand' },
         'Fold': { judgment: '偏緊', score: 4, bestAction: 'All-in', why: '再蓋幾手盲注就吃光你了，A9s 已經是 8BB 下的好牌。', conceptualError: '等待永遠不會來的完美牌。', remember: '短碼的耐心是負資產。', nextStepId: 'next_hand' },
         'Call': { judgment: '錯誤', score: 0, bestAction: 'All-in', why: 'Limp 給後面的人免費壓榨你的機會，翻後沒中又只能放棄。', conceptualError: '短碼被動入池。', remember: '8BB limp 是最糟的世界。', nextStepId: 'next_hand' }
       }}
@@ -704,8 +708,8 @@ export const scenarios: Scenario[] = [
     id: '70', title: 'A♥ 在手擋住他的詐唬', category: ['Blocker', '抓雞/Bluff Catch'], difficulty: '進階', type: 'Cash Game', blinds: '1/2', ante: false, userStack: '200', userBB: 100, position: 'BTN', holeCards: [H('A'), D('K')], preAction: '你 Open 3BB，BB Call', effectiveStack: '100BB',
     steps: [
       { id: '1', street: 'River', communityCards: [H('K'), H('7'), S('2'), D('8'), C_('3')], description: 'Flop (K♥ 7♥ 2♠) 你 C-bet 3BB 被跟，Turn (8♦) 你下注 8BB 被跟。River 3♣ 紅心落空，BB 突然全下 35BB。底池 28.5BB。你持頂對頂踢，且拿著 A♥。', potSize: 28.5, options: ['Fold', 'Call'], feedbacks: {
-        'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: '他詐唬的主力是落空的紅心聽牌，但你手上的 A♥ 恰好砍掉其中最大宗的 A♥X♥ 組合。剩下的全下範圍偏向 78、33、慢打的兩對。同一手牌若你拿的是 A♣K♦，跟注反而正確。', conceptualError: '無', remember: '抓雞前檢查：你的牌是擋住他的「詐唬」還是他的「價值」——擋詐唬就蓋，擋價值就跟。', nextStepId: 'next_hand' },
-        'Call': { judgment: '偏鬆', score: 4, bestAction: 'Fold', why: '頂對頂踢看起來是標準抓雞牌，但組合學上你自己擋掉了他大半的空氣。', conceptualError: '忽視自己手牌對對手範圍的影響。', remember: '你的手牌不只是牌力，也是對手範圍的過濾器。', nextStepId: 'next_hand' }
+        'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: '本題假設對手主要用落空紅心聽牌詐唬，且價值組合足夠。A♥ 排除部分 A♥X♥ 詐唬，使跟注較不利；換成 A♣ 可能改善抓詐唬條件，但沒有完整範圍與頻率，不能保證最佳動作翻轉。', conceptualError: '無', remember: '先比較價格與整體價值／詐唬比例，再看 blocker 如何改變組合；單張 blocker 不足以決定跟或棄。', nextStepId: 'next_hand' },
+        'Call': { judgment: '偏鬆', score: 4, bestAction: 'Fold', why: '在本題偏價值、詐唬集中於紅心的假設下，A♥ 讓跟注吸引力下降；若對手會用足夠非紅心組合詐唬，Call 仍可能合理。', conceptualError: '忽視自己手牌對對手範圍的影響。', remember: '你的手牌不只是牌力，也是對手範圍的過濾器。', nextStepId: 'next_hand' }
       }}
     ]
   },
@@ -810,9 +814,9 @@ export const scenarios: Scenario[] = [
   {
     id: '81', title: '雙過牌後的河牌超額下注', category: ['抓雞/Bluff Catch'], difficulty: '進階', type: 'Cash Game', blinds: '2/5', ante: false, userStack: '500', userBB: 100, position: 'BB', holeCards: [S('9'), C_('9')], preAction: 'BTN Open 2.5BB，你 Call', effectiveStack: '100BB',
     steps: [
-      { id: '1', street: 'River', communityCards: [D('K'), S('7'), H('4'), C_('2'), H('6')], potOdds: '38%', description: 'Flop (K♦ 7♠ 4♥) 與 Turn (2♣) 雙方都過牌。River 6♥ 你過牌，BTN 突然超額下注 15BB。底池 9.5BB。', potSize: 9.5, options: ['Fold', 'Call'], feedbacks: {
-        'Call': { judgment: '正確', score: 10, bestAction: 'Call', why: '兩條街的過牌已經把他的範圍鎖在弱牌區——真正的 Kx 很少連過兩街。河牌突然的超額下注與他自己講的故事自相矛盾，這種線的詐唬濃度極高。', conceptualError: '無', remember: '抓雞看故事的連貫性：前後矛盾的大注，多半是空氣在虛張聲勢。', nextStepId: 'next_hand' },
-        'Fold': { judgment: '偏緊', score: 4, bestAction: 'Call', why: '38% 的門檻面對一條几乎不含價值牌的下注線，你的 99 綽綽有餘。', conceptualError: '被尺寸嚇到忘了讀範圍。', remember: '下注大小是嚇人用的，範圍組成才是真相。', nextStepId: 'next_hand' }
+      { id: '1', street: 'River', communityCards: [D('K'), S('7'), H('4'), C_('2'), H('6')], potAccounting: riverPriceLedger, potOdds: `${(riverPriceThreshold * 100).toFixed(2)}%`, description: `SB 棄牌留下 0.4BB；BTN 與 BB 各投入 2.5BB。Flop 與 Turn 雙方過牌。River 你過牌，BTN 下注 15BB，當前底池 ${riverPricePot}BB（含對手下注）。本題直接給定你對其下注範圍的攤牌勝率 40%，不計抽水；只比較 Fold / Call。`, potSize: riverPricePot, assumptions: ['勝率 40% 是明列的數學輸入，不是由兩次過牌推算出的範圍。', '只比較河牌 Fold / Call，無後續下注，不計抽水。'], strategySource: 'Exact pot accounting and stated-equity arithmetic.', options: ['Fold', 'Call'], feedbacks: {
+        'Call': { judgment: '錯誤', score: 2, bestAction: 'Fold', why: `跟注門檻是 15 / (${riverPricePot} + 15) = ${(riverPriceThreshold * 100).toFixed(2)}%。給定 40% 勝率時 Call EV = ${riverPriceCallEv}BB。對手曾過牌並不能證明他沒有價值牌。`, conceptualError: '沒有用給定勝率比較正確價格。', remember: '先對帳底池，再比較勝率與價格；不能靠下注故事認定對手都在詐唬。', nextStepId: 'next_hand', evidence: {sourceConfidence:'exact-math',objective:'Given 40% equity and explicit zero-rake river pot ledger.',actionEvBB:riverPriceCallEv,bestEvBB:0,evLossBB:-riverPriceCallEv,reversals:[`給定攤牌勝率超過 ${(riverPriceThreshold * 100).toFixed(2)}% 時，Call 才優於 Fold。`]} },
+        'Fold': { judgment: '正確', score: 10, bestAction: 'Fold', why: `給定 40% 勝率低於 ${(riverPriceThreshold * 100).toFixed(2)}% 門檻，Fold 的增量 EV 是 0BB，高於 Call 的 ${riverPriceCallEv}BB。`, conceptualError: '無', remember: '棄牌的增量 EV 為零；已投入底池的籌碼不再屬於你。', nextStepId: 'next_hand', evidence: {sourceConfidence:'exact-math',objective:'Given 40% equity and explicit zero-rake river pot ledger.',actionEvBB:0,bestEvBB:0,evLossBB:0,reversals:[`給定攤牌勝率超過 ${(riverPriceThreshold * 100).toFixed(2)}% 時，Call 才優於 Fold。`]} }
       }}
     ]
   },

@@ -5,7 +5,7 @@ import { analyzeBoardTexture, boardTextureDifference } from '../../learning-engi
 import { buildContrastivePairs } from '../../learning-engine/solverCurriculum';
 import { classifyDecisionError } from '../../learning-engine/errorModel';
 import { fingerprintPokerBenchRow } from '../../solver-data/contextFingerprint';
-import { decisionsMatch, loadPokerBenchSplit, parsePokerDecision, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow, PokerBenchSplit } from '../../solver-data/pokerbench';
+import { loadPokerBenchSplit, parsePokerDecision, pokerBenchDecisionGrade, pokerBenchHistoryMatchesRow, pokerBenchVisibleBoard, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow, PokerBenchSplit } from '../../solver-data/pokerbench';
 import { createAttemptId, getReviewSchedule, loadHistory, saveHistory } from '../../utils/history';
 import { getDifficultyWeight, isDelayedReview, makeMasteryKey } from '../../learning-engine';
 
@@ -43,14 +43,16 @@ export function ContrastiveTrainer({ onExit }: { onExit: () => void }) {
     const now = Date.now();
     const makeItem = (row: PokerBenchRow, choice: string, side: 'A' | 'B', offset: number): HistoryItem => {
       const scenarioId = `contrastive:${POKERBENCH_FILES[split].split}:${row.id}`;
-      const previous = history.filter(item => item.scenarioId === scenarioId).sort((a, b) => b.timestamp - a.timestamp)[0];
+      const previous = history.filter(item => item.scenarioId === scenarioId || pokerBenchHistoryMatchesRow(item, row)).sort((a, b) => b.timestamp - a.timestamp)[0];
       const selected = parsePokerDecision(choice);
       const best = parsePokerDecision(row.correctDecision);
-      const correct = decisionsMatch(choice, row.correctDecision);
+      const grade = pokerBenchDecisionGrade(choice, row.correctDecision);
+      const correct = grade.correct;
       const fingerprint = fingerprintPokerBenchRow(row);
-      const texture = row.split === 'postflop' ? analyzeBoardTexture(`${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}`) : undefined;
+      const texture = row.split === 'postflop' ? analyzeBoardTexture(pokerBenchVisibleBoard(row)) : undefined;
       return {
         schemaVersion: 4,
+        decisionContextVersion: 2,
         attemptId: createAttemptId(),
         trainingType: 'contrastive',
         scenarioId,
@@ -60,8 +62,7 @@ export function ContrastiveTrainer({ onExit }: { onExit: () => void }) {
         skillIds: ['decision.boundary', row.split === 'preflop' ? 'preflop.solver-decision' : 'postflop.solver-decision'],
         situationIds: [`situation.position.${row.heroPosition.toLowerCase()}`, `situation.street.${row.split === 'preflop' ? 'preflop' : row.evaluationAt.toLowerCase()}`],
         category: ['PokerBench', 'Contrastive', row.split === 'preflop' ? 'Preflop' : row.evaluationAt],
-        score: correct ? 10 : 0,
-        judgment: correct ? '正確' : '錯誤',
+        ...grade,
         timestamp: now + offset,
         selectedAction: choice,
         bestAction: row.correctDecision,
@@ -71,8 +72,6 @@ export function ContrastiveTrainer({ onExit }: { onExit: () => void }) {
         position: row.heroPosition,
         durationMs: now - startedAt.current,
         confidence,
-        correct,
-        feedbackQuality: correct ? 'best' : 'major-error',
         truthTier: 'verified-solver',
         truthSourceId: POKERBENCH_SOURCE.id,
         truthSourceRef: POKERBENCH_SOURCE.dataset,
@@ -85,9 +84,10 @@ export function ContrastiveTrainer({ onExit }: { onExit: () => void }) {
         isDelayedReview: isDelayedReview(previous, now),
         isUnseen: !previous,
         isTransferTest: true,
+        gameFormat: 'Cash',
         contextFingerprint: fingerprint.id,
         contextMatchStatus: 'exact',
-        errorType: classifyDecisionError({ correct, confidence, selectedDecision: selected.action, bestDecision: best.action }),
+        errorType: classifyDecisionError({ correct, feedbackQuality: grade.feedbackQuality, confidence, selectedDecision: selected.action, bestDecision: best.action }),
         solverCorpusRole: 'sibling',
         contrastivePairId: pair.id,
         boardTextureId: texture?.textureId,
@@ -113,18 +113,18 @@ export function ContrastiveTrainer({ onExit }: { onExit: () => void }) {
   </div></div>;
 }
 
-function SpotCard({ label, row, selected, onSelect, disabled }: { label: string; row: PokerBenchRow; selected: string | null; onSelect: (value: string) => void; disabled: boolean }) {
-  const board = row.split === 'postflop' ? `${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}` : '';
+export function SpotCard({ label, row, selected, onSelect, disabled }: { label: string; row: PokerBenchRow; selected: string | null; onSelect: (value: string) => void; disabled: boolean }) {
+  const board = pokerBenchVisibleBoard(row);
   return <div className="pc-card-lift rounded-2xl border border-slate-800 bg-slate-900/55 p-5"><div className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-300">Spot {label}</div><div className="mt-2 font-mono text-2xl font-bold">{row.holding} · {row.heroPosition}</div><div className="mt-3 text-xs leading-6 text-slate-500">{row.split === 'preflop' ? row.prevLine || 'First in' : `${row.evaluationAt} · ${board} · ${row.postflopAction}`}</div><div className="mt-4 grid gap-2 sm:grid-cols-2">{row.availableMoves.map(move => <button key={move} disabled={disabled} onClick={() => onSelect(move)} className={`rounded-xl border p-3 text-left text-sm ${selected === move ? 'border-fuchsia-400/60 bg-fuchsia-500/12' : 'border-slate-700 bg-slate-950/35'}`}>{move}</button>)}</div></div>;
 }
 function Result({ label, selected, best }: { label: string; selected: string; best: string }) { return <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-sm">你：<b>{selected}</b></div><div className="mt-1 text-sm">Solver：<b>{best}</b></div></div>; }
-function describeDifferences(left: PokerBenchRow, right: PokerBenchRow): string[] {
+export function describeDifferences(left: PokerBenchRow, right: PokerBenchRow): string[] {
   const result: string[] = [];
   if (left.heroPosition !== right.heroPosition) result.push(`position ${left.heroPosition}→${right.heroPosition}`);
   if (Math.abs(left.potSize - right.potSize) > 1) result.push(`pot ${left.potSize}→${right.potSize}bb`);
   if (left.split === 'postflop' && right.split === 'postflop') {
-    const lt = analyzeBoardTexture(`${left.boardFlop}${left.boardTurn || ''}${left.boardRiver || ''}`);
-    const rt = analyzeBoardTexture(`${right.boardFlop}${right.boardTurn || ''}${right.boardRiver || ''}`);
+    const lt = analyzeBoardTexture(pokerBenchVisibleBoard(left));
+    const rt = analyzeBoardTexture(pokerBenchVisibleBoard(right));
     result.push(...boardTextureDifference(lt, rt));
     if (left.postflopAction !== right.postflopAction) result.push('postflop action history changed');
   }

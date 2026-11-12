@@ -33,16 +33,16 @@ function trainingRow(seed = 1): PokerBenchPreflopRow {
   throw new Error('Could not construct a PokerBench training row.');
 }
 
-test('infinite generator ingests 216 scenarios plus 528 safe variants before truth/holdout gates', () => {
+test('infinite generator ingests 228 scenarios plus 528 safe variants before truth/holdout gates', () => {
   const variants = buildGeneratedVariantPool(coreScenarios, 6);
-  assert.equal(scenarios.length, 216);
+  assert.equal(scenarios.length, 228);
   assert.equal(variants.length, 528);
   assert.equal(scenarios.every(isTruthBackedScenario), true);
   assert.equal(variants.every(isTruthBackedScenario), true);
 
   const pool = buildInfiniteCandidatePool(scenarios, variants, []);
   const summary = summarizeInfinitePool(scenarios, variants, [], pool);
-  assert.equal(summary.curatedInput, 216);
+  assert.equal(summary.curatedInput, 228);
   assert.equal(summary.safeVariantInput, 528);
   assert.ok(summary.heldOut > 0);
   assert.ok(summary.usable > 500);

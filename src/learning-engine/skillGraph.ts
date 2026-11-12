@@ -1,6 +1,7 @@
 import { HistoryItem, MasteryStatus, Scenario, ScenarioStep, Street, TruthTier } from '../types';
 import { effectiveEvLoss, evRegretScore } from './ev';
 import { historyContextFamilyId, inferSituationIdsFromHistory } from './contextIdentity';
+import { firstTransferEvidence, hasValidTransferEvidence } from './transferBenchmark';
 
 export interface SkillNode {
   id: string;
@@ -46,7 +47,7 @@ export const SKILL_GRAPH: SkillNode[] = [
   { id: 'postflop.board-texture', label: 'Postflop · Board Texture', parent: 'postflop', evImportance: 1.15, patterns: [/濕牌|乾面|牌面|texture/i] },
   { id: 'postflop.multiway', label: 'Postflop · Multiway', parent: 'postflop', evImportance: 1.2, patterns: [/多人|Multiway/i] },
   { id: 'postflop.solver-decision', label: 'Postflop · Solver Decision', parent: 'postflop', evImportance: 1.25, patterns: [/PokerBench.*(?:Flop|Turn|River)|solver.*postflop/i] },
-  { id: 'decision.boundary', label: 'Decision · Boundary', parent: 'decision', evImportance: 1.4, patterns: [/decision boundary|反轉|敏感度|counterfactual/i] },
+  { id: 'decision.boundary', label: 'Decision · Boundary', parent: 'decision', evImportance: 1.4, patterns: [/decision[. ]boundary|反轉|敏感度|counterfactual/i] },
 ];
 
 function textFor(category: string[], street?: Street): string {
@@ -56,8 +57,9 @@ function textFor(category: string[], street?: Street): string {
 export function inferSkillIds(category: string[] = [], street?: Street): string[] {
   const text = textFor(category, street);
   const ids = SKILL_GRAPH.filter(skill => skill.patterns.some(pattern => pattern.test(text))).map(skill => skill.id);
-  if (street === 'Preflop' && !ids.some(id => id.startsWith('preflop.') || id.startsWith('tournament.'))) ids.push('preflop.rfi');
-  if (street && street !== 'Preflop' && !ids.some(id => id.startsWith('postflop.'))) ids.push('postflop.board-texture');
+  const arithmeticExercise = /Exact Math/i.test(text);
+  if (!arithmeticExercise && street === 'Preflop' && !ids.some(id => id.startsWith('preflop.') || id.startsWith('tournament.'))) ids.push('preflop.rfi');
+  if (!arithmeticExercise && street && street !== 'Preflop' && !ids.some(id => id.startsWith('postflop.'))) ids.push('postflop.board-texture');
   return [...new Set(ids)];
 }
 
@@ -98,7 +100,7 @@ function evidenceSampleSize(items: HistoryItem[]): number {
     const contextNovelty = seenContexts.has(context) ? 0.32 : 1;
     const temporalNovelty = seenDays.has(day) ? 0.85 : 1.12;
     const delayed = item.isDelayedReview ? 1.2 : 1;
-    const transfer = item.isTransferTest || item.trainingType === 'transfer' || item.trainingType === 'counterfactual' || item.trainingType === 'solver-benchmark' ? 1.25 : 1;
+    const transfer = hasValidTransferEvidence(item) ? 1.25 : 1;
     const situationBreadth = Math.min(1.15, 0.9 + inferSituationIdsFromHistory(item).length * 0.03);
     ess += contextNovelty * temporalNovelty * delayed * transfer * truthWeight(item.truthTier) * situationBreadth;
     seenContexts.add(context);
@@ -122,11 +124,12 @@ export function calculateSkillMastery(history: HistoryItem[], now = Date.now()):
     let delayedAttempts = 0;
     let transferAttempts = 0;
     const losses: number[] = [];
+    const transferEvidence = new Set(firstTransferEvidence(ordered));
     ordered.forEach(item => {
       const ageDays = Math.max(0, (now - item.timestamp) / 86400000);
       const recency = Math.exp(-ageDays / 60);
       const difficulty = item.difficultyWeight || 1;
-      const weight = recency * difficulty * truthWeight(item.truthTier) * (item.isDelayedReview ? 1.2 : 1) * (item.isTransferTest ? 1.2 : 1);
+      const weight = recency * difficulty * truthWeight(item.truthTier) * (item.isDelayedReview ? 1.2 : 1) * (transferEvidence.has(item) ? 1.2 : 1);
       const loss = effectiveEvLoss(item);
       const performance = typeof loss === 'number' ? evRegretScore(loss) / 100 : (item.correct ?? item.score >= 8) ? 1 : Math.max(0, item.score / 10);
       totalPerformance += performance * weight;
@@ -134,7 +137,7 @@ export function calculateSkillMastery(history: HistoryItem[], now = Date.now()):
       const isCashLoss = item.utilityUnit === 'bb' || (!item.utilityUnit && !item.category.includes('MTT'));
       if (typeof loss === 'number' && isCashLoss) losses.push(loss);
       if (item.isDelayedReview) delayedAttempts += 1;
-      if (item.isTransferTest || item.trainingType === 'transfer' || item.trainingType === 'counterfactual' || item.trainingType === 'solver-benchmark') transferAttempts += 1;
+      if (transferEvidence.has(item)) transferAttempts += 1;
     });
     const distinctScenarios = new Set(ordered.map(item => item.scenarioId)).size;
     const contexts = new Set(ordered.map(contextKey)).size;
@@ -142,7 +145,7 @@ export function calculateSkillMastery(history: HistoryItem[], now = Date.now()):
     const effectiveSampleSize = evidenceSampleSize(ordered);
     const sampleConfidence = Math.round((1 - Math.exp(-effectiveSampleSize / 7)) * 100);
     const latest = ordered[ordered.length - 1];
-    const trulyTransferred = transferAttempts > 0 || contexts >= 2;
+    const trulyTransferred = transferAttempts > 0;
     // ESS controls how certain we are about the mastery estimate, but it does
     // not redefine the semantic milestone. A skill still requires strong
     // performance, delayed retrieval and transfer before becoming mastered.

@@ -33,11 +33,11 @@ test('scenario truth tiers fail toward expert baseline unless exact evidence is 
 test('infinite candidates expose evidence tier instead of generic truth wording', () => {
   const exactPool = buildInfiniteCandidatePool([semanticTeachingScenarios[0]], [], []);
   assert.equal(exactPool[0]?.truthTier, 'exact-math');
-  assert.equal(exactPool[0]?.truthLabel, 'exact-math ground truth');
+  assert.equal(exactPool[0]?.truthLabel, '已知條件的數學解');
 
   const reviewedPool = buildInfiniteCandidatePool([coreScenarios[0]], buildGeneratedVariantPool([coreScenarios[0]], 1), []);
-  assert.ok(reviewedPool.some(item => item.source === 'curated' && item.truthTier === 'expert-baseline' && item.truthLabel === 'reviewed expert baseline'));
-  assert.ok(reviewedPool.some(item => item.source === 'safe-variant' && item.truthTier === 'expert-baseline' && item.truthLabel === 'strategy-equivalent expert baseline'));
+  assert.ok(reviewedPool.some(item => item.source === 'curated' && item.truthTier === 'expert-baseline' && item.truthLabel === '教學建議（未經 solver 驗證）'));
+  assert.ok(reviewedPool.some(item => item.source === 'safe-variant' && item.truthTier === 'expert-baseline' && item.truthLabel === '教學建議的花色變式'));
 
   const solverPool = buildInfiniteCandidatePool([], [], [trainingRow()]);
   assert.equal(solverPool[0]?.truthTier, 'verified-solver');

@@ -28,10 +28,10 @@ Fold / Check / Call / Bet / Raise / Jam
 
 ## Infinite Hand Generator
 
-Generator 統一三個 truth-backed source inventory：
+Generator 統一三種來源，並保留各自的證據限制：
 
-1. **216 production scenarios**
-   - 152 genuine decision families
+1. **228 production scenarios**
+   - 164 decision families (including 12 bounded MTT utility exercises)
    - 64 suit-isomorphic retrieval instances
    - 經 scenario semantic validator 驗證
 2. **528 strategy-equivalent variants**
@@ -50,6 +50,8 @@ Generator 統一三個 truth-backed source inventory：
 ```text
 source inventory
   ↓
+現金桌 / MTT、桌型、碼深、練習重點
+  ↓
 truth gate
   ↓
 hidden holdout isolation
@@ -67,10 +69,10 @@ source balancing + leak/review weighting
 
 ### Truth gate
 
-只有能證明最佳解的 candidate 才能出題：
+出題前檢查答案欄位與來源完整性；格式驗證不等於 solver 策略驗證：
 
-- Curated scenario：每個 step 必須有一致且有效的 `bestAction`。
-- Safe variant：只繼承策略等價 transformation 下不變的 ground truth。
+- Curated scenario：每個 step 必須有一致且有效的 `bestAction`；人工策略題標示為未經 solver 驗證的條件式教學建議。
+- Safe variant：全域花色置換繼承原題的建議與證據等級，不產生新的策略證據。
 - PokerBench：`correctDecision` 必須明確存在於該 row 的 `availableMoves`，而且必須屬於 training partition。
 
 沒有可靠 truth 的隨機組合 **不生成、不評分、不用附近 node 猜答案**。
@@ -83,7 +85,7 @@ Hidden benchmark 不拿來訓練：
 - 從 hidden source 衍生的 528-pool variant 也排除；
 - PokerBench sibling / holdout 排除。
 
-因此增加題量不會污染 transfer / holdout 驗證。
+修正公共牌可能改變 fingerprint 與 partition。考試另以穩定資料列身分檢查所有歷史曝光，並在提交時再次檢查；舊練習題不能因此變成未見考題。
 
 ### 去重與高變異
 
@@ -122,21 +124,32 @@ P(next)
 - safe variants 25%
 - PokerBench 45%
 
-若 PokerBench 暫時無法下載，216 + 528 inventory 的 holdout-safe subset 仍可立即訓練；不會因外部 corpus 暫時 unavailable 而停止。
+若 PokerBench 暫時無法下載，仍可使用符合偏好的本機題目。若嚴格篩選後無題，介面會顯示缺少的範圍，不會混入另一種賽制或未知條件。
 
 ## 最佳解的語意
 
 不同 source 的「最佳解」精度不同，UI/History 不混淆：
 
 ```text
-PokerBench            → verified solver optimal label
-Curated scenario      → validated teaching / exact-math ground truth
-Safe generated variant→ strategy-equivalent inherited truth
+PokerBench            → 資料集主動作標籤；不提供完整混合頻率或逐動作 EV
+Curated scenario      → 條件式教學建議 / 已知輸入的精確算術
+Safe generated variant→ 原題相同證據等級的花色變式
 ```
 
-PokerBench 只提供 optimal decision label；repo **不會假造缺失的 mixed frequency 或 per-action EV**。
+PokerBench 只提供主動作標籤；不同動作記為「與資料集主動作不同」，不能據此判定嚴重 EV 錯誤或心理模型錯誤。repo **不會假造缺失的 mixed frequency 或 per-action EV**。
 
 有真實 per-action EV 的 scenario 才顯示 EV loss；只有 label 的 solver row 就只判斷 action label。
+
+PokerBench 每個決策只顯示當前街可見的公共牌：Flop 3 張、Turn 4 張、River 5 張。解析、快取、分析、fingerprint 與考試共用此規則。來源為 6-max、起始 100 BB；目前有效籌碼未知，因此只在未限制碼深時納入，且不視為 MTT 資料。
+
+## 現金桌與錦標賽課程
+
+- 主畫面可切換並保存 Cash / MTT；候選題、複習與進度依賽制分開，並套用桌型、碼深與練習重點。來源缺少桌型時不通過桌型篩選。
+- Cash 保留範圍標籤練習與 64 個精確算術題族。進步指標明列為「現金桌算術 EV 差距」，不代表實戰贏率。
+- MTT 新增 12 題練習、8 題隔離評量，涵蓋 chip EV、ICM、衛星賽與立即賞金 PKO；每題列出完整籌碼、獎金、給定勝率與模型假設。這是對稱風險的效用比較，不是完整翻前範圍 solver，亦未模擬未來賞金或死錢。
+- ICM 保留淘汰玩家已取得的獎金；無法判定多人淘汰順序時拒絕計算。MTT 效用依模型與單位分組，不併入現金桌 BB 指標。
+- 複習以每題最新排程為準。轉移能力只計第一次有效曝光；重練、舊版污染紀錄及未完成考試不計。沒有評量樣本時顯示缺少證據。
+- 理解驗證先收答案或跳過，再顯示解說、價格門檻與分析工具。
 
 核心規則仍是：
 
@@ -212,7 +225,7 @@ PokerBench 只提供 optimal decision label；repo **不會假造缺失的 mixed
 - Web：GitHub Pages / PWA
 - Runtime：Node.js 24+ / npm 11
 - History：schema v6
-- Scenario validator：216 production scenarios
+- Scenario validator：228 production scenarios
 - Generated safe variant inventory：528
 - PokerBench inventory：11,000 solver-labelled rows
 - Bundle budget：每個 JS chunk < 500 KiB

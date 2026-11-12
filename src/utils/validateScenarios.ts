@@ -26,6 +26,16 @@ export function validateScenarios(scenarios: Scenario[]): string[] {
       const cards = [...scenario.holeCards, ...step.communityCards].map(card => `${card.rank}-${card.suit}`);
       if (new Set(cards).size !== cards.length) errors.push(`${stepPrefix}: duplicate physical card`);
       if (!Number.isFinite(step.potSize) || step.potSize <= 0) errors.push(`${stepPrefix}: potSize must be positive`);
+      if (step.potAccounting) {
+        const { contributionsBB, rakeBB = 0, callCostBB } = step.potAccounting;
+        const total = contributionsBB.reduce((sum, value) => sum + value, 0) - rakeBB;
+        if (!contributionsBB.length || contributionsBB.some(value => !Number.isFinite(value) || value < 0) || !Number.isFinite(rakeBB) || rakeBB < 0 || Math.abs(total - step.potSize) > 0.00001) errors.push(`${stepPrefix}: pot accounting does not match displayed pot`);
+        if (callCostBB !== undefined) {
+          if (!Number.isFinite(callCostBB) || callCostBB < 0) errors.push(`${stepPrefix}: pot accounting call cost must be non-negative`);
+          const expected = callCostBB / (total + callCostBB) * 100;
+          if (step.potOdds && Math.abs(Number.parseFloat(step.potOdds) - expected) > 0.01) errors.push(`${stepPrefix}: pot accounting does not match displayed pot odds`);
+        }
+      }
       if (new Set(step.options).size !== step.options.length) errors.push(`${stepPrefix}: duplicate options`);
 
       const definedFeedbacks = step.options
@@ -48,6 +58,7 @@ export function validateScenarios(scenarios: Scenario[]): string[] {
         if (!step.options.includes(feedback.bestAction)) errors.push(`${stepPrefix}: bestAction "${feedback.bestAction}" is not an option`);
         if (feedback.score < 0 || feedback.score > 10) errors.push(`${stepPrefix}: score must be between 0 and 10`);
         if (feedback.judgment === '正確' && feedback.score < 8) errors.push(`${stepPrefix}: judgment "正確" requires score >= 8 for option "${option}"`);
+        if (feedback.judgment === '可接受' && feedback.score < 8) errors.push(`${stepPrefix}: judgment "可接受" requires score >= 8 for option "${option}"`);
         if (feedback.judgment === '錯誤' && feedback.score >= 8) errors.push(`${stepPrefix}: judgment "錯誤" requires score < 8 for option "${option}"`);
         if (canonicalBest && feedback.bestAction !== canonicalBest) {
           errors.push(`${stepPrefix}: option "${option}" declares bestAction "${feedback.bestAction}" but canonical bestAction is "${canonicalBest}"`);

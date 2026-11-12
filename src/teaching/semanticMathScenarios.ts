@@ -65,7 +65,7 @@ function potOddsScenario(index: number): Scenario {
   return {
     id: `math-pot-odds-${index + 1}`,
     decisionFamilyId: `math-pot-odds-${index + 1}`,
-    title: `精確 Pot Odds #${index + 1} · Equity ${pct(equity)} vs 門檻 ${pct(breakEven)}`,
+    title: `精確 Pot Odds #${index + 1} · Equity ${pct(equity)}`,
     category: ['Exact Math', 'Pot Odds', 'River', 'Decision Boundary'],
     difficulty: index < 12 ? '新手' : index < 24 ? '中階' : '進階',
     type: 'Cash Game',

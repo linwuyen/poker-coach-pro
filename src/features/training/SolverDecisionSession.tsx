@@ -8,7 +8,7 @@ import { historyDecisionFamilyId } from '../../learning-engine/contextIdentity';
 import { solverDecisionFamilyId } from '../../learning-engine/semanticPairs';
 import { solverCorpusRole, solverCurriculum } from '../../learning-engine/solverCurriculum';
 import { fingerprintPokerBenchRow } from '../../solver-data/contextFingerprint';
-import { canonicalHolding, decisionsMatch, normalizeDecision, parsePokerDecision, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow } from '../../solver-data/pokerbench';
+import { canonicalHolding, decisionsMatch, normalizeDecision, parsePokerDecision, pokerBenchDecisionGrade, pokerBenchHistoryMatchesRow, pokerBenchVisibleBoard, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow } from '../../solver-data/pokerbench';
 import { analyzeHandMath, evaluateHandStrength } from '../../utils/handMath';
 import { createAttemptId, getReviewSchedule } from '../../utils/history';
 import { AdvancedToolLinks } from './AdvancedToolLinks';
@@ -39,11 +39,19 @@ export function parseSolverCards(value: string): Card[] {
   }));
 }
 
+export function analyzePokerBenchHand(row: PokerBenchRow) {
+  const holdingCards = parseSolverCards(row.holding);
+  const boardCards = parseSolverCards(pokerBenchVisibleBoard(row));
+  return { holdingCards, boardCards, handStrength: evaluateHandStrength(holdingCards, boardCards), handMath: analyzeHandMath(holdingCards, boardCards) };
+}
+
 export function humanizeSolverMove(value: string): string {
   const normalized = normalizeDecision(value);
   for (const [pattern, label] of ACTION_ZH) if (pattern.test(normalized)) return label;
   const amount = normalized.match(/^(bet|raise)\s+([0-9]+(?:\.[0-9]+)?)/i);
   if (amount) return `${amount[1].toLowerCase() === 'bet' ? '下注' : '加注到'} ${amount[2]} BB`;
+  const preflopRaise = normalized.match(/^([0-9]+(?:\.[0-9]+)?)\s*bb$/);
+  if (preflopRaise) return `加注到 ${preflopRaise[1]} BB`;
   if (/^bet\b/i.test(normalized)) return '下注';
   if (/^raise\b/i.test(normalized)) return '加注';
   return value;
@@ -115,6 +123,7 @@ export function automaticSolverAnalysis(row: PokerBenchRow, choice: string): str
   }
   lines.push('PokerBench 沒有提供這個 node 的自然語言 rationale；因此系統不會從 Call / Fold / Raise 類型反推「為什麼」並冒充 solver 理由。');
   lines.push('PokerBench 這筆資料只提供 exact optimal label，沒有 per-action EV 或 mixed frequency；系統不會虛構「差幾 BB」或假的 solver 頻率。');
+  lines.push('這是資料集主動作比對；其他選項可能屬於混合策略。Label 不同無法證明該選項的 EV 損失或錯誤嚴重度。');
   return lines;
 }
 
@@ -136,10 +145,8 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
   const completionSent = useRef(false);
   const row = rows[index];
   const analysis = useMemo(() => row && choice && submitted ? automaticSolverAnalysis(row, choice) : [], [row, choice, submitted]);
-  const holdingCards = useMemo(() => row ? parseSolverCards(row.holding) : [], [row]);
-  const boardCards = useMemo(() => row?.split === 'postflop' ? parseSolverCards(`${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}`) : [], [row]);
-  const handStrength = useMemo(() => row ? evaluateHandStrength(holdingCards, boardCards) : null, [row, holdingCards, boardCards]);
-  const handMath = useMemo(() => row ? analyzeHandMath(holdingCards, boardCards) : null, [row, holdingCards, boardCards]);
+  const hand = useMemo(() => row ? analyzePokerBenchHand(row) : null, [row]);
+  const { holdingCards = [], boardCards = [], handStrength, handMath } = hand || {};
 
   useEffect(() => {
     if (row || !autoComplete || completionSent.current) return;
@@ -156,15 +163,17 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
     if (submitted) return;
     const now = Date.now();
     const family = solverDecisionFamilyId(row);
-    const previous = history.filter(item => historyDecisionFamilyId(item) === family).sort((a, b) => b.timestamp - a.timestamp)[0];
+    const previous = history.filter(item => historyDecisionFamilyId(item) === family || pokerBenchHistoryMatchesRow(item, row)).sort((a, b) => b.timestamp - a.timestamp)[0];
     const selected = parsePokerDecision(move);
     const best = parsePokerDecision(row.correctDecision);
-    const isCorrect = decisionsMatch(move, row.correctDecision);
+    const grade = pokerBenchDecisionGrade(move, row.correctDecision);
+    const isCorrect = grade.correct;
     const fingerprint = fingerprintPokerBenchRow(row);
     const curriculum = solverCurriculum(row);
     const split = row.split;
     const item: HistoryItem = {
       schemaVersion: 6,
+      decisionContextVersion: 2,
       attemptId: createAttemptId(),
       trainingType: 'solver-corpus',
       scenarioId: `daily-solver:${POKERBENCH_FILES[split].split}:${row.id}`,
@@ -173,9 +182,8 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
       masteryKey: makeMasteryKey(family, 'solver-decision'),
       skillIds: [split === 'preflop' ? 'preflop.solver-decision' : 'postflop.solver-decision'],
       situationIds: [`situation.position.${row.heroPosition.toLowerCase()}`, ...(split === 'postflop' ? [`situation.street.${row.evaluationAt.toLowerCase()}`] : ['situation.street.preflop'])],
-      category: ['PokerBench', 'Daily Generalization', split === 'preflop' ? 'Preflop' : row.evaluationAt],
-      score: isCorrect ? 10 : 0,
-      judgment: isCorrect ? '正確' : '錯誤',
+      category: ['PokerBench', 'Daily Practice', split === 'preflop' ? 'Preflop' : row.evaluationAt],
+      ...grade,
       timestamp: now,
       selectedAction: move,
       bestAction: row.correctDecision,
@@ -184,8 +192,6 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
       street: split === 'preflop' ? 'Preflop' : row.evaluationAt,
       position: row.heroPosition,
       durationMs: now - startedAt.current,
-      correct: isCorrect,
-      feedbackQuality: isCorrect ? 'best' : 'major-error',
       truthTier: 'verified-solver',
       truthSourceId: POKERBENCH_SOURCE.id,
       truthSourceRef: POKERBENCH_SOURCE.dataset,
@@ -197,14 +203,14 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
       isReview: Boolean(previous),
       isDelayedReview: isDelayedReview(previous, now),
       isUnseen: !previous,
-      isTransferTest: true,
-      transferLevel: 'structural',
+      isTransferTest: false,
+      gameFormat: 'Cash',
       contextFingerprint: fingerprint.id,
       contextMatchStatus: 'exact',
-      errorType: classifyDecisionError({ correct: isCorrect, selectedDecision: selected.action, bestDecision: best.action }),
+      errorType: classifyDecisionError({ correct: isCorrect, feedbackQuality: grade.feedbackQuality, selectedDecision: selected.action, bestDecision: best.action }),
       solverCorpusRole: solverCorpusRole(row),
       curriculumLevel: curriculum.level,
-      questionLabel: `自動變化題 · ${prettySolverCards(row.holding)}`,
+      questionLabel: `資料集主動作練習 · ${prettySolverCards(row.holding)}`,
       notes: `${POKERBENCH_SOURCE.label}. Training partition only; optimal action comes from the pinned dataset. Missing per-action EV/mixed frequency is intentionally not fabricated.`,
       ...getReviewSchedule(isCorrect ? 10 : 0, previous, undefined, now),
     };
@@ -241,7 +247,8 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
     <header className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><div className="flex items-center gap-3"><button onClick={onExit} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-400 hover:bg-slate-800"><ArrowLeft className="h-4 w-4" />離開</button><div className="flex-1"><div className="flex justify-between text-sm"><b>{title}</b><span className="font-mono text-slate-500">{index + 1}/{rows.length}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full bg-emerald-400" style={{ width: `${progress}%` }} /></div></div></div></header>
 
     <section className="rounded-3xl border border-slate-800 bg-slate-900/55 p-6 md:p-8">
-      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">新的一手 · Solver 最佳解</div>
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">新的一手 · 資料集主動作練習</div>
+      <p className="mt-3 text-xs leading-6 text-slate-400">{POKERBENCH_SOURCE.contextNote}</p>
       <div data-testid="solver-card-table" className="mt-4 rounded-2xl border border-emerald-500/15 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.12),rgba(2,6,23,0.55)_65%)] p-6 text-center">
         <div data-testid="solver-board-cards" className="flex min-h-20 items-center justify-center gap-2">
           {row.split === 'postflop' && boardCards.length ? boardCards.map((card, cardIndex) => <CardUI key={`${card.rank}-${card.suit}-${cardIndex}`} card={card} size="sm" />) : <span className="rounded-xl border border-dashed border-slate-700 px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-600">Preflop</span>}
@@ -251,7 +258,7 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
         <div className="mt-2 text-xs font-semibold text-emerald-200">Hero · {row.heroPosition} · {combo}</div>
       </div>
 
-      <div className="mt-4 grid gap-2 text-sm text-slate-400 sm:grid-cols-3"><span>底池 {row.potSize} BB</span><span>{row.split === 'preflop' ? `${row.numPlayers} 人桌` : row.evaluationAt}</span><span>{row.split === 'postflop' ? `位置 ${row.heroPosition}` : `加注層級 ${row.numBets}`}</span></div>
+      <div className="mt-4 grid gap-2 text-sm text-slate-400 sm:grid-cols-3"><span>底池 {row.potSize} BB</span><span>{row.split === 'preflop' ? `牌局中剩餘 ${row.numPlayers} 人` : row.evaluationAt}</span><span>{row.split === 'postflop' ? `位置 ${row.heroPosition}` : `加注層級 ${row.numBets}`}</span></div>
       <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/35 p-4 text-sm leading-7 text-slate-300"><div><span className="text-slate-500">翻前：</span>{preflopLine}</div>{row.split === 'postflop' && <div className="mt-1"><span className="text-slate-500">翻後：</span>{postflopLine}</div>}</div>
       <div className="mt-5 grid gap-2 sm:grid-cols-2">{row.availableMoves.map(move => <button data-testid="solver-action" key={move} disabled={submitted} onClick={() => submit(move)} className={`rounded-xl border p-4 text-left text-sm font-semibold ${choice === move ? 'border-emerald-400/60 bg-emerald-500/12' : 'border-slate-700 bg-slate-950/35 hover:border-emerald-500/40'}`}>{humanizeSolverMove(move)}</button>)}</div>
     </section>
@@ -261,8 +268,8 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
         {correct ? <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-400" /> : <XCircle className="mt-0.5 h-6 w-6 shrink-0 text-red-400" />}
         <div className="min-w-0 flex-1 space-y-4">
           <div>
-            <div className={`font-semibold ${correct ? 'text-emerald-100' : 'text-amber-100'}`}>{correct ? '答對了 · 先看完整證據解說' : '答錯 · 比對 exact solver label'}</div>
-            <div className="mt-2 text-sm text-slate-300">你：<b>{humanizeSolverMove(choice || '')}</b><span className="mx-2 text-slate-600">→</span>最佳解：<b className="text-emerald-300">{humanizeSolverMove(row.correctDecision)}</b></div>
+            <div className={`font-semibold ${correct ? 'text-emerald-100' : 'text-amber-100'}`}>{correct ? '答對了 · 先看完整證據解說' : '與資料集主動作不同 · 比對 label'}</div>
+            <div className="mt-2 text-sm text-slate-300">你：<b>{humanizeSolverMove(choice || '')}</b><span className="mx-2 text-slate-600">→</span>資料集主動作：<b className="text-emerald-300">{humanizeSolverMove(row.correctDecision)}</b></div>
           </div>
 
           <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4">

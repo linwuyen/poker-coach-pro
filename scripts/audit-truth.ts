@@ -8,6 +8,7 @@ import {
   semanticTeachingScenarios,
 } from '../src/teaching/scenarioCatalog';
 import { Scenario } from '../src/types';
+import { tournamentTrainingScenarios } from '../src/teaching/tournamentMathScenarios';
 
 function definedFeedbacks(scenario: Scenario) {
   return scenario.steps.flatMap(step => Object.values(step.feedbacks).filter(Boolean));
@@ -63,10 +64,20 @@ function assertInheritedTruth(base: Scenario, variant: Scenario): void {
 assert.equal(coreScenarios.length, 88, 'Canonical reviewed family inventory changed; update the truth audit intentionally.');
 assert.equal(semanticTeachingScenarios.length, 64, 'Exact-math family inventory changed; update the truth audit intentionally.');
 assert.equal(curatedTeachingVariants.length, 64, 'Rendered suit-isomorphic inventory changed unexpectedly.');
-assert.equal(scenarios.length, 216, 'Production scenario inventory changed unexpectedly.');
+assert.equal(scenarios.length, 228, 'Production scenario inventory changed unexpectedly.');
 assert.equal(scenarios.every(isTruthBackedScenario), true, 'Every production scenario must remain internally gradeable.');
 
 semanticTeachingScenarios.forEach(assertExactMathEvidence);
+for (const scenario of tournamentTrainingScenarios) {
+  for (const feedback of definedFeedbacks(scenario)) {
+    const evidence = feedback!.evidence!;
+    assert.equal(evidence.sourceConfidence, 'exact-math');
+    assert.ok(Number.isFinite(evidence.actionUtility) && Number.isFinite(evidence.bestUtility) && Number.isFinite(evidence.utilityLoss));
+    assert.ok(Math.abs(evidence.bestUtility! - evidence.actionUtility! - evidence.utilityLoss!) < 1e-8);
+    assert.equal(evidence.evLossBB, undefined, 'MTT utility must not be fabricated as cash BB loss');
+    assert.ok(evidence.utilityUnit && evidence.utilityModel);
+  }
+}
 
 const coreById = new Map(coreScenarios.map(item => [item.id, item]));
 for (const variant of curatedTeachingVariants) {
@@ -83,8 +94,8 @@ for (const variant of generated) {
   assertInheritedTruth(base!, variant);
 }
 
-const genuineFamilies = new Set([...coreScenarios, ...semanticTeachingScenarios].map(item => item.decisionFamilyId || item.id));
-assert.equal(genuineFamilies.size, 152, 'Genuine semantic family count must not be inflated by cosmetic variants.');
+const genuineFamilies = new Set([...coreScenarios, ...semanticTeachingScenarios, ...tournamentTrainingScenarios].map(item => item.decisionFamilyId || item.id));
+assert.equal(genuineFamilies.size, 164, 'Genuine semantic family count must not be inflated by cosmetic variants.');
 
 const exactFeedbackCount = semanticTeachingScenarios.reduce((sum, scenario) => sum + definedFeedbacks(scenario).length, 0);
 console.log(JSON.stringify({

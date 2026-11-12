@@ -122,7 +122,7 @@ export function buildScenarioAnalysisContext(
     position: scenario.position,
     gameFormat: scenario.type === 'Tournament' ? 'MTT' : 'Cash',
     effectiveStackBB,
-    potBB: step.potSize,
+    potBB: step.potLabel ? undefined : step.potSize,
     spr: step.spr,
     ...decisionMath,
     selectedAction: item.selectedAction,

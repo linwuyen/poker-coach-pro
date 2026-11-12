@@ -9,7 +9,7 @@ export interface Card {
 export type Street = 'Preflop' | 'Flop' | 'Turn' | 'River';
 export type GameFormatTag = 'Cash' | 'MTT';
 export type UtilityUnit = 'bb' | 'dollar-ev' | 'prize-pool-share' | 'seat-equity';
-export type UtilityModel = 'cash-chip-ev' | 'icm' | 'pko' | 'satellite' | 'fgs' | 'priority-only';
+export type UtilityModel = 'cash-chip-ev' | 'tournament-chip-ev' | 'icm' | 'pko' | 'satellite' | 'fgs' | 'priority-only';
 export type TransferLevel = 'near' | 'context' | 'structural';
 
 export interface HandAction {
@@ -37,16 +37,21 @@ export interface PokerDecisionAction {
 }
 
 export type ConfidenceLevel = 1 | 2 | 3 | 4;
-export type FeedbackQuality = 'best' | 'acceptable' | 'suboptimal' | 'major-error';
+export type FeedbackQuality = 'best' | 'acceptable' | 'suboptimal' | 'major-error' | 'label-mismatch';
 export type MasteryStatus = 'new' | 'learning' | 'review' | 'mastered';
 export type TruthTier = 'verified-solver' | 'exact-math' | 'population-exploit' | 'expert-baseline' | 'derived-interpolation' | 'heuristic-estimate';
 export type StrategyMode = 'theory' | 'exploit';
 export type ContextMatchStatus = 'exact' | 'approximate' | 'unsupported';
 export type SolverCorpusRole = 'training' | 'sibling' | 'holdout';
-export type DecisionErrorType = 'none' | 'knowledge-gap' | 'mental-model' | 'sizing-boundary' | 'action-boundary' | 'lucky-guess' | 'fragile-knowledge';
+export type DecisionErrorType = 'none' | 'label-mismatch' | 'knowledge-gap' | 'mental-model' | 'sizing-boundary' | 'action-boundary' | 'lucky-guess' | 'fragile-knowledge';
 export type ReasoningProbeResult = 'pass' | 'fail' | 'skipped';
 
 export interface FeedbackEvidence {
+  actionUtility?: number;
+  bestUtility?: number;
+  utilityLoss?: number;
+  utilityUnit?: UtilityUnit;
+  utilityModel?: UtilityModel;
   objective?: string;
   heroRange?: string;
   villainRange?: string;
@@ -77,6 +82,9 @@ export interface Feedback {
 }
 
 export interface ScenarioStep {
+  potLabel?: string;
+  /** Contributions already in the displayed pot, including the bet faced. */
+  potAccounting?: { contributionsBB: number[]; rakeBB?: number; callCostBB?: number };
   id: string;
   street: Street;
   communityCards: Card[];
@@ -161,6 +169,8 @@ export interface HistoryItem {
   truthSourceRevision?: string;
   datasetSplit?: string;
   datasetRowId?: string;
+  /** v2 records use only board cards visible at the decision street. */
+  decisionContextVersion?: 2;
   strategyMode?: StrategyMode;
   spotFrequencyPer100Hands?: number;
   difficultyWeight?: number;
@@ -194,6 +204,8 @@ export interface HistoryItem {
 
   // Generic training context / utility. These fields are produced by the internal trainer,
   // solver corpus, ICM/FGS or exact-math engines; they are not external-hand provenance.
+  actionUtility?: number;
+  bestUtility?: number;
   gameFormat?: GameFormatTag;
   contextFamilyId?: string;
   evidenceFamilyId?: string;

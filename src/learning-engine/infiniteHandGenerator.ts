@@ -4,7 +4,7 @@ import { candidateLearningSignal } from './closedLoop';
 import { scenarioContextFamilyId } from './contextIdentity';
 import { solverDecisionFamilyId } from './semanticPairs';
 import { solverCorpusRole } from './solverCurriculum';
-import { normalizeDecision, parsePokerDecision, PokerBenchRow } from '../solver-data/pokerbench';
+import { normalizeDecision, parsePokerDecision, pokerBenchVisibleBoard, PokerBenchRow } from '../solver-data/pokerbench';
 
 export type InfiniteHandSource = 'curated' | 'safe-variant' | 'pokerbench';
 export type InfiniteFormat = 'cash' | 'tournament' | 'solver';
@@ -157,7 +157,7 @@ export function pokerBenchPresentationFingerprint(row: PokerBenchRow): string {
   };
   const shape = row.split === 'preflop'
     ? { ...common, players: row.numPlayers, bets: row.numBets, line: row.prevLine }
-    : { ...common, street: row.evaluationAt, flop: row.boardFlop, turn: row.boardTurn, river: row.boardRiver, preflop: row.preflopAction, postflop: row.postflopAction, aggressor: row.aggressorPosition };
+    : { ...common, street: row.evaluationAt, board: pokerBenchVisibleBoard(row), preflop: row.preflopAction, postflop: row.postflopAction, aggressor: row.aggressorPosition };
   return `pokerbench-${fnv1a(JSON.stringify(shape))}`;
 }
 
@@ -165,10 +165,10 @@ function scenarioCandidate(scenario: Scenario, source: 'curated' | 'safe-variant
   const firstStep = scenario.steps[0];
   const truthTier = scenarioTruthTier(scenario);
   const truthLabel = truthTier === 'exact-math'
-    ? 'exact-math ground truth'
+    ? '已知條件的數學解'
     : source === 'safe-variant'
-      ? 'strategy-equivalent expert baseline'
-      : 'reviewed expert baseline';
+      ? '教學建議的花色變式'
+      : '教學建議（未經 solver 驗證）';
   return {
     kind: 'scenario',
     id: `${source}:${scenario.id}`,
