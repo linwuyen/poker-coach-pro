@@ -9,6 +9,7 @@ export const POKERBENCH_SOURCE = {
   dataset: 'https://huggingface.co/datasets/RZ412/PokerBench',
   repo: 'https://github.com/pokerllm/pokerbench',
   disclaimer: 'PokerBench exposes solver-computed optimal decisions, but not per-action EVs or mixed-strategy frequencies. The app must not fabricate missing EV values.',
+  contextNote: '來源設定：6-max、起始 100 BB，1 chip = 1 BB；起始籌碼不代表目前剩餘籌碼。本練習作 Cash 基準；來源未提供 rake、ante、MTT payout / ICM 條件，不能證明適用這些情境。',
 } as const;
 
 const BASE = `https://huggingface.co/datasets/RZ412/PokerBench/resolve/${POKERBENCH_SOURCE.revision}`;
@@ -61,6 +62,21 @@ export interface PokerBenchPostflopRow extends BasePokerBenchRow {
 }
 
 export type PokerBenchRow = PokerBenchPreflopRow | PokerBenchPostflopRow;
+
+/** CSV runouts include future cards. Project even legacy/direct rows to known information. */
+export function pokerBenchVisibleBoard(row: PokerBenchRow): string {
+  if (row.split === 'preflop') return '';
+  const flop = row.boardFlop.slice(0, 6);
+  if (row.evaluationAt === 'Flop' || row.evaluationAt === 'Preflop') return row.evaluationAt === 'Preflop' ? '' : flop;
+  const turn = row.boardTurn.slice(0, 2);
+  return `${flop}${turn}${row.evaluationAt === 'River' ? row.boardRiver.slice(0, 2) : ''}`;
+}
+
+function visiblePokerBenchRow(row: PokerBenchRow): PokerBenchRow {
+  if (row.split === 'preflop') return row;
+  const board = pokerBenchVisibleBoard(row);
+  return { ...row, boardFlop: board.slice(0, 6), boardTurn: board.slice(6, 8), boardRiver: board.slice(8, 10) };
+}
 
 export interface ParsedPokerDecision {
   raw: string;
@@ -152,7 +168,8 @@ export function parsePokerBenchCsv(text: string, split: PokerBenchSplit): PokerB
       potSize: numberValue(row.pot_size),
     }));
   }
-  return objects.map((row, index): PokerBenchPostflopRow => ({
+  return objects.map((row, index): PokerBenchPostflopRow => {
+    const parsed: PokerBenchPostflopRow = {
     id: `postflop-${index + 1}`,
     split: 'postflop',
     preflopAction: row.preflop_action || '',
@@ -167,7 +184,9 @@ export function parsePokerBenchCsv(text: string, split: PokerBenchSplit): PokerB
     heroPosition: row.hero_position || '',
     holding: row.holding || '',
     correctDecision: row.correct_decision || '',
-  }));
+    };
+    return visiblePokerBenchRow(parsed) as PokerBenchPostflopRow;
+  });
 }
 
 export function normalizeDecision(value: string): string {
@@ -176,7 +195,8 @@ export function normalizeDecision(value: string): string {
 
 export function parsePokerDecision(value: string): ParsedPokerDecision {
   const normalized = normalizeDecision(value);
-  const amountMatch = normalized.match(/(?:bet|raise)\s+([0-9]+(?:\.[0-9]+)?)/i);
+  const preflopRaise = normalized.match(/^([0-9]+(?:\.[0-9]+)?)\s*bb$/);
+  const amountMatch = normalized.match(/(?:bet|raise)\s+([0-9]+(?:\.[0-9]+)?)/i) || preflopRaise;
   const amount = amountMatch ? Number(amountMatch[1]) : undefined;
   let type: PokerDecisionAction['type'] = 'check';
   if (/all\s*-?\s*in|allin|jam/.test(normalized)) type = 'all-in';
@@ -185,11 +205,34 @@ export function parsePokerDecision(value: string): ParsedPokerDecision {
   else if (/^raise/.test(normalized)) type = 'raise';
   else if (/^bet/.test(normalized)) type = 'bet';
   else if (/^check/.test(normalized)) type = 'check';
+  else if (preflopRaise) type = 'raise';
   return { raw: value, normalized, action: { type, ...(amount !== undefined ? { sizeBB: amount } : {}) } };
 }
 
 export function decisionsMatch(left: string, right: string): boolean {
   return normalizeDecision(left) === normalizeDecision(right);
+}
+
+/** Agreement with a published dominant-action label is not an EV-loss measurement. */
+export function pokerBenchDecisionGrade(choice: string, label: string) {
+  const correct = decisionsMatch(choice, label);
+  return {
+    correct,
+    score: correct ? 10 : 0,
+    judgment: correct ? '符合資料集主動作' : '與資料集主動作不同',
+    feedbackQuality: correct ? 'best' as const : 'label-mismatch' as const,
+  };
+}
+
+/** Keep prior exposures when a correction changes the derived context fingerprint. */
+export function pokerBenchHistoryMatchesRow(history: {
+  datasetRowId?: string;
+  datasetSplit?: string;
+  truthSourceRevision?: string;
+}, row: PokerBenchRow): boolean {
+  return history.datasetRowId === row.id
+    && history.datasetSplit === POKERBENCH_FILES[row.split].split
+    && (!history.truthSourceRevision || history.truthSourceRevision === POKERBENCH_SOURCE.revision);
 }
 
 export function isSizingDecisionRow(row: PokerBenchRow): boolean {
@@ -240,7 +283,11 @@ async function readThroughCache(url: string): Promise<string> {
 }
 
 export async function loadPokerBenchSplit(split: PokerBenchSplit, force = false): Promise<PokerBenchRow[]> {
-  if (!force && memoryCache.has(split)) return memoryCache.get(split)!;
+  if (!force && memoryCache.has(split)) {
+    const rows = memoryCache.get(split)!.map(visiblePokerBenchRow);
+    memoryCache.set(split, rows);
+    return rows;
+  }
   const text = await readThroughCache(POKERBENCH_FILES[split].url);
   const rows = parsePokerBenchCsv(text, split);
   if (!rows.length) throw new Error('PokerBench returned no parseable rows.');

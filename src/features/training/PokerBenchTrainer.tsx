@@ -12,6 +12,9 @@ import {
   deterministicSample,
   isSizingDecisionRow,
   loadPokerBenchSplit,
+  pokerBenchDecisionGrade,
+  pokerBenchHistoryMatchesRow,
+  pokerBenchVisibleBoard,
   parsePokerDecision,
   POKERBENCH_FILES,
   POKERBENCH_SOURCE,
@@ -24,14 +27,14 @@ const CONFIDENCE: Array<{ value: ConfidenceLevel; label: string }> = [
   { value: 1, label: '猜測' }, { value: 2, label: '不太確定' }, { value: 3, label: '大致確定' }, { value: 4, label: '非常確定' },
 ];
 const ERROR_LABEL: Record<DecisionErrorType, string> = {
-  none: '穩定決策', 'knowledge-gap': '知識缺口', 'mental-model': '高信心錯誤模型', 'sizing-boundary': '尺寸邊界錯誤', 'action-boundary': '動作邊界錯誤', 'lucky-guess': '低信心猜中', 'fragile-knowledge': '脆弱知識',
+  none: '資料集標籤一致', 'label-mismatch': '資料集標籤不一致（EV未知）', 'knowledge-gap': '知識缺口', 'mental-model': '高信心錯誤模型', 'sizing-boundary': '尺寸邊界錯誤', 'action-boundary': '動作邊界錯誤', 'lucky-guess': '低信心猜中', 'fragile-knowledge': '脆弱知識',
 };
 
 type TrainerMode = 'all' | 'sizing' | 'benchmark';
 
 function reasoningOptions(row: PokerBenchRow): string[] {
   return row.split === 'preflop'
-    ? ['位置 / 行動順序', 'Range interaction', 'Blocker', '下注樹 / Pot odds', 'Stack / ICM']
+    ? ['位置 / 行動順序', 'Range interaction', 'Blocker', '下注樹 / Pot odds', '來源起始 Stack']
     : ['Range advantage', 'Nut advantage', 'Board texture', 'Pot odds', 'Blocker', 'Bet sizing'];
 }
 
@@ -88,16 +91,18 @@ export function PokerBenchTrainer({ onExit, mode = 'all' }: { onExit: () => void
     const history = loadHistory();
     const now = Date.now();
     const scenarioId = `pokerbench:${POKERBENCH_FILES[split].split}:${row.id}`;
-    const previous = history.filter(item => item.scenarioId === scenarioId).sort((a, b) => b.timestamp - a.timestamp)[0];
-    const isCorrect = decisionsMatch(selected, row.correctDecision);
+    const previous = history.filter(item => item.scenarioId === scenarioId || pokerBenchHistoryMatchesRow(item, row)).sort((a, b) => b.timestamp - a.timestamp)[0];
+    const grade = pokerBenchDecisionGrade(selected, row.correctDecision);
+    const isCorrect = grade.correct;
     const score = isCorrect ? 10 : 0;
     const selectedDecision = parsePokerDecision(selected);
     const bestDecision = parsePokerDecision(row.correctDecision);
-    const errorType = classifyDecisionError({ correct: isCorrect, confidence, selectedDecision: selectedDecision.action, bestDecision: bestDecision.action });
+    const errorType = classifyDecisionError({ correct: isCorrect, feedbackQuality: grade.feedbackQuality, confidence, selectedDecision: selectedDecision.action, bestDecision: bestDecision.action });
     const fingerprint = fingerprintPokerBenchRow(row);
-    const boardTexture = row.split === 'postflop' ? analyzeBoardTexture(`${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}`) : undefined;
+    const boardTexture = row.split === 'postflop' ? analyzeBoardTexture(pokerBenchVisibleBoard(row)) : undefined;
     const item: HistoryItem = {
       schemaVersion: 4,
+      decisionContextVersion: 2,
       attemptId: createAttemptId(),
       trainingType: mode === 'benchmark' ? 'solver-benchmark' : 'solver-corpus',
       scenarioId,
@@ -107,8 +112,7 @@ export function PokerBenchTrainer({ onExit, mode = 'all' }: { onExit: () => void
       skillIds: mode === 'sizing' ? ['postflop.bet-sizing', 'decision.boundary'] : row.split === 'preflop' ? ['preflop.solver-decision'] : ['postflop.solver-decision'],
       situationIds: [`situation.street.${row.split === 'preflop' ? 'preflop' : row.evaluationAt.toLowerCase()}`, `situation.position.${row.heroPosition.toLowerCase()}`, ...(boardTexture ? [`situation.board.${boardTexture.textureId}`] : [])],
       category: ['PokerBench', mode === 'benchmark' ? 'Solver Holdout' : 'Solver Corpus', row.split === 'preflop' ? 'Preflop' : row.evaluationAt, ...(mode === 'sizing' ? ['Bet Sizing'] : [])],
-      score,
-      judgment: isCorrect ? '正確' : '錯誤',
+      ...grade,
       timestamp: now,
       selectedAction: selected,
       bestAction: row.correctDecision,
@@ -118,8 +122,6 @@ export function PokerBenchTrainer({ onExit, mode = 'all' }: { onExit: () => void
       position: row.heroPosition,
       durationMs: now - startedAt.current,
       confidence,
-      correct: isCorrect,
-      feedbackQuality: isCorrect ? 'best' : 'major-error',
       truthTier: 'verified-solver',
       truthSourceId: POKERBENCH_SOURCE.id,
       truthSourceRef: POKERBENCH_SOURCE.dataset,
@@ -132,6 +134,7 @@ export function PokerBenchTrainer({ onExit, mode = 'all' }: { onExit: () => void
       isDelayedReview: isDelayedReview(previous, now),
       isUnseen: !previous,
       isTransferTest: mode === 'benchmark',
+      gameFormat: 'Cash',
       questionLabel: `PokerBench · ${row.split === 'preflop' ? 'Preflop' : row.evaluationAt} · ${row.holding}`,
       contextFingerprint: fingerprint.id,
       contextMatchStatus: 'exact',
@@ -164,7 +167,7 @@ export function PokerBenchTrainer({ onExit, mode = 'all' }: { onExit: () => void
   const heroTitle = mode === 'sizing' ? '下注尺寸直接用 Solver Label 訓練' : mode === 'benchmark' ? '真正 Holdout：正常訓練永遠看不到這批 row' : 'Solver Curriculum：先基礎，再邊界，再 transfer';
   return <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8"><div className="mx-auto max-w-6xl">
     <header className="flex flex-wrap items-center justify-between gap-3"><button type="button" onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4" />返回主訓練機</button><div className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/8 px-3 py-1.5 text-xs text-emerald-200"><ShieldCheck className="h-3.5 w-3.5" />verified-solver · {POKERBENCH_SOURCE.license}</div></header>
-    <section className="pc-hero-glow mt-6 rounded-3xl border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.14),rgba(15,23,42,0.78))] p-6 md:p-8"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">{mode === 'sizing' ? <Ruler className="h-4 w-4" /> : <Database className="h-4 w-4" />}{mode === 'benchmark' ? 'Solver Holdout Benchmark' : mode === 'sizing' ? 'Solver Bet Sizing' : 'PokerBench Solver Curriculum'}</div><h1 className="mt-3 text-3xl font-bold">{heroTitle}</h1><p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">來源固定 revision <span className="font-mono text-emerald-200">{POKERBENCH_SOURCE.revision.slice(0, 12)}</span>。缺 action EV / mixed frequency 就留白；Explain-before-reveal 的理由是你的推理假設，不假裝成 solver explanation。</p></section>
+    <section className="pc-hero-glow mt-6 rounded-3xl border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.14),rgba(15,23,42,0.78))] p-6 md:p-8"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">{mode === 'sizing' ? <Ruler className="h-4 w-4" /> : <Database className="h-4 w-4" />}{mode === 'benchmark' ? 'Solver Holdout Benchmark' : mode === 'sizing' ? 'Solver Bet Sizing' : 'PokerBench Solver Curriculum'}</div><h1 className="mt-3 text-3xl font-bold">{heroTitle}</h1><p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">來源固定 revision <span className="font-mono text-emerald-200">{POKERBENCH_SOURCE.revision.slice(0, 12)}</span>。缺 action EV / mixed frequency 就留白；Explain-before-reveal 的理由是你的推理假設，不假裝成 solver explanation。主動作 label 不同不代表已證明重大錯誤，其他選項可能屬於混合策略。</p><p className="mt-3 text-xs leading-6 text-slate-400">{POKERBENCH_SOURCE.contextNote}</p></section>
 
     {mode !== 'sizing' && <section className="mt-5 flex flex-wrap gap-2"><button type="button" onClick={() => setSplit('preflop')} className={`rounded-xl border px-4 py-2 text-sm ${split === 'preflop' ? 'border-emerald-400/50 bg-emerald-500/12 text-emerald-200' : 'border-slate-800 text-slate-400'}`}>Preflop · 1,000</button><button type="button" onClick={() => setSplit('postflop')} className={`rounded-xl border px-4 py-2 text-sm ${split === 'postflop' ? 'border-emerald-400/50 bg-emerald-500/12 text-emerald-200' : 'border-slate-800 text-slate-400'}`}>Postflop · 10,000</button></section>}
     <section className="mt-5 grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/55 p-4 md:grid-cols-4">
@@ -185,16 +188,16 @@ export function PokerBenchTrainer({ onExit, mode = 'all' }: { onExit: () => void
       <div className="mt-6"><div className="mb-3 text-sm font-semibold">① 最佳決策？</div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{row.availableMoves.map(move => <button key={move} type="button" disabled={submitted} onClick={() => setSelected(move)} className={`pc-card-lift rounded-2xl border p-4 text-left font-semibold ${selected === move ? 'border-emerald-400 bg-emerald-500/12 text-emerald-100' : 'border-slate-800 bg-slate-950/40 text-slate-300'}`}>{move}</button>)}</div></div>
       {!submitted && <div className="mt-6"><div className="mb-3 text-sm font-semibold">② 你是根據什麼判斷？ <span className="text-xs font-normal text-slate-500">可複選，先說理由再看答案</span></div><div className="flex flex-wrap gap-2">{reasoningOptions(row).map(reason => <button key={reason} type="button" onClick={() => toggleReason(reason)} className={`rounded-xl border px-3 py-2 text-xs ${reasoning.includes(reason) ? 'border-blue-400/50 bg-blue-500/12 text-blue-200' : 'border-slate-700 text-slate-400'}`}>{reason}</button>)}</div></div>}
       {!submitted ? <><div className="mt-6 grid gap-2 sm:grid-cols-4">{CONFIDENCE.map(item => <button key={item.value} type="button" onClick={() => setConfidence(item.value)} className={`rounded-xl border px-3 py-3 text-sm ${confidence === item.value ? 'border-amber-400/60 bg-amber-400/10 text-amber-200' : 'border-slate-700 text-slate-400'}`}>{item.label}</button>)}</div><button type="button" disabled={!selected || !confidence || !reasoning.length} onClick={submit} className="pc-interactive pc-shimmer mt-4 w-full rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950 disabled:opacity-40">提交 Solver 決策</button></>
-      : <div className={`mt-6 rounded-2xl border p-5 ${correct ? 'border-emerald-500/25 bg-emerald-500/7' : 'border-red-500/25 bg-red-500/7'}`}><div className="flex items-center gap-2 font-semibold">{correct ? <CheckCircle2 className="h-5 w-5 text-emerald-400" /> : <XCircle className="h-5 w-5 text-red-400" />}{correct ? '符合 Solver Label' : '與 Solver Label 不同'}</div><div className="mt-4 grid gap-3 sm:grid-cols-4"><Metric label="你的答案" value={selected || '-'} /><Metric label="Solver Label" value={row.correctDecision} /><Metric label="診斷" value={ERROR_LABEL[lastErrorType]} /><Metric label="Context" value={fingerprintPokerBenchRow(row).id} /></div><p className="mt-4 text-xs leading-6 text-slate-400">你的理由：{reasoning.join('、')}。理由只作 mental-model 診斷，不宣稱 PokerBench solver 驗證了這些因果解釋。此 row 沒公開每個 action EV，因此不製造假的 regret。</p><button type="button" onClick={next} className="mt-4 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-950">下一題</button></div>}
+      : <div className={`mt-6 rounded-2xl border p-5 ${correct ? 'border-emerald-500/25 bg-emerald-500/7' : 'border-red-500/25 bg-red-500/7'}`}><div className="flex items-center gap-2 font-semibold">{correct ? <CheckCircle2 className="h-5 w-5 text-emerald-400" /> : <XCircle className="h-5 w-5 text-red-400" />}{correct ? '符合 Solver Label' : '與 Solver Label 不同'}</div><div className="mt-4 grid gap-3 sm:grid-cols-4"><Metric label="你的答案" value={selected || '-'} /><Metric label="Solver Label" value={row.correctDecision} /><Metric label="診斷" value={ERROR_LABEL[lastErrorType]} /><Metric label="Context" value={fingerprintPokerBenchRow(row).id} /></div><p className="mt-4 text-xs leading-6 text-slate-400">你的理由：{reasoning.join('、')}。理由是你的推理紀錄，未經 PokerBench solver 驗證。此 row 沒公開每個 action EV，因此不製造假的 regret。</p><button type="button" onClick={next} className="mt-4 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-950">下一題</button></div>}
     </section>}
     <section className="mt-6 grid gap-4 md:grid-cols-3"><SourceCard label="Partition" value={mode === 'benchmark' ? 'Holdout 10%' : 'Training 80%'} detail="Sibling 10% reserved for contrastive transfer" /><SourceCard label="Revision" value={POKERBENCH_SOURCE.revision.slice(0, 12)} detail="immutable source pin" /><SourceCard label="License" value={POKERBENCH_SOURCE.license} detail="solver-computed decisions" /></section>
   </div></div>;
 }
 
 function Context({ row }: { row: PokerBenchRow }) {
-  if (row.split === 'preflop') return <div className="mt-5 grid gap-3 md:grid-cols-3"><Metric label="Action line" value={row.prevLine || 'First in'} wide /><Metric label="Pot" value={`${row.potSize}bb`} /><Metric label="Players / bets" value={`${row.numPlayers} / ${row.numBets}`} /></div>;
+  if (row.split === 'preflop') return <div className="mt-5 grid gap-3 md:grid-cols-3"><Metric label="Action line" value={row.prevLine || 'First in'} wide /><Metric label="Pot" value={`${row.potSize}bb`} /><Metric label="牌局中剩餘人數 / bets" value={`${row.numPlayers} / ${row.numBets}`} /></div>;
   const postflop = row as PokerBenchPostflopRow;
-  const board = `${postflop.boardFlop}${postflop.boardTurn || ''}${postflop.boardRiver || ''}`;
+  const board = pokerBenchVisibleBoard(postflop);
   const texture = analyzeBoardTexture(board);
   return <div className="mt-5 grid gap-3 md:grid-cols-3"><Metric label="Board" value={board || '-'} /><Metric label="Texture" value={`${texture.pairing} · ${texture.tone} · ${texture.dynamics}`} /><Metric label="Pot" value={`${postflop.potSize}bb`} /><Metric label="Aggressor" value={postflop.aggressorPosition || '-'} /><Metric label="Preflop" value={postflop.preflopAction || '-'} wide /><Metric label="Postflop line" value={postflop.postflopAction || '-'} wide /></div>;
 }

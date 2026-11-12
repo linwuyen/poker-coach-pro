@@ -1,6 +1,7 @@
 import { scenarios as rawCoreScenarios } from '../coreData';
 import { ActionType, Feedback, Scenario, Suit } from '../types';
 import { exactMathSemanticScenarios } from './semanticMathScenarios';
+import { tournamentTrainingScenarios } from './tournamentMathScenarios';
 
 const SUIT_SYMBOL: Record<Suit, string> = {
   spades: '♠', hearts: '♥', diamonds: '♦', clubs: '♣',
@@ -63,10 +64,18 @@ function repairKnownGroundTruth(scenario: Scenario): Scenario {
     decisionFamilyId: scenario.decisionFamilyId || scenario.id,
     steps: scenario.steps.map(step => ({
       ...step,
+      assumptions: step.assumptions?.length ? step.assumptions : [
+        '此題為人工編寫的條件式教學建議，沒有完整 solver 範圍與各動作 EV。',
+        scenario.type === 'Tournament' ? '未提供完整獎金與其他玩家籌碼時，不可把本題建議視為已驗證 ICM 最佳解。' : '未提供抽水與對手範圍；請勿直接套用到不同級別或對手。',
+      ],
+      strategySource: step.strategySource || 'Authored teaching baseline; not solver-verified.',
       feedbacks: Object.fromEntries(Object.entries(step.feedbacks).map(([action, feedback]) => {
         if (!feedback) return [action, feedback];
         const fixedBestAction = GROUND_TRUTH_FIXES[`${scenario.id}:${step.id}:${action}`];
-        return [action, fixedBestAction ? { ...feedback, bestAction: fixedBestAction } : feedback];
+        return [action, { ...feedback,
+          ...(fixedBestAction ? { bestAction: fixedBestAction } : {}),
+          ...(feedback.judgment === '可接受' ? { score: Math.max(8, feedback.score), quality: 'acceptable' as const } : {}),
+        }];
       })) as typeof step.feedbacks,
     })),
   };
@@ -111,6 +120,6 @@ export const curatedTeachingVariants: Scenario[] = coreScenarios
   .slice(0, 64)
   .map((scenario, index) => makeSuitIsomorphicScenario(scenario, index));
 
-// 88 original semantic families + 64 exact-math semantic families = 152 genuine
-// decision families. The 64 suit-isomorphic instances bring the rendered bank to 216.
-export const scenarios: Scenario[] = [...coreScenarios, ...semanticTeachingScenarios, ...curatedTeachingVariants];
+// 88 original + 64 cash arithmetic + 12 tournament utility = 164 decision families.
+// The 64 suit-isomorphic retrieval instances bring the rendered bank to 228.
+export const scenarios: Scenario[] = [...coreScenarios, ...semanticTeachingScenarios, ...curatedTeachingVariants, ...tournamentTrainingScenarios];

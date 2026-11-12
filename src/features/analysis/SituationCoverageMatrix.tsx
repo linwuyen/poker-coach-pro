@@ -1,15 +1,14 @@
 import { useMemo } from 'react';
-import { scenarios } from '../../data';
 import { buildSituationCoverage } from '../../learning-engine/coverageMatrix';
-import type { HistoryItem } from '../../types';
+import type { HistoryItem, Scenario } from '../../types';
 
-export function SituationCoverageMatrix({ history }: { history: HistoryItem[] }) {
-  const coverage = useMemo(() => buildSituationCoverage(scenarios, history), [history]);
+export function SituationCoverageMatrix({ history, scenarioBank }: { history: HistoryItem[]; scenarioBank: Scenario[] }) {
+  const coverage = useMemo(() => buildSituationCoverage(scenarioBank, history), [scenarioBank, history]);
   const visible = coverage.slice(0, 14);
   return <section className="rounded-2xl border border-slate-800 bg-slate-900/45 p-5" data-testid="situation-coverage-matrix">
     <div className="mb-4">
       <h3 className="font-semibold text-slate-100">Poker State-Space Coverage</h3>
-      <p className="mt-1 text-xs leading-5 text-slate-500">不是只數 Street / Action：用 format、position、stack、table、board / sizing / boundary 等 situation ids 對照題庫供給與你的 transfer evidence。0 evidence 不會被隱藏。</p>
+      <p className="mt-1 text-xs leading-5 text-slate-500">供給只計目前賽制、桌型、有效籌碼與學習重點下可用的教材和測驗；對照你的本賽制歷史證據。0 evidence 不會被隱藏。現金桌算術測驗以代表題組顯示；可再產生未見變式。</p>
     </div>
     <div className="overflow-x-auto">
       <table className="w-full min-w-[850px] text-left text-xs">

@@ -1,6 +1,8 @@
 import type { HistoryItem } from '../types';
 import type { InfiniteHandCandidate } from './infiniteHandGenerator';
 import { calculateSkillMastery, getSkillNode, inferScenarioSkillIds, inferSkillIds, SKILL_GRAPH } from './skillGraph';
+import { currentDueReviews } from './index';
+import { firstTransferEvidence } from './transferBenchmark';
 
 export interface VerifiedEvNorthStar {
   samples: number;
@@ -204,7 +206,7 @@ export function buildKnowledgeStates(history: HistoryItem[]): SkillKnowledgeStat
     const items = history.filter(item => item.trainingType !== 'custom' && skillIdsForItem(item).includes(node.id));
     const recent = [...items].sort((a, b) => b.timestamp - a.timestamp).slice(0, 12);
     const delayed = items.filter(item => item.isDelayedReview);
-    const transfer = items.filter(item => item.isTransferTest || item.trainingType === 'transfer' || item.trainingType === 'counterfactual' || item.trainingType === 'contrastive' || item.solverCorpusRole === 'holdout');
+    const transfer = firstTransferEvidence(items);
     const confidence = items.filter(item => item.confidence);
     const probes = items.filter(item => item.reasoningProbeResult && item.reasoningProbeResult !== 'skipped');
     const record = mastery.get(node.id);
@@ -273,14 +275,14 @@ export function candidateLearningSignal(candidate: InfiniteHandCandidate, histor
   // "is the learner weak?" because repeated failures make the posterior more certain and
   // therefore reduce uncertainty. Keep persistent weakness as a separate pressure term.
   const errorPressure = 1 - predictedSuccessProbability;
-  const dueCount = relevant.filter(item => typeof item.nextReviewAt === 'number' && item.nextReviewAt <= now).length;
-  const duePressure = clamp01(dueCount / 2);
+  const dueCount = currentDueReviews(relevant, now).length;
+  const duePressure = clamp01(dueCount);
   const losses = relevant
     .filter(item => typeof item.evLossBB === 'number' && Number.isFinite(item.evLossBB))
     .map(item => Math.max(0, item.evLossBB || 0));
   const empiricalSeverity = clamp01((average(losses) ?? 0) / 1.5);
   const evSeverity = clamp01(Math.max(empiricalSeverity, (scenarioImportance(candidate) - 0.8) / 0.7));
-  const transfers = relevant.filter(item => item.isTransferTest || item.trainingType === 'transfer' || item.trainingType === 'counterfactual' || item.trainingType === 'contrastive');
+  const transfers = firstTransferEvidence(relevant);
   const transferRate = transfers.length ? transfers.filter(correct).length / transfers.length : 0.5;
   const transferGap = 1 - transferRate;
   const probes = relevant.filter(item => item.reasoningProbeResult && item.reasoningProbeResult !== 'skipped');

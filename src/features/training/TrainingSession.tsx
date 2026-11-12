@@ -42,10 +42,14 @@ export function shouldShowReasoningProbe(item: HistoryItem, feedback: Feedback):
 }
 
 export function reasoningProbeOptions(reversal: string, attemptSeed: string) {
+  const threshold = reversal.match(/(\d+(?:\.\d+)?)%/);
+  const changedThreshold = (factor: number) => threshold
+    ? reversal.replace(threshold[0], `${Math.min(99.9, Math.max(0.1, Number(threshold[1]) * factor)).toFixed(2)}%`)
+    : undefined;
   const base = [
     { id: 'truth', text: reversal, correct: true },
-    { id: 'cosmetic', text: '只要把花色換掉，最佳解就一定翻轉。', correct: false },
-    { id: 'never', text: '這題沒有任何輸入變化能讓最佳解翻轉。', correct: false },
+    { id: 'lower', text: changedThreshold(0.75) || '只提高需要支付的價格，勝率與其餘條件不變，原動作仍一定最有利。', correct: false },
+    { id: 'higher', text: changedThreshold(1.25) || '只要手牌的絕對牌力不變，就不用重新比較價格與對手範圍。', correct: false },
   ];
   const offset = stableHash(attemptSeed || reversal) % base.length;
   return [...base.slice(offset), ...base.slice(0, offset)];
@@ -157,6 +161,7 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
       spotFrequencyPer100Hands: scenario.spotFrequencyPer100Hands,
       utilityUnit: verifiedCashEv ? 'bb' : undefined,
       utilityModel: verifiedCashEv ? 'cash-chip-ev' : undefined,
+      ...(result.evidence?.utilityUnit ? { utilityUnit: result.evidence.utilityUnit, utilityModel: result.evidence.utilityModel, utilityLoss: result.evidence.utilityLoss, actionUtility: result.evidence.actionUtility, bestUtility: result.evidence.bestUtility } : {}),
       ...schedule,
     };
     setSelectedAction(action);
@@ -206,11 +211,11 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
   }
 
   return <div className="mx-auto max-w-5xl space-y-4 text-slate-100" data-testid="frictionless-training-session">
-    <header className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-3"><div className="flex flex-wrap items-center gap-3"><button type="button" onClick={onExit} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-400 hover:bg-slate-800"><ArrowLeft className="h-4 w-4" />離開</button><div className="min-w-[190px] flex-1"><div className="text-sm font-semibold">{title}</div><div className="mt-1 text-[11px] text-slate-500">{scenario.type} · {scenario.position} · {step.street} · {scenario.userBB}BB</div></div><div className="flex gap-2 text-xs"><Metric label="決策" value={String(decisions)} /><Metric label="正確率" value={decisions ? `${accuracy}%` : '-'} /><Metric label="EV loss" value={`${evLoss.toFixed(2)} BB`} /></div></div></header>
+    <header className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-3"><div className="flex flex-wrap items-center gap-3"><button type="button" onClick={onExit} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-slate-400 hover:bg-slate-800"><ArrowLeft className="h-4 w-4" />離開</button><div className="min-w-[190px] flex-1"><div className="text-sm font-semibold">{title}</div><div className="mt-1 text-[11px] text-slate-500">{scenario.type} · {scenario.position} · {step.street} · {scenario.userBB}BB</div></div><div className="flex gap-2 text-xs"><Metric label="決策" value={String(decisions)} /><Metric label="正確率" value={decisions ? `${accuracy}%` : '-'} /><Metric label={scenario.type === "Tournament" ? "效用差距" : "EV loss"} value={scenario.type === "Tournament" ? (typeof currentItem?.utilityLoss === "number" ? `${currentItem.utilityLoss.toFixed(3)} ${currentItem.utilityUnit || ""}` : "尚無證據") : (sessionItems.some(item => typeof item.evLossBB === "number") ? `${evLoss.toFixed(2)} BB` : "尚無證據")} /></div></div></header>
 
     <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/65 px-5 py-3 text-xs text-slate-400"><div className="flex flex-wrap gap-2"><Pill>{scenario.type}</Pill><Pill>{scenario.tableSize?.toUpperCase() || '9MAX'}</Pill><Pill>{step.street}</Pill>{latestPrevious && <Pill>{isDelayedReview(latestPrevious) ? '自動複習' : '近期重練'}</Pill>}</div><span>{scenario.blinds} · Effective {scenario.effectiveStack}</span></div>
-      <div className="p-5 md:p-7"><div className="rounded-2xl border border-emerald-500/15 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.12),rgba(2,6,23,0.55)_65%)] p-6 text-center"><div className="flex min-h-20 items-center justify-center gap-2">{step.communityCards.length ? step.communityCards.map((card, index) => <CardUI key={`${card.rank}-${card.suit}-${index}`} card={card} size="sm" />) : <span className="rounded-xl border border-dashed border-slate-700 px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-600">Preflop</span>}</div><div className="mt-4 text-xs uppercase tracking-[0.18em] text-emerald-400/70">Pot <span className="ml-1 font-mono text-lg font-black text-emerald-300">{step.potSize} BB</span></div><div className="mt-6 flex items-end justify-center gap-2">{scenario.holeCards.map((card, index) => <CardUI key={`${card.rank}-${card.suit}-${index}`} card={card} size="sm" />)}</div><div className="mt-2 text-xs font-semibold text-emerald-200">Hero · {scenario.position} · {scenario.userBB}BB</div></div><div className="mt-4 grid gap-3 md:grid-cols-[0.8fr_1.2fr]"><Context label="前序行動" value={scenario.preAction} /><Context label="現在的問題" value={step.description} /></div>{(step.spr !== undefined || step.potOdds) && <div className="mt-3 flex flex-wrap gap-2">{step.spr !== undefined && <Pill>SPR {step.spr}</Pill>}{step.potOdds && <Pill>Pot Odds {step.potOdds}</Pill>}</div>}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/65 px-5 py-3 text-xs text-slate-400"><div className="flex flex-wrap gap-2"><Pill>{scenario.type}</Pill><Pill>{scenario.tableSize?.toUpperCase() || '桌型未提供'}</Pill><Pill>{step.street}</Pill>{latestPrevious && <Pill>{isDelayedReview(latestPrevious) ? '自動複習' : '近期重練'}</Pill>}</div><span>{scenario.blinds} · Effective {scenario.effectiveStack}</span></div>
+      <div className="p-5 md:p-7"><div className="rounded-2xl border border-emerald-500/15 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.12),rgba(2,6,23,0.55)_65%)] p-6 text-center"><div className="flex min-h-20 items-center justify-center gap-2">{step.communityCards.length ? step.communityCards.map((card, index) => <CardUI key={`${card.rank}-${card.suit}-${index}`} card={card} size="sm" />) : <span className="rounded-xl border border-dashed border-slate-700 px-5 py-3 text-xs uppercase tracking-[0.2em] text-slate-600">Preflop</span>}</div><div className="mt-4 text-xs uppercase tracking-[0.18em] text-emerald-400/70">{step.potLabel || 'Pot'} <span className="ml-1 font-mono text-lg font-black text-emerald-300">{step.potSize} BB</span></div><div className="mt-6 flex items-end justify-center gap-2">{scenario.holeCards.map((card, index) => <CardUI key={`${card.rank}-${card.suit}-${index}`} card={card} size="sm" />)}</div><div className="mt-2 text-xs font-semibold text-emerald-200">Hero · {scenario.position} · {scenario.userBB}BB</div></div><div className="mt-4 grid gap-3 md:grid-cols-[0.8fr_1.2fr]"><Context label="前序行動" value={scenario.preAction} /><Context label="現在的問題" value={step.description} /></div>{step.spr !== undefined && <div className="mt-3 flex flex-wrap gap-2">{step.spr !== undefined && <Pill>SPR {step.spr}</Pill>}</div>}</div>
     </section>
 
     <section className="rounded-2xl border border-slate-800 bg-slate-900/65 p-5" data-testid="decision-dock"><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{step.options.map(action => <button data-testid="decision-action" key={action} type="button" disabled={Boolean(feedback)} onClick={() => selectAction(action)} className={`rounded-xl border px-4 py-4 text-left text-sm font-semibold transition ${selectedAction === action ? 'border-emerald-400/60 bg-emerald-500/12 text-emerald-100' : 'border-slate-700 bg-slate-950/35 text-slate-200 hover:border-emerald-500/40'} disabled:cursor-default`}>{ACTION_LABELS[action] || action}</button>)}</div></section>
@@ -229,7 +234,7 @@ export function TrainingSession({ scenarios, history, title, continuous = false,
   </div>;
 }
 
-function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, step, handStrength, handMath, onReasoningProbe, onNext }: {
+export function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, step, handStrength, handMath, onReasoningProbe, onNext }: {
   feedback: Feedback;
   selectedAction: ActionType | null;
   currentItem: HistoryItem;
@@ -248,16 +253,24 @@ function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, 
   const probeRequired = shouldShowReasoningProbe(currentItem, feedback);
   const probeComplete = !probeRequired || Boolean(currentItem.reasoningProbeResult);
   const analysisContext = buildScenarioAnalysisContext(scenario, step, currentItem, feedback);
+  const exact = feedback.evidence?.sourceConfidence === 'exact-math' || feedback.evidence?.sourceConfidence === 'verified-solver';
+
+  // Collect an unaided answer before revealing the rationale, alternatives or tools.
+  if (!probeComplete) return <section data-testid="decision-explanation" className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-5">
+    <p className="mb-4 text-sm text-slate-300">動作已記錄。先判斷條件如何改變決策，再看解說。</p>
+    <ReasoningProbe reversal={reversal!} attemptSeed={currentItem.attemptId || `${currentItem.scenarioId}:${currentItem.timestamp}`} result={currentItem.reasoningProbeResult} onResult={onReasoningProbe} />
+    <button data-testid="decision-next" type="button" disabled className="mt-4 rounded-xl border border-slate-700 px-5 py-3 text-slate-500">先完成或跳過理解驗證</button>
+  </section>;
 
   return <section data-testid="decision-explanation" className={`rounded-2xl border p-5 ${tone}`}>
     <div className="flex gap-3">
       {isCorrect ? <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-400" /> : <XCircle className="mt-0.5 h-6 w-6 shrink-0 text-red-400" />}
       <div className="min-w-0 flex-1 space-y-4">
         <div>
-          <div className={`font-semibold ${isCorrect ? 'text-emerald-100' : 'text-red-100'}`}>{isCorrect ? '答對了 · 先看完整解說' : '這個決策需要修正'}</div>
+          <div className={`font-semibold ${isCorrect ? 'text-emerald-100' : 'text-red-100'}`}>{exact ? (isCorrect ? '答對了 · 先看完整解說' : '這個決策需要修正') : (isCorrect ? '符合本題教學建議' : '與本題教學建議不同 · 實際 EV 差距未知')}</div>
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
             <Pill>你：{selectedAction ? ACTION_LABELS[selectedAction] || selectedAction : '-'}</Pill>
-            <Pill>最佳解：{ACTION_LABELS[feedback.bestAction] || feedback.bestAction}</Pill>
+            <Pill>{exact ? '本題最佳解' : '教學建議'}：{ACTION_LABELS[feedback.bestAction] || feedback.bestAction}</Pill>
             <Pill>評分 {feedback.score}/10</Pill>
           </div>
         </div>
@@ -272,13 +285,13 @@ function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, 
           <div className="flex items-center gap-2 text-xs font-semibold text-cyan-200"><Scale className="h-4 w-4" />牌力與數學</div>
           <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
             <Fact label="目前牌力" value={handStrength?.name || '未分類'} />
-            <Fact label="底池" value={`${step.potSize} BB`} />
+            <Fact label={step.potLabel || "底池"} value={`${step.potSize} BB`} />
             <Fact label="SPR" value={step.spr === undefined ? '未提供' : String(step.spr)} />
             <Fact label="Pot Odds" value={step.potOdds || '未提供'} />
           </div>
           {handStrength?.draw && <p className="mt-3 text-xs text-cyan-200/80">聽牌：{handStrength.draw}</p>}
           {handMath?.hasDraw && <p className="mt-1 text-xs text-slate-400">本機聽牌估算：{handMath.drawDescription} · {handMath.outs} outs · 下一張約 {handMath.hitProbNext}%{step.street === 'Flop' ? ` · 到 River 約 ${handMath.hitProbRiver}%` : ''}</p>}
-          <p className="mt-2 text-[11px] leading-5 text-slate-600">牌力/outs 是本機結構分析；最佳解仍以此題已驗證 truth 為準。</p>
+          <p className="mt-2 text-[11px] leading-5 text-slate-500">牌力與 outs 是牌面結構估算，不等於對抗對手範圍的勝率。{exact ? '數學結論只在題目明列的假設下成立。' : '本題為條件式教學建議，未經 solver 驗證。'}</p>
         </div>
 
         {probeRequired && <ReasoningProbe reversal={reversal!} attemptSeed={currentItem.attemptId || `${currentItem.scenarioId}:${currentItem.timestamp}`} result={currentItem.reasoningProbeResult} onResult={onReasoningProbe} />}
@@ -300,7 +313,7 @@ function ScenarioExplanation({ feedback, selectedAction, currentItem, scenario, 
               if (!alternative) return null;
               const best = action === feedback.bestAction;
               return <div key={action} className="rounded-lg border border-slate-800/80 bg-slate-900/40 p-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs"><b className={best ? 'text-emerald-300' : 'text-slate-200'}>{ACTION_LABELS[action] || action}</b><span className="text-slate-600">{alternative.score}/10 · {alternative.judgment}</span>{best && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-300">最佳解</span>}</div>
+                <div className="flex flex-wrap items-center gap-2 text-xs"><b className={best ? 'text-emerald-300' : 'text-slate-200'}>{ACTION_LABELS[action] || action}</b><span className="text-slate-600">{alternative.score}/10 · {alternative.judgment}</span>{best && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-300">{exact ? '最佳解' : '教學建議'}</span>}</div>
                 <p className="mt-1.5 text-xs leading-5 text-slate-500">{alternative.why}</p>
               </div>;
             })}
@@ -338,6 +351,13 @@ function evidenceRows(feedback: Feedback): Array<[string, string]> {
   if (evidence.villainRange) rows.push(['Villain range', evidence.villainRange]);
   if (evidence.continues) rows.push(['繼續範圍', evidence.continues]);
   if (evidence.blockers) rows.push(['Blockers', evidence.blockers]);
+  if (evidence.utilityUnit && evidence.utilityModel) {
+    const unit = evidence.utilityUnit === 'dollar-ev' ? '獎金單位' : evidence.utilityUnit === 'seat-equity' ? '席位機率' : '錦標賽籌碼 BB';
+    rows.push(['計算模型', evidence.utilityModel]);
+    if (typeof evidence.actionUtility === 'number') rows.push(['所選動作效用', `${evidence.actionUtility.toFixed(4)} ${unit}`]);
+    if (typeof evidence.bestUtility === 'number') rows.push(['本題最高效用', `${evidence.bestUtility.toFixed(4)} ${unit}`]);
+    if (typeof evidence.utilityLoss === 'number') rows.push(['本題效用差距', `${evidence.utilityLoss.toFixed(4)} ${unit}`]);
+  }
   if (typeof evidence.actionEvBB === 'number') rows.push(['你的 action EV', `${evidence.actionEvBB.toFixed(2)} BB`]);
   if (typeof evidence.bestEvBB === 'number') rows.push(['最佳 action EV', `${evidence.bestEvBB.toFixed(2)} BB`]);
   if (typeof evidence.evLossBB === 'number') rows.push(['EV loss', `${Math.max(0, evidence.evLossBB).toFixed(2)} BB`]);

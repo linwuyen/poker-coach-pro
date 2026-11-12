@@ -224,7 +224,7 @@ test('closed-loop product surfaces are actually wired into the player flow',()=>
   assert.match(exam,/examCompletedAt/);
   assert.match(history,/locks\.request\(HISTORY_WRITE_LOCK,\s*\{\s*mode:\s*'exclusive'\s*\}/);
   assert.match(history,/mergeHistorySnapshots\(loadHistory\(\),\s*items\)/);
-  assert.match(exam,/中途退出或 lock 失敗都不留下 evaluation evidence/);
+  assert.match(exam,/await updateHistoryExclusive/);
   assert.match(exam,/initialHistory/);
   assert.match(exam,/submissionLock\.current/);
   assert.match(exam,/disabled=\{disabled\}/);

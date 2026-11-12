@@ -1,6 +1,6 @@
 import { StrategyContext } from '../strategy-engine-v2/types';
 import { analyzeBoardTexture } from '../learning-engine/boardTexture';
-import { PokerBenchRow } from './pokerbench';
+import { PokerBenchRow, pokerBenchVisibleBoard } from './pokerbench';
 
 export type ContextMatchStatus = 'exact' | 'approximate' | 'unsupported';
 
@@ -54,7 +54,7 @@ export function fingerprintPokerBenchRow(row: PokerBenchRow): ContextFingerprint
     fields.numBets = row.numBets;
     fields.actionLine = normalizeLine(row.prevLine);
   } else {
-    const board = `${row.boardFlop}${row.boardTurn || ''}${row.boardRiver || ''}`;
+    const board = pokerBenchVisibleBoard(row);
     const texture = analyzeBoardTexture(board);
     fields.street = row.evaluationAt;
     fields.boardTexture = texture.textureId;
