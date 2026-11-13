@@ -4,6 +4,8 @@ import { scenarios } from '../data';
 import { HistoryItem, PlayerProfile, Scenario } from '../types';
 import { AppPage, AppShell } from './AppShell';
 import { SituationCoverageMatrix } from '../features/analysis/SituationCoverageMatrix';
+import { TrainingSession } from '../features/training/TrainingSession';
+import { CurriculumPanel } from '../features/training/CurriculumPanel';
 import { InfiniteTrainingTable } from '../features/training/InfiniteTrainingTable';
 import { Onboarding } from '../features/onboarding/Onboarding';
 import { SettingsDrawer } from '../features/settings/SettingsDrawer';
@@ -15,7 +17,7 @@ import { tournamentEvaluationScenarios } from '../teaching/tournamentMathScenari
 import { adaptiveCalibrationReport, buildKnowledgeStates, SkillKnowledgeState, verifiedEvNorthStar, VerifiedEvNorthStar } from '../learning-engine/closedLoop';
 import { loadHistory, persistHistoryItem, TrainingBackup, updateHistoryCoordinated, upsertHistoryItem } from '../utils/history';
 
-const TRAINING_TYPES = new Set(['scenario', 'counterfactual', 'solver-corpus', 'transfer']);
+const TRAINING_TYPES = new Set(['scenario', 'range', 'counterfactual', 'solver-corpus', 'transfer']);
 
 export default function AppV2() {
   const [page, setPage] = useState<AppPage>('today');
@@ -24,6 +26,7 @@ export default function AppV2() {
   const [track, setTrack] = useState<TrainingTrack>(() => loadTrainingTrack(profile));
   const [starredIds] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('poker_starred_ids') || '[]'); } catch { return []; } });
   const [sessionOpen, setSessionOpen] = useState(false);
+  const [lesson, setLesson] = useState<Scenario | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
 
@@ -40,8 +43,8 @@ export default function AppV2() {
   const todayItems = trackHistory.filter(item => item.timestamp >= todayStart && TRAINING_TYPES.has(item.trainingType || ''));
   const weekItems = trackHistory.filter(item => item.timestamp >= Date.now() - 7 * 86400000 && TRAINING_TYPES.has(item.trainingType || ''));
 
-  const changePage = (next: AppPage) => { setSessionOpen(false); setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const startInfinite = () => { setSessionOpen(true); setPage('train'); window.scrollTo({ top: 0 }); };
+  const changePage = (next: AppPage) => { setSessionOpen(false); setLesson(null); setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const startInfinite = () => { setLesson(null); setSessionOpen(true); setPage('train'); window.scrollTo({ top: 0 }); };
   const startExam = () => { window.location.hash = '#exam-mode'; };
   const recordHistory = (item: HistoryItem) => {
     setHistory(previous => upsertHistoryItem(previous, item));
@@ -49,8 +52,10 @@ export default function AppV2() {
       .then(committed => setHistory(committed))
       .catch(() => setHistory(loadHistory()));
   };
-  const completeOnboarding = (next: PlayerProfile) => { setProfile(savePlayerProfile(next)); if (!next.formats.includes(track)) setTrack(saveTrainingTrack(loadTrainingTrack(next))); setSessionOpen(false); setOnboardingOpen(false); };
+  const completeOnboarding = (next: PlayerProfile) => { setProfile(savePlayerProfile(next)); if (!next.formats.includes(track)) setTrack(saveTrainingTrack(loadTrainingTrack(next))); setSessionOpen(false); setLesson(null); setOnboardingOpen(false); };
   const restoreBackup = (backup: TrainingBackup) => {
+    setLesson(null);
+    setSessionOpen(false);
     setHistory(backup.history);
     void updateHistoryCoordinated(() => backup.history)
       .then(committed => setHistory(committed))
@@ -60,10 +65,11 @@ export default function AppV2() {
   };
 
   return <AppShell page={page} onPageChange={changePage} onOpenSettings={() => setSettingsOpen(true)}>
-    <section className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4" aria-label="訓練賽制"><div><div className="text-xs text-slate-400">目前訓練與進度</div><div className="mt-1 font-semibold">{trainingTrackLabel(track)}</div></div><div className="flex flex-wrap gap-2">{(['cash', 'tournament'] as const).map(value => <button key={value} data-testid={`track-${value}`} type="button" aria-pressed={track === value} disabled={!profile.formats.includes(value)} onClick={() => { setTrack(saveTrainingTrack(value)); setSessionOpen(false); }} className={`rounded-xl border px-4 py-2 text-sm disabled:opacity-35 ${track === value ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200' : 'border-slate-700 text-slate-300'}`}>{trainingTrackLabel(value)}</button>)}<button onClick={() => setOnboardingOpen(true)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-400">調整偏好</button></div><p className="w-full text-xs text-slate-500">{profile.tableSizes.join(' / ')} · {profile.stackBands.join(' / ')} BB · {profile.focusAreas.join(' / ')}。未啟用的賽制可在偏好中開啟；兩種賽制分開記錄進度。PokerBench 剩餘有效籌碼未知，只在全部籌碼區間都選取時納入。</p></section>
-    {sessionOpen ? <InfiniteTrainingTable key={`${track}:${profile.updatedAt}`} track={track} profile={profile} scenarioBank={scenarios} history={trackHistory} onRecord={recordHistory} onExit={() => { setSessionOpen(false); setPage('today'); }} /> : <>
+    <section className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4" aria-label="訓練賽制"><div><div className="text-xs text-slate-400">目前訓練與進度</div><div className="mt-1 font-semibold">{trainingTrackLabel(track)}</div></div><div className="flex flex-wrap gap-2">{(['cash', 'tournament'] as const).map(value => <button key={value} data-testid={`track-${value}`} type="button" aria-pressed={track === value} disabled={!profile.formats.includes(value)} onClick={() => { setTrack(saveTrainingTrack(value)); setSessionOpen(false); setLesson(null); }} className={`rounded-xl border px-4 py-2 text-sm disabled:opacity-35 ${track === value ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200' : 'border-slate-700 text-slate-300'}`}>{trainingTrackLabel(value)}</button>)}<button onClick={() => setOnboardingOpen(true)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-400">調整偏好</button></div><p className="w-full text-xs text-slate-500">{profile.tableSizes.join(' / ')} · {profile.stackBands.join(' / ')} BB · {profile.focusAreas.join(' / ')}。未啟用的賽制可在偏好中開啟；兩種賽制分開記錄進度。PokerBench 剩餘有效籌碼未知，只在全部籌碼區間都選取時納入。</p></section>
+    {lesson ? <TrainingSession key={lesson.id} scenarios={[lesson]} history={trackHistory} title={lesson.title} onRecord={recordHistory} onExit={() => setLesson(null)} onComplete={() => setLesson(null)} /> : sessionOpen ? <InfiniteTrainingTable key={`${track}:${profile.updatedAt}`} track={track} profile={profile} scenarioBank={scenarios} history={trackHistory} onRecord={recordHistory} onExit={() => { setSessionOpen(false); setLesson(null); setPage('today'); }} /> : <>
       {page === 'today' && <TodayPage track={track} history={trackHistory} dailyGoal={profile.dailyQuestions} todayItems={todayItems} dueCount={dueCount} weaknesses={weaknesses} metrics={metrics} weekItems={weekItems} northStar={northStar} onStart={startInfinite} onNavigate={changePage} />}
       {page === 'train' && <TrainPage track={track} onStart={startInfinite} onExam={startExam} />}
+      {(page === 'today' || page === 'train') && <div className="mt-6"><CurriculumPanel track={track} profile={profile} history={trackHistory} onStart={setLesson} onPreferences={() => setOnboardingOpen(true)} /></div>}
       {page === 'analysis' && <ProgressPage track={track} scenarioBank={coverageCatalog} history={trackHistory} metrics={metrics} weaknesses={weaknesses} mastery={mastery} dueCount={dueCount} northStar={northStar} knowledge={knowledge} calibration={calibration} onStart={startInfinite} onExam={startExam} />}
     </>}
     <SettingsDrawer open={settingsOpen} profile={profile} history={history} starredIds={starredIds} onClose={() => setSettingsOpen(false)} onEditProfile={() => { setSettingsOpen(false); setOnboardingOpen(true); }} onRestore={restoreBackup} />

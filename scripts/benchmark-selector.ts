@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { candidateLearningSignal } from '../src/learning-engine/closedLoop';
-import { buildInfiniteCandidatePool } from '../src/learning-engine/infiniteHandGenerator';
+import { buildInfiniteCandidatePool, selectNextInfiniteCandidate } from '../src/learning-engine/infiniteHandGenerator';
 import { buildGeneratedVariantPool } from '../src/learning-engine/variantGenerator';
 import { coreScenarios, scenarios } from '../src/teaching/scenarioCatalog';
 import { HistoryItem } from '../src/types';
@@ -36,8 +36,23 @@ assert.ok(unseen.weight < dueLeak.weight, 'Selector regression: a persistent due
 assert.ok(dueLeak.errorPressure > unseen.errorPressure, 'Selector regression: persistent failure must create explicit error pressure.');
 assert.ok(dueLeak.uncertainty < unseen.uncertainty, 'Selector regression: certainty about weakness must not be mislabeled as uncertainty.');
 
+// A reproducible local load fixture needs no network/corpus download. Vary
+// families and exact identities while retaining the real candidate dimensions.
+const loadPool = Array.from({ length: 8000 }, (_, index) => ({ ...pool[index % pool.length], id: `load-${index}`, familyId: `load-family-${index}` }));
+const loadHistory: HistoryItem[] = Array.from({ length: 10000 }, (_, index) => ({
+  scenarioId: `load-question-${index}`, decisionFamilyId: `load-family-${index % loadPool.length}`,
+  category: [], trainingType: 'scenario', timestamp: now - index, correct: index % 2 === 0,
+  score: index % 2 === 0 ? 10 : 0, judgment: 'benchmark',
+}));
+const selectorStart = performance.now();
+const selected = selectNextInfiniteCandidate(loadPool, loadHistory, [], [], () => 0.7, now);
+const selectionMs = performance.now() - selectorStart;
+assert.ok(selected);
+assert.ok(selectionMs < 1500, `Selector load regression: ${Math.round(selectionMs)}ms exceeds the 1500ms budget.`);
+
 const report = {
   policy: POLICY,
+  responsiveness: { candidates: loadPool.length, history: loadHistory.length, selectionMs: Math.round(selectionMs), budgetMs: 1500 },
   candidateFamily: candidate.familyId,
   orderingContract: 'mastered < unseen < persistent-due-leak',
   mastered: {

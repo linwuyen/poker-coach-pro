@@ -12,6 +12,7 @@ import { canonicalHolding, decisionsMatch, normalizeDecision, parsePokerDecision
 import { analyzeHandMath, evaluateHandStrength } from '../../utils/handMath';
 import { createAttemptId, getReviewSchedule } from '../../utils/history';
 import { AdvancedToolLinks } from './AdvancedToolLinks';
+import { buildPokerBenchAnalysisContext } from '../analysis/analysisContext';
 
 const SUIT: Record<string, string> = { c: '♣', d: '♦', h: '♥', s: '♠' };
 const CARD_SUIT: Record<string, Suit> = { c: 'clubs', d: 'diamonds', h: 'hearts', s: 'spades' };
@@ -127,7 +128,7 @@ export function automaticSolverAnalysis(row: PokerBenchRow, choice: string): str
   return lines;
 }
 
-export function SolverDecisionSession({ rows, history, onRecord, onExit, onComplete, title = '自動訓練桌', autoComplete = false }: {
+export function SolverDecisionSession({ rows, history, onRecord, onExit, onComplete, title = '自動訓練桌', autoComplete = false, reviewOnly = false }: {
   rows: PokerBenchRow[];
   history: HistoryItem[];
   onRecord: (item: HistoryItem) => void;
@@ -135,6 +136,7 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
   onComplete: () => void;
   title?: string;
   autoComplete?: boolean;
+  reviewOnly?: boolean;
 }) {
   const [index, setIndex] = useState(0);
   const [choice, setChoice] = useState<string | null>(null);
@@ -200,9 +202,9 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
       datasetSplit: POKERBENCH_FILES[split].split,
       datasetRowId: row.id,
       difficultyWeight: getDifficultyWeight(curriculum.level >= 4 ? '進階' : curriculum.level >= 2 ? '中階' : '新手'),
-      isReview: Boolean(previous),
+      isReview: reviewOnly || Boolean(previous),
       isDelayedReview: isDelayedReview(previous, now),
-      isUnseen: !previous,
+      isUnseen: !reviewOnly && !previous,
       isTransferTest: false,
       gameFormat: 'Cash',
       contextFingerprint: fingerprint.id,
@@ -211,7 +213,7 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
       solverCorpusRole: solverCorpusRole(row),
       curriculumLevel: curriculum.level,
       questionLabel: `資料集主動作練習 · ${prettySolverCards(row.holding)}`,
-      notes: `${POKERBENCH_SOURCE.label}. Training partition only; optimal action comes from the pinned dataset. Missing per-action EV/mixed frequency is intentionally not fabricated.`,
+      notes: `${POKERBENCH_SOURCE.label}. ${reviewOnly ? 'Previously exposed reserved-row review; not new assessment evidence.' : 'Training partition only; optimal action comes from the pinned dataset.'} Missing per-action EV/mixed frequency is intentionally not fabricated.`,
       ...getReviewSchedule(isCorrect ? 10 : 0, previous, undefined, now),
     };
     submittedItem.current = item;
@@ -313,7 +315,7 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
             </div>
           </div>
 
-          <AdvancedToolLinks />
+          <AdvancedToolLinks context={submittedItem.current ? buildPokerBenchAnalysisContext(row, submittedItem.current) : null} />
 
           <button data-testid="solver-next" onClick={next} className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">看完解說，下一手</button>
         </div>

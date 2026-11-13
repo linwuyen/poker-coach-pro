@@ -11,7 +11,7 @@ import { solverDecisionFamilyId } from '../../learning-engine/semanticPairs';
 import { inferScenarioStepSkillIds } from '../../learning-engine/skillGraph';
 import { solverCorpusRole } from '../../learning-engine/solverCurriculum';
 import { buildExactMathEvaluationScenarios } from '../../teaching/evaluationMathScenarios';
-import { tournamentEvaluationScenarios } from '../../teaching/tournamentMathScenarios';
+import { buildTournamentEvaluationScenarios } from '../../teaching/tournamentMathScenarios';
 import { loadPokerBenchSplit, parsePokerDecision, pokerBenchDecisionGrade, pokerBenchVisibleBoard, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow } from '../../solver-data/pokerbench';
 import { ActionType, HistoryItem, PlayerProfile, Scenario } from '../../types';
 import { createAttemptId, loadHistory, updateHistoryExclusive } from '../../utils/history';
@@ -28,7 +28,14 @@ function scenarioCandidates(bank:Scenario[]):ExamCandidate[]{return bank.flatMap
 export function trackExamCandidates(bank:Scenario[],rows:PokerBenchRow[],track:TrainingTrack,profile:PlayerProfile):ExamCandidate[]{
   return [...scenarioCandidates(bank.filter(scenario=>isAssessmentScenario(scenario)&&scenarioMatchesTrainingTrack(scenario,track,profile))), ...rows.filter(row=>pokerBenchMatchesTrainingTrack(row,track,profile)).map(row=>({kind:'solver' as const,id:`solver:${row.split}:${row.id}`,row}))];
 }
-function highestExactEvaluationSequence(history:HistoryItem[]):number{return history.reduce((highest,item)=>{const match=/^eval-math-pot-odds-(\d+)$/.exec(item.scenarioId||'');return match?Math.max(highest,Number(match[1])||0):highest;},0);}
+export function balanceTournamentModels(candidates:ExamCandidate[]):ExamCandidate[]{
+  const models=['tournament-chip-ev','icm','satellite','pko'];
+  const groups=models.map(model=>candidates.filter(c=>c.kind==='scenario'&&c.scenario.steps[c.stepIndex].feedbacks.Call?.evidence?.utilityModel===model));
+  const result:ExamCandidate[]=[];
+  for(let i=0;i<Math.max(0,...groups.map(g=>g.length));i++) for(const group of groups) if(group[i]) result.push(group[i]);
+  return result;
+}
+function highestExactEvaluationSequence(history:HistoryItem[]):number{return history.reduce((highest,item)=>{const match=/^(?:eval-math-pot-odds-|mtt-eval-generated-)(\d+)$/.exec(item.scenarioId||'');return match?Math.max(highest,Number(match[1])||0):highest;},0);}
 
 export function evaluationIdentity(item:HistoryItem):string|undefined{
   const solverIdentity=pokerBenchExposureIdentity(item);
@@ -77,12 +84,14 @@ export function ExamMode({onExit}:{onExit:()=>void}){
   const pool=useMemo<ExamCandidate[]>(()=>{
     const seededBlockStart=stableHash(`exact:${examSessionId}`)*64;
     const evaluationStartIndex=Math.max(highestExactEvaluationSequence(initialHistory),seededBlockStart);
-    const evaluationCandidates=trackExamCandidates(track==='cash'?buildExactMathEvaluationScenarios(evaluationStartIndex,EXAM_SIZE*2):tournamentEvaluationScenarios,[],track,profile);
+    const evaluationCandidates=trackExamCandidates(track==='cash'?buildExactMathEvaluationScenarios(evaluationStartIndex,EXAM_SIZE*2):buildTournamentEvaluationScenarios(evaluationStartIndex,EXAM_SIZE*4),[],track,profile);
     const benchmarkCandidates=trackExamCandidates(getHiddenBenchmarkScenarios(scenarios),[],track,profile);
     const solverCandidates=trackExamCandidates([],solverRows,track,profile);
     const seen=(candidate:ExamCandidate)=>isExamCandidateExposed(candidate,initialHistory);
     const unseen=(items:ExamCandidate[])=>items.filter(candidate=>!seen(candidate)).sort((a,b)=>stableHash(a.id)-stableHash(b.id));
-    const mixedScenarioCandidates=interleave(unseen(evaluationCandidates),unseen(benchmarkCandidates));
+    const freshEvaluations=unseen(evaluationCandidates);
+    const balancedEvaluations=track==='tournament'?balanceTournamentModels(freshEvaluations):freshEvaluations;
+    const mixedScenarioCandidates=interleave(balancedEvaluations,unseen(benchmarkCandidates));
     return interleave(mixedScenarioCandidates,unseen(solverCandidates)).slice(0,EXAM_SIZE);
   },[examSessionId,initialHistory,profile,solverRows,track]);
 

@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Brain, CheckCircle2, Layers3, RotateCcw, Ruler } from 'lucide-react';
 import { ConfidenceLevel, HistoryItem } from '../../types';
-import { createAttemptId, getReviewSchedule, loadHistory, saveHistory } from '../../utils/history';
+import { createAttemptId, getReviewSchedule, loadHistory, persistHistoryItems } from '../../utils/history';
 import { getDifficultyWeight, isDelayedReview, makeMasteryKey } from '../../learning-engine';
 import { evRegret, evRegretScore } from '../../learning-engine/ev';
 import { RANGE_QUESTIONS } from '../range/data';
@@ -73,6 +73,69 @@ function rangeWidthVariants(question: RangeQuestion): Variant[] {
   });
 }
 
+export function buildCounterfactualHistoryItems(
+  question: RangeQuestion,
+  dimension: Dimension,
+  answers: Record<string, HeroAction>,
+  confidence: ConfidenceLevel,
+  history: HistoryItem[],
+  startedAt: number,
+  now = Date.now(),
+): HistoryItem[] {
+  const baseline = calculateRangeDecision(question, baselineSelections(question));
+  const variants = dimension === 'bet-size' ? betSizeVariants(question) : rangeWidthVariants(question);
+  const groupId = `counterfactual-${question.id}-${dimension}`;
+  return variants.map((variant, variantIndex) => {
+    const chosen = answers[variant.id];
+    const bestEvBB = Math.max(0, variant.callEvBB);
+    const chosenEvBB = chosen === 'call' ? variant.callEvBB : 0;
+    const loss = evRegret(bestEvBB, chosenEvBB);
+    const previous = history.filter(item => item.transferGroupId === groupId && item.stepId === variant.id).sort((a, b) => b.timestamp - a.timestamp)[0];
+    const score = Math.round(evRegretScore(loss) / 10);
+    return {
+      schemaVersion: 6,
+      gameFormat: question.gameFormat,
+      attemptId: createAttemptId(),
+      trainingType: 'counterfactual',
+      scenarioId: `counterfactual-${question.id}`,
+      stepId: variant.id,
+      masteryKey: makeMasteryKey(`counterfactual-${question.id}`, `${dimension}-${variant.id}`),
+      transferGroupId: groupId,
+      skillIds: ['decision.boundary', 'math.pot-odds', 'math.equity', ...(dimension === 'range-width' ? ['range.construction'] : ['postflop.bet-sizing'])],
+      situationIds: [
+        dimension === 'bet-size' && variant.sizePot && variant.sizePot >= 100 ? 'situation.size.overbet' : dimension === 'bet-size' && variant.sizePot && variant.sizePot >= 66 ? 'situation.size.large' : dimension === 'bet-size' ? 'situation.size.small' : 'situation.range-width',
+      ],
+      category: [...question.category, 'Decision Boundary', dimension === 'bet-size' ? 'Bet Sizing' : 'Range Sensitivity'],
+      score,
+      judgment: chosen === variant.bestAction ? '正確' : '需要修正',
+      timestamp: now + variantIndex,
+      selectedAction: chosen,
+      bestAction: variant.bestAction,
+      selectedDecision: { type: chosen },
+      bestDecision: { type: variant.bestAction },
+      position: question.heroPosition,
+      durationMs: now - startedAt,
+      confidence,
+      correct: chosen === variant.bestAction,
+      chosenEvBB,
+      bestEvBB,
+      evLossBB: loss,
+      truthTier: question.source.trustTier,
+      spotFrequencyPer100Hands: /River/i.test(question.title) ? 0.5 : /Turn/i.test(question.title) ? 1.2 : 1.8,
+      difficultyWeight: getDifficultyWeight(question.difficulty),
+      isReview: Boolean(previous),
+      isDelayedReview: isDelayedReview(previous, now),
+      isUnseen: !previous,
+      isTransferTest: variant.id !== (dimension === 'bet-size' ? 'size-1' : 'range-baseline'),
+      questionLabel: `${question.title} · ${variant.label}`,
+      notes: dimension === 'bet-size'
+        ? `固定 baseline range/equity ${baseline.heroEquity.toFixed(1)}%，只改下注尺寸。`
+        : `固定下注尺寸，只改 Villain range composition；Hero Equity 從 ${variant.heroEquity.toFixed(1)}% 重新加權。`,
+      ...getReviewSchedule(score, confidence, previous, now),
+    } satisfies HistoryItem;
+  });
+}
+
 export function CounterfactualTrainer({ onExit }: { onExit: () => void }) {
   const [index, setIndex] = useState(0);
   const [dimension, setDimension] = useState<Dimension>('bet-size');
@@ -94,56 +157,8 @@ export function CounterfactualTrainer({ onExit }: { onExit: () => void }) {
     if (!confidence || variants.some(variant => !answers[variant.id])) return;
     const history = loadHistory();
     const now = Date.now();
-    const groupId = `counterfactual-${question.id}-${dimension}`;
-    const items: HistoryItem[] = variants.map((variant, variantIndex) => {
-      const chosen = answers[variant.id];
-      const bestEvBB = Math.max(0, variant.callEvBB);
-      const chosenEvBB = chosen === 'call' ? variant.callEvBB : 0;
-      const loss = evRegret(bestEvBB, chosenEvBB);
-      const previous = history.filter(item => item.transferGroupId === groupId && item.stepId === variant.id).sort((a, b) => b.timestamp - a.timestamp)[0];
-      const score = Math.round(evRegretScore(loss) / 10);
-      return {
-        schemaVersion: 4,
-        attemptId: createAttemptId(),
-        trainingType: 'counterfactual',
-        scenarioId: `counterfactual-${question.id}`,
-        stepId: variant.id,
-        masteryKey: makeMasteryKey(`counterfactual-${question.id}`, `${dimension}-${variant.id}`),
-        transferGroupId: groupId,
-        skillIds: ['decision.boundary', 'math.pot-odds', 'math.equity', ...(dimension === 'range-width' ? ['range.construction'] : ['postflop.bet-sizing'])],
-        situationIds: [
-          dimension === 'bet-size' && variant.sizePot && variant.sizePot >= 100 ? 'situation.size.overbet' : dimension === 'bet-size' && variant.sizePot && variant.sizePot >= 66 ? 'situation.size.large' : dimension === 'bet-size' ? 'situation.size.small' : 'situation.range-width',
-        ],
-        category: [...question.category, 'Decision Boundary', dimension === 'bet-size' ? 'Bet Sizing' : 'Range Sensitivity'],
-        score,
-        judgment: chosen === variant.bestAction ? '正確' : '需要修正',
-        timestamp: now + variantIndex,
-        selectedAction: chosen,
-        bestAction: variant.bestAction,
-        selectedDecision: { type: chosen },
-        bestDecision: { type: variant.bestAction },
-        position: question.heroPosition,
-        durationMs: now - startedAt.current,
-        confidence,
-        correct: chosen === variant.bestAction,
-        chosenEvBB,
-        bestEvBB,
-        evLossBB: loss,
-        truthTier: question.source.trustTier,
-        spotFrequencyPer100Hands: /River/i.test(question.title) ? 0.5 : /Turn/i.test(question.title) ? 1.2 : 1.8,
-        difficultyWeight: getDifficultyWeight(question.difficulty),
-        isReview: Boolean(previous),
-        isDelayedReview: isDelayedReview(previous, now),
-        isUnseen: !previous,
-        isTransferTest: variant.id !== (dimension === 'bet-size' ? 'size-1' : 'range-baseline'),
-        questionLabel: `${question.title} · ${variant.label}`,
-        notes: dimension === 'bet-size'
-          ? `固定 baseline range/equity ${baseline.heroEquity.toFixed(1)}%，只改下注尺寸。`
-          : `固定下注尺寸，只改 Villain range composition；Hero Equity 從 ${variant.heroEquity.toFixed(1)}% 重新加權。`,
-        ...getReviewSchedule(score, confidence, previous, now),
-      } satisfies HistoryItem;
-    });
-    saveHistory([...history, ...items]);
+    const items = buildCounterfactualHistoryItems(question, dimension, answers, confidence, history, startedAt.current, now);
+    void persistHistoryItems(items);
     setSession(previous => ({ regret: previous.regret + items.reduce((sum, item) => sum + (item.evLossBB || 0), 0), answered: previous.answered + items.length }));
     setSubmitted(true);
   };

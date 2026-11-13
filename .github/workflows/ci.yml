@@ -28,3 +28,5 @@ jobs:
       - run: npm run build:web
       - name: Enforce P11 bundle budget
         run: npm run check:bundle
+      - name: Browser context and persistence regression
+        run: npm run e2e:runtime

@@ -113,6 +113,11 @@ export async function persistHistoryItem(item: HistoryItem): Promise<HistoryItem
   return updateHistoryCoordinated(latest => upsertHistoryItem(latest, item));
 }
 
+/** Append a drill's records atomically without replaying its stale history snapshot. */
+export async function persistHistoryItems(items: HistoryItem[]): Promise<HistoryItem[]> {
+  return updateHistoryCoordinated(latest => mergeHistorySnapshots(latest, items));
+}
+
 export function clearHistory(): void { localStorage.removeItem(HISTORY_KEY); LEGACY_HISTORY_KEYS.forEach(key => localStorage.removeItem(key)); }
 export function createAttemptId(): string { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 
@@ -129,6 +134,11 @@ export function getReviewSchedule(
     return { nextReviewAt: now + delayMs, reviewIntervalDays: delayMs / 86400000 };
   }
   if (confidence && confidence <= 2) return { nextReviewAt: now + 86400000, reviewIntervalDays: 1 };
+  // Rehearsal before the scheduled retrieval is due provides no new evidence
+  // of retention. Keep its deadline instead of postponing it on every replay.
+  if (previous && isHistoryCorrect(previous) && typeof previous.nextReviewAt === 'number' && previous.nextReviewAt > now) {
+    return { nextReviewAt: previous.nextReviewAt, reviewIntervalDays: previous.reviewIntervalDays };
+  }
   const previousDays = previous?.reviewIntervalDays || 0;
   const baseDays = previousDays < 1 ? 1 : previousDays < 3 ? 3 : previousDays < 7 ? 7 : Math.min(60, Math.round(previousDays * 1.8));
   const multiplier = confidence === 4 ? 1.35 : 1;

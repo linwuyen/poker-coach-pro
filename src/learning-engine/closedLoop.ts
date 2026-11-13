@@ -101,7 +101,7 @@ export function isEvaluationAttempt(item: HistoryItem): boolean {
     || item.trainingType === 'transfer'
     || item.trainingType === 'counterfactual'
     || item.trainingType === 'contrastive'
-    || item.solverCorpusRole === 'holdout';
+    || (item.solverCorpusRole === 'holdout' && !item.isReview && item.trainingType !== 'solver-corpus');
 }
 
 export function isVerifiedEvaluationEv(item: HistoryItem): boolean {
@@ -267,6 +267,44 @@ function scenarioImportance(candidate: InfiniteHandCandidate): number {
 
 export function candidateLearningSignal(candidate: InfiniteHandCandidate, history: HistoryItem[], now = Date.now()): CandidateLearningSignal {
   const relevant = history.filter(item => historyMatchesCandidate(candidate, item)).sort((a, b) => a.timestamp - b.timestamp).slice(-40);
+  return signalForRelevantHistory(candidate, relevant, now);
+}
+
+/** Index once for a selection; each candidate reads bounded 40-item identity buckets. */
+export function createCandidateLearningSignalResolver(history: HistoryItem[], now = Date.now()): (candidate: InfiniteHandCandidate) => CandidateLearningSignal {
+  const families = new Map<string, number[]>();
+  const scenarios = new Map<string, number[]>();
+  const rows = new Map<string, number[]>();
+  const add = (map: Map<string, number[]>, key: string | undefined, index: number) => {
+    if (key === undefined) return;
+    const group = map.get(key) || [];
+    group.push(index);
+    map.set(key, group);
+  };
+  history.forEach((item, index) => {
+    add(families, item.decisionFamilyId, index);
+    if (item.contextFamilyId !== item.decisionFamilyId) add(families, item.contextFamilyId, index);
+    add(scenarios, item.scenarioId, index);
+    add(rows, item.datasetRowId, index);
+  });
+  const chronological = (left: number, right: number) => history[left].timestamp - history[right].timestamp || left - right;
+  for (const map of [families, scenarios, rows]) {
+    for (const [key, indices] of map) map.set(key, indices.sort(chronological).slice(-40));
+  }
+  const cache = new Map<InfiniteHandCandidate, CandidateLearningSignal>();
+  return candidate => {
+    const cached = cache.get(candidate);
+    if (cached) return cached;
+    const exact = candidate.kind === 'scenario' ? scenarios.get(candidate.scenario.id) : rows.get(candidate.row.id);
+    const indices = new Set([...(families.get(candidate.familyId) || []), ...(exact || [])]);
+    const relevant = [...indices].sort(chronological).slice(-40).map(index => history[index]);
+    const signal = signalForRelevantHistory(candidate, relevant, now);
+    cache.set(candidate, signal);
+    return signal;
+  };
+}
+
+function signalForRelevantHistory(candidate: InfiniteHandCandidate, relevant: HistoryItem[], now: number): CandidateLearningSignal {
   const successes = relevant.filter(correct).length;
   const failures = relevant.length - successes;
   const predictedSuccessProbability = (2 + successes) / (4 + successes + failures);

@@ -23,15 +23,22 @@ export function saveTrainingTrack(track: TrainingTrack, storage: TrackStorage = 
 
 export function trainingTrackLabel(track: TrainingTrack): string { return track === 'cash' ? '現金桌 Cash' : '錦標賽 MTT'; }
 
+export function scenarioEffectiveStackBB(scenario: Scenario): number | undefined {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*BB\s*$/i.exec(scenario.effectiveStack);
+  const stack = match ? Number(match[1]) : undefined;
+  return stack !== undefined && Number.isFinite(stack) && stack > 0 ? stack : undefined;
+}
+
 export function scenarioMatchesTrainingTrack(scenario: Scenario, track: TrainingTrack, profile: PlayerProfile): boolean {
   if (!profile.formats.includes(track) || (scenario.type === 'Tournament' ? 'tournament' : 'cash') !== track) return false;
   if (!scenario.tableSize || !profile.tableSizes.includes(scenario.tableSize)) return false;
-  if (!Number.isFinite(scenario.userBB) || !profile.stackBands.includes(getStackBand(scenario.userBB))) return false;
+  const effectiveStack = scenarioEffectiveStackBB(scenario);
+  if (effectiveStack === undefined || !profile.stackBands.includes(getStackBand(effectiveStack))) return false;
   const text = `${scenario.title} ${(scenario.category || []).join(' ')} ${scenario.steps.flatMap(step => step.conceptIds || []).join(' ')}`;
   return scenario.steps.length > 0 && scenario.steps.every(step => profile.focusAreas.some(focus => focus === 'mixed'
     || (focus === 'preflop' && step.street === 'Preflop')
     || (focus === 'postflop' && step.street !== 'Preflop')
-    || (focus === 'short-stack' && scenario.userBB <= 25)
+    || (focus === 'short-stack' && effectiveStack <= 25)
     || (focus === 'math' && /math|odds|equity|SPR|數學|賠率|ICM|PKO|satellite/i.test(text))
     || (focus === 'bluff-catching' && /抓詐唬|bluff.?catch/i.test(text))));
 }

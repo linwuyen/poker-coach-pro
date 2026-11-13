@@ -113,7 +113,11 @@ export function calculateSkillMastery(history: HistoryItem[], now = Date.now()):
   const groups = new Map<string, HistoryItem[]>();
   history.filter(item => item.trainingType !== 'custom').forEach(item => {
     const skillIds = item.skillIds?.length ? item.skillIds : inferSkillIds(item.category, item.street);
-    skillIds.forEach(skillId => groups.set(skillId, [...(groups.get(skillId) || []), item]));
+    skillIds.forEach(skillId => {
+      const group = groups.get(skillId) || [];
+      group.push(item);
+      groups.set(skillId, group);
+    });
   });
 
   return [...groups.entries()].map(([skillId, attempts]) => {
@@ -123,6 +127,8 @@ export function calculateSkillMastery(history: HistoryItem[], now = Date.now()):
     let totalPerformance = 0;
     let delayedAttempts = 0;
     let transferAttempts = 0;
+    let delayedSuccesses = 0;
+    let transferSuccesses = 0;
     const losses: number[] = [];
     const transferEvidence = new Set(firstTransferEvidence(ordered));
     ordered.forEach(item => {
@@ -136,8 +142,15 @@ export function calculateSkillMastery(history: HistoryItem[], now = Date.now()):
       totalWeight += weight;
       const isCashLoss = item.utilityUnit === 'bb' || (!item.utilityUnit && !item.category.includes('MTT'));
       if (typeof loss === 'number' && isCashLoss) losses.push(loss);
-      if (item.isDelayedReview) delayedAttempts += 1;
-      if (transferEvidence.has(item)) transferAttempts += 1;
+      const validated = (item.correct ?? item.score >= 8) && item.reasoningProbeResult !== 'fail';
+      if (item.isDelayedReview) {
+        delayedAttempts += 1;
+        if (validated) delayedSuccesses += 1;
+      }
+      if (transferEvidence.has(item)) {
+        transferAttempts += 1;
+        if (validated) transferSuccesses += 1;
+      }
     });
     const distinctScenarios = new Set(ordered.map(item => item.scenarioId)).size;
     const contexts = new Set(ordered.map(contextKey)).size;
@@ -145,13 +158,15 @@ export function calculateSkillMastery(history: HistoryItem[], now = Date.now()):
     const effectiveSampleSize = evidenceSampleSize(ordered);
     const sampleConfidence = Math.round((1 - Math.exp(-effectiveSampleSize / 7)) * 100);
     const latest = ordered[ordered.length - 1];
-    const trulyTransferred = transferAttempts > 0;
-    // ESS controls how certain we are about the mastery estimate, but it does
-    // not redefine the semantic milestone. A skill still requires strong
-    // performance, delayed retrieval and transfer before becoming mastered.
+    // Rehearsal cannot compensate for failed independent validation. Require
+    // successful retrieval and first-exposure transfer, with a small evidence
+    // floor and breadth beyond one memorized question.
+    const validatedRetention = delayedSuccesses > 0 && delayedSuccesses / delayedAttempts >= 0.8;
+    const validatedTransfer = transferSuccesses > 0 && transferSuccesses / transferAttempts >= 0.8;
+    const sufficientEvidence = ordered.length >= 3 && contexts >= 2 && effectiveSampleSize >= 2;
     const status: MasteryStatus = ordered.length < 2
       ? 'new'
-      : score >= 82 && delayedAttempts >= 1 && trulyTransferred
+      : score >= 82 && sufficientEvidence && validatedRetention && validatedTransfer
         ? 'mastered'
         : typeof latest.nextReviewAt === 'number' && latest.nextReviewAt <= now
           ? 'review'

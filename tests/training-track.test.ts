@@ -15,7 +15,7 @@ test('selected track and strict table/stack preferences never substitute the opp
   assert.equal(track.scenarioMatchesTrainingTrack(mtt, 'cash', profile), false);
   assert.equal(track.scenarioMatchesTrainingTrack(cash, 'tournament', profile), false);
   assert.equal(track.scenarioMatchesTrainingTrack({ ...cash, tableSize: undefined }, 'cash', profile), false);
-  assert.equal(track.scenarioMatchesTrainingTrack({ ...cash, userBB: 20 }, 'cash', profile), false);
+  assert.equal(track.scenarioMatchesTrainingTrack({ ...cash, userBB: 20, effectiveStack: '20BB' }, 'cash', profile), false);
   assert.equal(track.scenarioMatchesTrainingTrack(cash, 'cash', { ...profile, formats: ['tournament'] }), false);
 });
 

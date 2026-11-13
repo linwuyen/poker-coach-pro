@@ -3,7 +3,7 @@ import {
   ArrowLeft, BarChart3, Brain, CheckCircle2, RotateCcw, Target, XCircle,
 } from 'lucide-react';
 import { getDifficultyWeight, isDelayedReview, makeMasteryKey } from '../../learning-engine';
-import { createAttemptId, getReviewSchedule, loadHistory, saveHistory } from '../../utils/history';
+import { createAttemptId, getReviewSchedule, loadHistory, persistHistoryItems } from '../../utils/history';
 import { ConfidenceLevel, FeedbackQuality, HistoryItem } from '../../types';
 import { RANGE_QUESTIONS } from './data';
 import {
@@ -19,7 +19,7 @@ import {
   scoreToHistoryScale,
 } from './rangeEngine';
 import {
-  EquityBand, HeroAction, RangeBucket, RangeFrequency, WeightedRangeSelection,
+  EquityBand, HeroAction, RangeBucket, RangeFrequency, RangeQuestion, WeightedRangeSelection,
 } from './types';
 
 const BUCKET_LABELS: Record<RangeBucket, string> = {
@@ -50,6 +50,72 @@ function judgmentFromScore(score: number): string {
   if (score >= 80) return '可接受';
   if (score >= 50) return '需要修正';
   return '錯誤';
+}
+
+export function buildRangeHistoryItems(
+  question: RangeQuestion,
+  answer: {
+    selections: WeightedRangeSelection[];
+    selectedEquity: EquityBand;
+    potOddsEstimate: number;
+    selectedAction: HeroAction;
+    confidence: ConfidenceLevel;
+  },
+  history: HistoryItem[],
+  now = Date.now(),
+): HistoryItem[] {
+  const { selections, selectedEquity, potOddsEstimate, selectedAction, confidence } = answer;
+  const calculation = calculateRangeDecision(question, selections);
+  const rangeScore = scoreRangeConstruction(question, selections);
+  const equityScore = scoreEquityBand(selectedEquity, calculation.heroEquity);
+  const potOddsScore = scorePotOddsEstimate(potOddsEstimate, calculation.potOdds);
+  const actionScore = scoreAction(selectedAction, calculation.bestAction);
+  const bias = getRangeBias(question, selections);
+  const dimensions: Array<{ id: DimensionId; score: number; category: string; evLossBB?: number }> = [
+    { id: 'range-construction', score: rangeScore, category: '範圍建構' },
+    { id: 'equity-estimation', score: equityScore, category: 'Equity 估算' },
+    { id: 'pot-odds', score: potOddsScore, category: 'Pot Odds' },
+    { id: 'final-action', score: actionScore, category: '對抗決策', evLossBB: actionEvLossBB(selectedAction, calculation) },
+  ];
+
+  return dimensions.map((dimension, dimensionIndex) => {
+    const scenarioId = `range-${question.id}`;
+    const masteryKey = makeMasteryKey(scenarioId, dimension.id);
+    const previous = history
+      .filter(item => item.masteryKey === masteryKey)
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+    const score10 = scoreToHistoryScale(dimension.score);
+    return {
+      schemaVersion: 6,
+      gameFormat: question.gameFormat,
+      truthTier: question.source.trustTier,
+      truthSourceRef: question.source.label,
+      attemptId: createAttemptId(),
+      trainingType: 'range',
+      scenarioId,
+      stepId: dimension.id,
+      masteryKey,
+      category: [...question.category, dimension.category],
+      score: score10,
+      judgment: judgmentFromScore(dimension.score),
+      timestamp: now + dimensionIndex,
+      selectedAction: dimension.id === 'final-action' ? selectedAction || undefined : undefined,
+      bestAction: dimension.id === 'final-action' ? calculation.bestAction : undefined,
+      position: question.heroPosition,
+      confidence,
+      correct: dimension.score >= 80,
+      feedbackQuality: qualityFromScore(dimension.score),
+      evLossBB: dimension.evLossBB,
+      difficultyWeight: getDifficultyWeight(question.difficulty),
+      isReview: Boolean(previous),
+      isDelayedReview: isDelayedReview(previous, now),
+      isUnseen: !previous,
+      questionLabel: `${question.title} · ${dimension.category}`,
+      notes: `範圍${bias}；Hero Equity ${calculation.heroEquity.toFixed(1)}%；Pot Odds ${calculation.potOdds.toFixed(1)}%；Call EV ${calculation.callEvBB.toFixed(2)}BB。`,
+      ...getReviewSchedule(score10, confidence, previous, now),
+    };
+  });
+
 }
 
 export function RangeReadingTrainer({ onExit }: { onExit: () => void }) {
@@ -83,53 +149,13 @@ export function RangeReadingTrainer({ onExit }: { onExit: () => void }) {
   };
 
   const recordLearning = () => {
-    if (!confidence || recordedRef.current) return;
+    if (!confidence || !selectedEquity || parsedPotOdds === null || !selectedAction || recordedRef.current) return;
     const history = loadHistory();
     const now = Date.now();
-    const bias = getRangeBias(question, selections);
-    const dimensions: Array<{ id: DimensionId; score: number; category: string; evLossBB?: number }> = [
-      { id: 'range-construction', score: rangeScore, category: '範圍建構' },
-      { id: 'equity-estimation', score: equityScore, category: 'Equity 估算' },
-      { id: 'pot-odds', score: potOddsScore, category: 'Pot Odds' },
-      { id: 'final-action', score: actionScore, category: '對抗決策', evLossBB: actionEvLossBB(selectedAction, calculation) },
-    ];
-
-    const items: HistoryItem[] = dimensions.map((dimension, dimensionIndex) => {
-      const scenarioId = `range-${question.id}`;
-      const masteryKey = makeMasteryKey(scenarioId, dimension.id);
-      const previous = history
-        .filter(item => item.masteryKey === masteryKey)
-        .sort((a, b) => b.timestamp - a.timestamp)[0];
-      const score10 = scoreToHistoryScale(dimension.score);
-      return {
-        schemaVersion: 4,
-        attemptId: createAttemptId(),
-        trainingType: 'range',
-        scenarioId,
-        stepId: dimension.id,
-        masteryKey,
-        category: [...question.category, dimension.category],
-        score: score10,
-        judgment: judgmentFromScore(dimension.score),
-        timestamp: now + dimensionIndex,
-        selectedAction: dimension.id === 'final-action' ? selectedAction || undefined : undefined,
-        bestAction: dimension.id === 'final-action' ? calculation.bestAction : undefined,
-        position: question.heroPosition,
-        confidence,
-        correct: dimension.score >= 80,
-        feedbackQuality: qualityFromScore(dimension.score),
-        evLossBB: dimension.evLossBB,
-        difficultyWeight: getDifficultyWeight(question.difficulty),
-        isReview: Boolean(previous),
-        isDelayedReview: isDelayedReview(previous, now),
-        isUnseen: !previous,
-        questionLabel: `${question.title} · ${dimension.category}`,
-        notes: `範圍${bias}；Hero Equity ${calculation.heroEquity.toFixed(1)}%；Pot Odds ${calculation.potOdds.toFixed(1)}%；Call EV ${calculation.callEvBB.toFixed(2)}BB。`,
-        ...getReviewSchedule(score10, confidence, previous, now),
-      };
-    });
-
-    saveHistory([...history, ...items]);
+    const items = buildRangeHistoryItems(question, {
+      selections, selectedEquity, potOddsEstimate: parsedPotOdds, selectedAction, confidence,
+    }, history, now);
+    void persistHistoryItems(items);
     recordedRef.current = true;
   };
 

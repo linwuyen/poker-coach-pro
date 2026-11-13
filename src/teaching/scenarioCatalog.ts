@@ -2,6 +2,7 @@ import { scenarios as rawCoreScenarios } from '../coreData';
 import { ActionType, Feedback, Scenario, Suit } from '../types';
 import { exactMathSemanticScenarios } from './semanticMathScenarios';
 import { tournamentTrainingScenarios } from './tournamentMathScenarios';
+import { practicalCurriculum } from './practicalCurriculum';
 
 const SUIT_SYMBOL: Record<Suit, string> = {
   spades: '♠', hearts: '♥', diamonds: '♦', clubs: '♣',
@@ -120,6 +121,5 @@ export const curatedTeachingVariants: Scenario[] = coreScenarios
   .slice(0, 64)
   .map((scenario, index) => makeSuitIsomorphicScenario(scenario, index));
 
-// 88 original + 64 cash arithmetic + 12 tournament utility = 164 decision families.
-// The 64 suit-isomorphic retrieval instances bring the rendered bank to 228.
-export const scenarios: Scenario[] = [...coreScenarios, ...semanticTeachingScenarios, ...curatedTeachingVariants, ...tournamentTrainingScenarios];
+// Practical lessons have explicit context; cosmetic variants share their source family.
+export const scenarios: Scenario[] = [...coreScenarios, ...semanticTeachingScenarios, ...curatedTeachingVariants, ...tournamentTrainingScenarios, ...practicalCurriculum];

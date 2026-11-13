@@ -19,6 +19,7 @@ export interface RangeQuestionSource {
 
 export interface RangeQuestion {
   id: string;
+  gameFormat: 'Cash' | 'MTT';
   title: string;
   table: string;
   stack: string;

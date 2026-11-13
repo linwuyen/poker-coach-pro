@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeft, GitBranch, ShieldAlert, TreePine } from 'lucide-react';
-import { FgsActionTree, compareFgsActions } from '../../tournament/icm';
+import { FgsActionTree, compareFgsActions, MAX_EXACT_ICM_PLAYERS } from '../../tournament/icm';
 
 const SAMPLE_ACTIONS: FgsActionTree[] = [
   {
@@ -46,6 +46,7 @@ export function FgsWorkbench({ onExit }: { onExit: () => void }) {
   return <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8"><div className="mx-auto max-w-6xl">
     <button type="button" onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4" />返回主訓練機</button>
     <section className="pc-hero-glow mt-6 rounded-3xl border border-cyan-500/20 bg-[linear-gradient(135deg,rgba(6,182,212,0.12),rgba(15,23,42,0.8))] p-6 md:p-8"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300"><TreePine className="h-4 w-4" />P8 · Finite Game Simulation</div><h1 className="mt-3 text-3xl font-bold">把「未來 game tree」真的放進 ICM，而不是用一句 FGS 當魔法</h1><p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300">每個 action 提供一棵未來狀態樹；每條 edge 的機率必須明確且同層加總為 1。葉節點用 exact ICM 算 $EV，再依分支機率 backward induction。系統不自行猜未來對手策略，因此結果嚴格是 conditional on supplied tree。</p></section>
+    <p className="mt-3 text-xs leading-6 text-slate-400">每個狀態最多 {MAX_EXACT_ICM_PLAYERS} 位存活玩家；所有動作共用精確計算上限。超過時在計算前拒絕整組比較，不回傳部分結果。請改用較小且明示的狀態樹或離線模型，勿刪除玩家以符合限制。</p>
 
     <section className="mt-6 grid gap-5 lg:grid-cols-[300px_1fr]">
       <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/55 p-5"><label className="block text-xs text-slate-500">Hero ID<input value={heroId} onChange={event => setHeroId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm" /></label><label className="block text-xs text-slate-500">Payouts<input value={payoutsText} onChange={event => setPayoutsText(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 font-mono text-sm" /></label><div className="rounded-xl border border-amber-500/20 bg-amber-500/6 p-4 text-xs leading-6 text-amber-100/75"><ShieldAlert className="mb-2 h-4 w-4" />示範 JSON 的 55/45、50/50 都只是 demo assumptions，不是 bundled solver truth。實際使用時請輸入來自你的模型/solver/已驗證估計的 branch probabilities。</div></div>

@@ -8,6 +8,7 @@ import {
   semanticTeachingScenarios,
 } from '../src/teaching/scenarioCatalog';
 import { Scenario } from '../src/types';
+import { practicalCurriculum } from '../src/teaching/practicalCurriculum';
 import { tournamentTrainingScenarios } from '../src/teaching/tournamentMathScenarios';
 
 function definedFeedbacks(scenario: Scenario) {
@@ -64,7 +65,7 @@ function assertInheritedTruth(base: Scenario, variant: Scenario): void {
 assert.equal(coreScenarios.length, 88, 'Canonical reviewed family inventory changed; update the truth audit intentionally.');
 assert.equal(semanticTeachingScenarios.length, 64, 'Exact-math family inventory changed; update the truth audit intentionally.');
 assert.equal(curatedTeachingVariants.length, 64, 'Rendered suit-isomorphic inventory changed unexpectedly.');
-assert.equal(scenarios.length, 228, 'Production scenario inventory changed unexpectedly.');
+assert.equal(scenarios.length, 248, 'Production scenario inventory changed unexpectedly.');
 assert.equal(scenarios.every(isTruthBackedScenario), true, 'Every production scenario must remain internally gradeable.');
 
 semanticTeachingScenarios.forEach(assertExactMathEvidence);
@@ -94,15 +95,17 @@ for (const variant of generated) {
   assertInheritedTruth(base!, variant);
 }
 
-const genuineFamilies = new Set([...coreScenarios, ...semanticTeachingScenarios, ...tournamentTrainingScenarios].map(item => item.decisionFamilyId || item.id));
-assert.equal(genuineFamilies.size, 164, 'Genuine semantic family count must not be inflated by cosmetic variants.');
+const declaredFamilies = new Set([...coreScenarios, ...semanticTeachingScenarios, ...tournamentTrainingScenarios, ...practicalCurriculum].map(item => item.decisionFamilyId || item.id));
+assert.equal(new Set(semanticTeachingScenarios.map(s => s.steps[0].description)).size, 48, 'Repeated numeric inputs must not inflate independent coverage.');
+assert.equal(declaredFamilies.size, 184, 'Declared family inventory must exclude cosmetic variants.');
 
 const exactFeedbackCount = semanticTeachingScenarios.reduce((sum, scenario) => sum + definedFeedbacks(scenario).length, 0);
 console.log(JSON.stringify({
   renderedScenarios: scenarios.length,
-  genuineDecisionFamilies: genuineFamilies.size,
+  declaredDecisionFamilies: declaredFamilies.size,
   reviewedCoreFamilies: coreScenarios.length,
-  exactMathFamilies: semanticTeachingScenarios.length,
+  renderedCashMathLessons: semanticTeachingScenarios.length,
+  independentCashMathInputs: new Set(semanticTeachingScenarios.map(s => s.steps[0].description)).size,
   exactMathGradedActions: exactFeedbackCount,
   curatedSuitIsomorphs: curatedTeachingVariants.length,
   generatedSafeVariants: generated.length,

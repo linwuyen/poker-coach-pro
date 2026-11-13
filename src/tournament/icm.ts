@@ -5,6 +5,10 @@ export interface IcmPlayer {
   eliminatedPlace?: number;
 }
 export interface IcmResult { equities: Record<string, number>; totalPayout: number; }
+/** Bounds the exponential exact calculation before allocating subset tables. */
+export const MAX_EXACT_ICM_PLAYERS = 16;
+/** Conservative n*2^n work across distinct terminal states in one FGS request. */
+export const MAX_FGS_EXACT_WORK = 4_000_000;
 export interface HeadsUpRiskInput {
   players: IcmPlayer[];
   payouts: number[];
@@ -106,27 +110,52 @@ function withEliminationPlaces(players: IcmPlayer[]): IcmPlayer[] {
 
 function payoutEquities(players: IcmPlayer[], payouts: number[]): Record<string, number> {
   const equities = Object.fromEntries(players.map(player => [player.id, player.eliminatedPlace === undefined ? 0 : payouts[player.eliminatedPlace - 1] || 0])) as Record<string, number>;
-  const recurse = (remaining: IcmPlayer[], place: number, probability: number) => {
-    if (!remaining.length || place >= payouts.length || probability <= 0) return;
-    const total = remaining.reduce((sum, player) => sum + Math.max(0, player.stack), 0);
-    if (total <= 0) return;
-    remaining.forEach((player, index) => {
-      const p = probability * Math.max(0, player.stack) / total;
-      equities[player.id] += p * (payouts[place] || 0);
-      recurse([...remaining.slice(0, index), ...remaining.slice(index + 1)], place + 1, p);
-    });
-  };
-  recurse(players.filter(player => player.stack > 0), 0, 1);
+  const live = players.filter(player => player.stack > 0);
+  // All finishing orders with the same remaining-player set have identical
+  // next-place probabilities. Merge their probability mass once per subset:
+  // O(n * 2^n) time / O(2^n) memory, rather than enumerating n! permutations.
+  const stateCount = 1 << live.length;
+  const stacks = new Float64Array(stateCount);
+  const largestStack = new Float64Array(stateCount);
+  const counts = new Uint8Array(stateCount);
+  const probability = new Float64Array(stateCount);
+  for (let mask = 1; mask < stateCount; mask += 1) {
+    const bit = mask & -mask;
+    const index = 31 - Math.clz32(bit);
+    const rest = mask ^ bit;
+    largestStack[mask] = Math.max(largestStack[rest], live[index].stack);
+    // Normalize each subset independently, so both very large finite stacks
+    // and tiny stacks remaining after a large stack wins retain valid shares.
+    stacks[mask] = stacks[rest] * (largestStack[rest] / largestStack[mask]) + live[index].stack / largestStack[mask];
+    counts[mask] = counts[mask ^ bit] + 1;
+  }
+  probability[stateCount - 1] = 1;
+  for (let mask = stateCount - 1; mask > 0; mask -= 1) {
+    const place = live.length - counts[mask];
+    if (place >= payouts.length || !probability[mask]) continue;
+    for (let remaining = mask; remaining; remaining &= remaining - 1) {
+      const bit = remaining & -remaining;
+      const player = live[31 - Math.clz32(bit)];
+      const nextProbability = probability[mask] * (player.stack / largestStack[mask]) / stacks[mask];
+      equities[player.id] += nextProbability * (payouts[place] || 0);
+      probability[mask ^ bit] += nextProbability;
+    }
+  }
   return equities;
 }
 
-export function calculateIcm(players: IcmPlayer[], payouts: number[]): IcmResult {
-  if (!players.length) return { equities: {}, totalPayout: 0 };
+function validateIcmInputs(players: IcmPlayer[], payouts: number[]): void {
   if (players.some(player => player.stack < 0 || !Number.isFinite(player.stack))) throw new Error('Stacks must be finite and non-negative.');
   const ids = new Set(players.map(player => player.id));
   if (ids.size !== players.length || players.some(player => !player.id)) throw new Error('Player ids must be unique and non-empty.');
   if (payouts.some(value => value < 0 || !Number.isFinite(value))) throw new Error('Payouts must be finite and non-negative.');
   if (payouts.length > players.length) throw new Error('Payouts cannot include more places than the supplied player roster.');
+  if (players.filter(player => player.stack > 0).length > MAX_EXACT_ICM_PLAYERS) throw new Error(`Exact ICM supports at most ${MAX_EXACT_ICM_PLAYERS} live players; keep the complete roster and use a larger-field model instead of omitting players.`);
+}
+
+export function calculateIcm(players: IcmPlayer[], payouts: number[]): IcmResult {
+  if (!players.length) return { equities: {}, totalPayout: 0 };
+  validateIcmInputs(players, payouts);
   return { equities: payoutEquities(withEliminationPlaces(players), payouts), totalPayout: payouts.reduce((sum, value) => sum + value, 0) };
 }
 
@@ -217,6 +246,42 @@ interface FgsAccumulator {
   objects: Set<FgsNode>;
 }
 
+interface FgsWork {
+  payouts: number[];
+  states: Map<string, IcmPlayer[]>;
+  equities: Map<string, Record<string, number>>;
+  estimatedWork: number;
+}
+
+interface PreparedFgsNode {
+  ids: Set<string>;
+  probability: number;
+  children: PreparedFgsNode[];
+  equityKey?: string;
+}
+
+interface PreparedFgsInput {
+  root: PreparedFgsNode;
+  accumulator: FgsAccumulator;
+  heroId: string;
+}
+
+function newFgsWork(payouts: number[]): FgsWork {
+  return { payouts, states: new Map(), equities: new Map(), estimatedWork: 0 };
+}
+
+function registerFgsState(players: IcmPlayer[], work: FgsWork): string {
+  // Roster order is immaterial; earned finishing places are part of utility.
+  const key = JSON.stringify([...players].sort((left, right) => left.id.localeCompare(right.id)).map(player => [player.id, player.stack, player.eliminatedPlace ?? null]));
+  if (!work.states.has(key)) {
+    const liveCount = players.filter(player => player.stack > 0).length;
+    work.estimatedWork += liveCount * 2 ** liveCount;
+    if (work.estimatedWork > MAX_FGS_EXACT_WORK) throw new Error(`FGS exact computation work budget exceeded (${MAX_FGS_EXACT_WORK}); use a smaller explicit tree or an offline model. No partial result was calculated; do not omit players from a roster.`);
+    work.states.set(key, players);
+  }
+  return key;
+}
+
 function validateNodeState(players: IcmPlayer[], expectedIds?: Set<string>): Set<string> {
   const ids = new Set(players.map(player => player.id));
   if (expectedIds && (ids.size !== expectedIds.size || [...expectedIds].some(id => !ids.has(id)))) {
@@ -229,15 +294,15 @@ function addWeighted(target: Record<string, number>, source: Record<string, numb
   Object.entries(source).forEach(([id, value]) => { target[id] = (target[id] || 0) + value * weight; });
 }
 
-function evaluateFgsNode(
+function prepareFgsNode(
   node: FgsNode,
   inheritedPlayers: IcmPlayer[] | undefined,
-  payouts: number[],
+  work: FgsWork,
   accumulator: FgsAccumulator,
   expectedIds: Set<string> | undefined,
   depth: number,
   maxNodes: number,
-): { equities: Record<string, number>; ids: Set<string> } {
+): PreparedFgsNode {
   accumulator.nodeCount += 1;
   accumulator.maxDepth = Math.max(accumulator.maxDepth, depth);
   if (accumulator.nodeCount > maxNodes) throw new Error(`FGS tree exceeds maxNodes=${maxNodes}.`);
@@ -257,13 +322,13 @@ function evaluateFgsNode(
       current.eliminatedPlace = prior.eliminatedPlace;
     }
   }
+  validateIcmInputs(players, work.payouts);
   players = withEliminationPlaces(players);
-  calculateIcm(players, payouts);
   const children = node.children || [];
   if (!children.length) {
     accumulator.leafCount += 1;
     accumulator.objects.delete(node);
-    return { equities: calculateIcm(players, payouts).equities, ids };
+    return { ids, probability: node.probability || 0, children: [], equityKey: registerFgsState(players, work) };
   }
   const probabilities = children.map(child => child.probability);
   if (probabilities.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)) {
@@ -271,40 +336,63 @@ function evaluateFgsNode(
   }
   const totalProbability = probabilities.reduce((sum, value) => sum + (value || 0), 0);
   if (Math.abs(totalProbability - 1) > 1e-6) throw new Error(`FGS children of ${node.id} probabilities must sum to 1.`);
-  const equities = Object.fromEntries([...ids].map(id => [id, 0])) as Record<string, number>;
-  children.forEach(child => {
-    const evaluated = evaluateFgsNode(child, players, payouts, accumulator, ids, depth + 1, maxNodes);
-    addWeighted(equities, evaluated.equities, child.probability || 0);
-  });
+  const preparedChildren = children.map(child => prepareFgsNode(child, players, work, accumulator, ids, depth + 1, maxNodes));
   accumulator.objects.delete(node);
-  return { equities, ids };
+  return { ids, probability: node.probability || 0, children: preparedChildren };
 }
 
-/**
- * Finite Game Simulation conditional on an explicit user/simulator supplied future-state tree.
- * This function does not invent future action probabilities. It applies exact ICM at leaves and
- * probability-weighted backward induction over the supplied chance/state branches.
- */
-export function calculateFgs(input: FgsInput): FgsResult {
+function prepareFgsInput(input: FgsInput, work: FgsWork): PreparedFgsInput {
   if (!input.heroId) throw new Error('FGS heroId is required.');
   if (!input.root) throw new Error('FGS root is required.');
   if (!input.payouts.length) throw new Error('FGS payouts are required.');
   const accumulator: FgsAccumulator = { nodeCount: 0, leafCount: 0, maxDepth: 0, ids: new Set(), objects: new Set() };
-  const evaluated = evaluateFgsNode(input.root, undefined, input.payouts, accumulator, undefined, 0, input.maxNodes ?? 1000);
-  if (!evaluated.ids.has(input.heroId)) throw new Error(`FGS hero ${input.heroId} is absent from the tree state.`);
+  const root = prepareFgsNode(input.root, undefined, work, accumulator, undefined, 0, input.maxNodes ?? 1000);
+  if (!root.ids.has(input.heroId)) throw new Error(`FGS hero ${input.heroId} is absent from the tree state.`);
+  return { root, accumulator, heroId: input.heroId };
+}
+
+function evaluatePreparedFgsNode(node: PreparedFgsNode, work: FgsWork): Record<string, number> {
+  if (node.equityKey !== undefined) {
+    let equities = work.equities.get(node.equityKey);
+    if (!equities) {
+      equities = payoutEquities(work.states.get(node.equityKey)!, work.payouts);
+      work.equities.set(node.equityKey, equities);
+    }
+    return equities;
+  }
+  const equities = Object.fromEntries([...node.ids].map(id => [id, 0])) as Record<string, number>;
+  for (const child of node.children) addWeighted(equities, evaluatePreparedFgsNode(child, work), child.probability);
+  return equities;
+}
+
+function evaluatePreparedFgs(input: PreparedFgsInput, work: FgsWork): FgsResult {
+  const equities = evaluatePreparedFgsNode(input.root, work);
   return {
-    equities: evaluated.equities,
-    heroEquity: evaluated.equities[input.heroId] || 0,
-    totalPayout: input.payouts.reduce((sum, value) => sum + value, 0),
-    nodeCount: accumulator.nodeCount,
-    leafCount: accumulator.leafCount,
-    maxDepth: accumulator.maxDepth,
+    equities: { ...equities },
+    heroEquity: equities[input.heroId] || 0,
+    totalPayout: work.payouts.reduce((sum, value) => sum + value, 0),
+    nodeCount: input.accumulator.nodeCount,
+    leafCount: input.accumulator.leafCount,
+    maxDepth: input.accumulator.maxDepth,
   };
+}
+
+/**
+ * Finite Game Simulation conditional on an explicit user/simulator supplied future-state tree.
+ * Validate the full tree and its shared exact-work budget before numerical evaluation.
+ * Each distinct leaf state uses exact ICM once; supplied probabilities are never invented.
+ */
+export function calculateFgs(input: FgsInput): FgsResult {
+  const work = newFgsWork(input.payouts);
+  return evaluatePreparedFgs(prepareFgsInput(input, work), work);
 }
 
 export function compareFgsActions(actions: FgsActionTree[], payouts: number[], heroId: string): FgsActionResult[] {
   if (!actions.length) return [];
-  const raw = actions.map(action => ({ action: action.action, ...calculateFgs({ root: action.root, payouts, heroId }) }));
+  const work = newFgsWork(payouts);
+  // All actions share one budget/cache and complete preflight before any ICM.
+  const prepared = actions.map(action => ({ action: action.action, input: prepareFgsInput({ root: action.root, payouts, heroId }, work) }));
+  const raw = prepared.map(action => ({ action: action.action, ...evaluatePreparedFgs(action.input, work) }));
   const best = Math.max(...raw.map(result => result.heroEquity));
   return raw
     .map(result => ({ ...result, deltaVsBest: sameUtility(result.heroEquity, best) ? 0 : result.heroEquity - best }))
