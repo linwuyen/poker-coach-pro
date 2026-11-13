@@ -137,7 +137,9 @@ export function calculateMastery(history: HistoryItem[], now = Date.now()): Mast
   const groups = new Map<string, HistoryItem[]>();
   history.filter(isLearningAttempt).forEach(item => {
     const key = getHistoryMasteryKey(item);
-    groups.set(key, [...(groups.get(key) || []), item]);
+    const group = groups.get(key) || [];
+    group.push(item);
+    groups.set(key, group);
   });
 
   return [...groups.entries()].map(([key, attempts]) => {
@@ -204,7 +206,11 @@ function effectiveSampleCount(items: HistoryItem[]): number {
 export function getWeaknessInsights(history: HistoryItem[], now = Date.now()): WeaknessInsight[] {
   const groups = new Map<string, HistoryItem[]>();
   history.filter(isLearningAttempt).forEach(item => {
-    (item.category || []).forEach(category => groups.set(category, [...(groups.get(category) || []), item]));
+    (item.category || []).forEach(category => {
+      const group = groups.get(category) || [];
+      group.push(item);
+      groups.set(category, group);
+    });
   });
 
   return [...groups.entries()].map(([key, items]) => {

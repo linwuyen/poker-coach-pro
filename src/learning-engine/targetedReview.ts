@@ -24,7 +24,9 @@ export function selectTargetedReviewCandidates(
 ): InfiniteHandCandidate[] {
   const recent = new Set(recentIds.slice(-64));
   const ranked = pool
-    .filter(candidate => candidate.id !== failed.id)
+    // Reserved rows belong to the due-review selector. Queuing them here would
+    // retain them even after another attempt consumes their scheduled review.
+    .filter(candidate => !candidate.reviewOnly && candidate.id !== failed.id)
     .map(candidate => ({ candidate, score: relevance(candidate, failed), recent: recent.has(candidate.id) }))
     .filter(item => item.score >= 24)
     .sort((left, right) => {

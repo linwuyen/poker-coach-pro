@@ -1,4 +1,5 @@
 import type { Card, Feedback, HistoryItem, Rank, Scenario, ScenarioStep, Suit } from '../../types';
+import { pokerBenchVisibleBoard, type PokerBenchRow } from '../../solver-data/pokerbench';
 
 export interface AnalysisContext {
   schemaVersion: 1;
@@ -105,7 +106,14 @@ export function buildScenarioAnalysisContext(
     step.potOdds ? `Pot Odds ${step.potOdds}` : '',
     step.options,
   );
-  const effectiveStackBB = numberFrom(scenario.effectiveStack, /([0-9]+(?:\.[0-9]+)?)\s*BB/i) ?? scenario.userBB;
+  const { heroStackBB, villainStackBB } = step.handState || {};
+  const currentStacksKnown = typeof heroStackBB === 'number' && Number.isFinite(heroStackBB) && heroStackBB >= 0
+    && typeof villainStackBB === 'number' && Number.isFinite(villainStackBB) && villainStackBB >= 0;
+  // Scenario-level depth describes its initial decision, not every later street.
+  // A current Hero stack alone cannot establish the opponent's effective stack.
+  const initialDepthApplies = step.id === scenario.steps[0]?.id && heroStackBB === undefined && villainStackBB === undefined;
+  const effectiveStackBB = currentStacksKnown ? Math.min(heroStackBB, villainStackBB)
+    : initialDepthApplies ? numberFrom(scenario.effectiveStack, /^\s*([0-9]+(?:\.[0-9]+)?)\s*BB\s*$/i) : undefined;
 
   return {
     schemaVersion: 1,
@@ -131,6 +139,34 @@ export function buildScenarioAnalysisContext(
     truthSource: item.truthSourceRef || item.truthSourceId || step.strategySource,
     villainRange: feedback.evidence?.villainRange,
     heroRange: feedback.evidence?.heroRange,
+  };
+}
+
+/** Keep the displayed row and its submission together while history writes are queued. */
+export function buildPokerBenchAnalysisContext(row: PokerBenchRow, item: HistoryItem): AnalysisContext {
+  const codes = (value: string) => [...value.matchAll(/([2-9TJQKA])([cdhs])/gi)]
+    .map(match => `${match[1].toUpperCase()}${match[2].toLowerCase()}`);
+  const heroCards = codes(row.holding);
+  return {
+    schemaVersion: 1,
+    capturedAt: item.timestamp,
+    source: 'pokerbench',
+    trainingType: item.trainingType,
+    scenarioId: item.scenarioId,
+    stepId: item.stepId,
+    datasetRowId: row.id,
+    title: item.questionLabel,
+    heroCards,
+    boardCards: codes(pokerBenchVisibleBoard(row)),
+    startingHand: startingHandFromCodes(heroCards),
+    street: row.split === 'preflop' ? 'Preflop' : row.evaluationAt,
+    position: row.heroPosition,
+    gameFormat: 'Cash',
+    potBB: row.potSize,
+    selectedAction: item.selectedAction,
+    bestAction: row.correctDecision,
+    truthTier: item.truthTier,
+    truthSource: item.truthSourceRef || item.truthSourceId,
   };
 }
 

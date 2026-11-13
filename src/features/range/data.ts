@@ -17,6 +17,7 @@ const O = (
 export const RANGE_QUESTIONS: RangeQuestion[] = [
   {
     id: 'co-shove-aqs',
+    gameFormat: 'MTT',
     title: '18BB CO 直接推進',
     table: '錦標賽 9 人桌',
     stack: '有效 18BB',
@@ -42,6 +43,7 @@ export const RANGE_QUESTIONS: RangeQuestion[] = [
   },
   {
     id: 'fourbet-shove-qq',
+    gameFormat: 'Cash',
     title: 'UTG 40BB 4-Bet Shove',
     table: '6 人桌現金局',
     stack: '有效 40BB',
@@ -67,6 +69,7 @@ export const RANGE_QUESTIONS: RangeQuestion[] = [
   },
   {
     id: 'flop-cbet-second-pair',
+    gameFormat: 'Cash',
     title: 'K-9-4 面對 33% C-Bet',
     table: '6 人桌現金局',
     stack: '有效 80BB',
@@ -93,6 +96,7 @@ export const RANGE_QUESTIONS: RangeQuestion[] = [
   },
   {
     id: 'turn-checkraise-aq',
+    gameFormat: 'Cash',
     title: 'Turn 面對被動玩家 Check-Raise',
     table: '9 人桌現金局',
     stack: '有效 100BB',
@@ -119,6 +123,7 @@ export const RANGE_QUESTIONS: RangeQuestion[] = [
   },
   {
     id: 'river-overbet-kj',
+    gameFormat: 'Cash',
     title: 'River 面對 150% Pot All-In',
     table: '6 人桌現金局',
     stack: '有效 120BB',
@@ -145,6 +150,7 @@ export const RANGE_QUESTIONS: RangeQuestion[] = [
   },
   {
     id: 'multiway-donk-aa',
+    gameFormat: 'Cash',
     title: '多人池面對 75% Donk Bet',
     table: '9 人桌現金局',
     stack: '有效 70BB',

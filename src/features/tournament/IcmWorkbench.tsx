@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeft, Coins, Medal, Scale, Ticket } from 'lucide-react';
-import { calculateHeadsUpIcmRisk, calculateHeadsUpPkoRisk, satellitePayouts } from '../../tournament/icm';
+import { calculateHeadsUpIcmRisk, calculateHeadsUpPkoRisk, MAX_EXACT_ICM_PLAYERS, satellitePayouts } from '../../tournament/icm';
 
 type Mode = 'icm' | 'pko' | 'satellite';
 function parseNumbers(value: string): number[] {
@@ -36,7 +36,7 @@ export function IcmWorkbench({ onExit }: { onExit: () => void }) {
       return mode === 'pko'
         ? { mode, base: calculateHeadsUpPkoRisk({ ...baseInput, villainBountyValue: Number(bounty) || 0 }) }
         : { mode, base: calculateHeadsUpIcmRisk(baseInput) };
-    } catch { return null; }
+    } catch (error) { return { mode, base: undefined, error: error instanceof Error ? error.message : '無法計算此玩家狀態。' }; }
   }, [mode, stacks, payouts, heroIndex, villainIndex, risk, showdown, bounty, satelliteSeats]);
 
   const playerCount = parseNumbers(stacks).length;
@@ -51,6 +51,7 @@ export function IcmWorkbench({ onExit }: { onExit: () => void }) {
         <h1 className="mt-3 text-3xl font-bold">ChipEV、ICM、PKO、Satellite 不該混成同一個答案</h1>
         <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">此工具比較一個對稱風險：拒絕時維持初始籌碼；接受時 Hero / Villain 各承擔 R，勝負後互轉 R。假設沒有既有底池、盲注、ante、平手或後續下注；R 大於 0 時 Chip-EV 門檻為 50%，R 為 0 時兩者無差異。實戰面對 shove 的價格需另外計入底池，不能直接套用這個門檻。</p>
         <p className="mt-2 max-w-3xl text-xs leading-6 text-slate-400">ICM 使用完整剩餘玩家與獎金，同等技術假設下計算主獎金期望；淘汰者仍取得其名次獎金。Satellite 以等值門票計算。PKO 只加本次能立即領取的賞金，未建模累加在自己頭上的賞金及未來賞金策略；FGS 需另行提供未來樹。</p>
+        <p className="mt-2 max-w-3xl text-xs leading-6 text-slate-400">精確 ICM 支援最多 {MAX_EXACT_ICM_PLAYERS} 位存活玩家。超過時不計算、不估算；請保留完整名單並改用支援更大賽場的模型，不要刪除玩家來符合限制。</p>
         <div className="mt-5 flex flex-wrap gap-2">{([
           ['icm', 'ICM', Scale], ['pko', 'PKO', Coins], ['satellite', 'Satellite', Ticket],
         ] as const).map(([value, label, Icon]) => <button key={value} type="button" onClick={() => setMode(value)} className={`pc-interactive flex items-center gap-2 rounded-xl border px-4 py-2 text-sm ${mode === value ? 'border-cyan-400/50 bg-cyan-500/15 text-cyan-100' : 'border-slate-700 text-slate-400'}`}><Icon className="h-4 w-4" />{label}</button>)}</div>
@@ -75,7 +76,7 @@ export function IcmWorkbench({ onExit }: { onExit: () => void }) {
         <div className="sm:col-span-2 lg:col-span-4 rounded-2xl border border-slate-800 bg-slate-900/55 p-5 text-sm leading-7 text-slate-300">
           <Medal className="mr-2 inline h-4 w-4 text-cyan-300" /><b>判讀：</b> {base.chipEvIndifferent ? 'R=0，籌碼效用也無差異。' : `Chip-EV 參考門檻 ${base.chipEvBreakEvenPercent.toFixed(1)}%。`}{indifferent ? '在所選模型中，接受與拒絕風險對所有 0–100% equity 的效用相同，因此沒有唯一勝率門檻，也不產生正的 ICM risk premium。' : mode === 'satellite' ? `等值席位模型的最低接受 equity 為 ${base.icmBreakEvenPercent.toFixed(1)}%。` : mode === 'pko' ? `主獎金加即時賞金的最低接受 equity 為 ${(pko?.pkoBreakEvenPercent || 0).toFixed(1)}%；只有能實際淘汰對手時才產生即時 bounty EV。` : `ICM 的最低接受 equity 為 ${base.icmBreakEvenPercent.toFixed(1)}%。`}
         </div>
-      </section> : <div className="mt-6 rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-200">請確認完整玩家與獎金數、Hero/Villain 為不同存活玩家、0–100% equity，以及 0 ≤ R ≤ 雙方有效籌碼。若需記錄多位已淘汰玩家的名次，請在 FGS JSON 明示 eliminatedPlace。</div>}
+      </section> : <div role="alert" className="mt-6 rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-200">{result?.error && <p className="mb-2">{result.error}</p>}請確認完整玩家與獎金數、Hero/Villain 為不同存活玩家、0–100% equity，以及 0 ≤ R ≤ 雙方有效籌碼。精確模型最多 {MAX_EXACT_ICM_PLAYERS} 位存活玩家。若需記錄多位已淘汰玩家的名次，請在 FGS JSON 明示 eliminatedPlace。</div>}
     </div>
   </div>;
 }

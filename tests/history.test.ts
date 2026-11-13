@@ -29,3 +29,13 @@ test('low confidence correct answers return earlier than confident reviews', () 
 test('legacy second-argument previous history remains supported', () => {
   assert.equal(getReviewSchedule(10, previous(10, 1), undefined, now).reviewIntervalDays, 3);
 });
+
+test('rehearsal before a review is due does not extend its retention interval or deadline', () => {
+  let prior: HistoryItem = { ...previous(10), timestamp: now, ...getReviewSchedule(10, undefined, undefined, now) };
+  for (let seconds = 1; seconds <= 9; seconds += 1) {
+    prior = { ...prior, ...getReviewSchedule(10, 4, prior, now + seconds * 1000), timestamp: now + seconds * 1000 };
+    assert.equal(prior.reviewIntervalDays, 1);
+    assert.equal(prior.nextReviewAt, now + 86400000);
+  }
+  assert.equal(getReviewSchedule(10, prior, undefined, now + 86400000).reviewIntervalDays, 3);
+});

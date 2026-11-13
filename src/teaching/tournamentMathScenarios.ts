@@ -113,3 +113,32 @@ const EVALUATION_INPUTS: ExerciseInput[] = [
 /** Separate numeric situations; evaluation scenarios never enter the practice catalogue. */
 export const tournamentTrainingScenarios: Scenario[] = TRAINING_INPUTS.map(input => makeExercise(input, 'training'));
 export const tournamentEvaluationScenarios: Scenario[] = EVALUATION_INPUTS.map(input => makeExercise(input, 'holdout'));
+
+/** Fresh exact conditional utility problems; never added to the training catalog. */
+export function buildTournamentEvaluationScenarios(startIndex = 0, count = 32): Scenario[] {
+  const start = Math.max(0, Math.trunc(startIndex));
+  return Array.from({ length: Math.max(0, Math.trunc(count)) }, (_, offset) => {
+    const index = start + offset;
+    const cycle = (modulus: number, multiplier: number, shift = 0) => ((index % modulus) * multiplier + shift) % modulus;
+    const model = (['chip', 'icm', 'satellite', 'pko'] as const)[index % 4];
+    const hero = (1000 + cycle(997, 619) * 4) / 100;
+    const villain = model === 'pko' ? hero : (1500 + cycle(991, 487) * 4) / 100;
+    const stacks = [hero, villain, (150 + cycle(983, 337)) / 100];
+    const risk = Math.min(hero, villain);
+    const payouts = model === 'satellite' ? [1, 1] : [55 + cycle(31, 11), 25 + cycle(13, 5), 0];
+    const bounty = model === 'pko' ? 4 + cycle(29, 7) : undefined;
+    const players = stacks.map((stack, i) => ({ id: i === 0 ? 'H' : i === 1 ? 'V' : 'P3', stack }));
+    const input = { players, payouts, heroId:'H', villainId:'V', amountAtRisk:risk, showdownEquity:.5 };
+    const threshold = model === 'chip' ? .5 : model === 'pko'
+      ? calculateHeadsUpPkoRisk({ ...input, villainBountyValue:bounty!, bountyCashFraction:.5 }).pkoBreakEvenPercent / 100
+      : calculateHeadsUpIcmRisk(input).icmBreakEvenPercent / 100;
+    let hash = (index >>> 0) ^ Math.imul(Math.floor(index / 0x100000000), 0x9e3779b1);
+    hash = Math.imul(hash ^ (hash >>> 16), 0x7feb352d);
+    hash = Math.imul(hash ^ (hash >>> 15), 0x846ca68b);
+    hash ^= hash >>> 16;
+    const direction = (hash & 1) ? 1 : -1;
+    // Quantize before deriving truth: all visible inputs are exact inputs to the model.
+    const equity = Math.max(.0001, Math.min(.9999, Math.round((threshold + direction * (125 + cycle(173, 71)) / 10000) * 10000) / 10000));
+    return makeExercise({ key:`generated-${index + 1}`, model, stage:model === 'satellite' ? '衛星泡沫' : model === 'pko' ? '賞金覆蓋' : '效用比較', stacks, payouts, risk, equity, bounty, cashFraction:.5, tableSize:Math.floor(index / 4) % 2 ? '9max' : '6max' }, 'holdout');
+  });
+}

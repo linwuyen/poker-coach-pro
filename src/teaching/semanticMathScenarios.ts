@@ -50,7 +50,7 @@ function potOddsScenario(index: number): Scenario {
   const callCost = 2 + (index % 4) * 1.5;
   const breakEven = callCost / (potBeforeCall + callCost);
   const offset = ((Math.floor(index / 4) % 2 === 0 ? -1 : 1) * (0.018 + (index % 3) * 0.006));
-  const equity = Math.max(0.05, Math.min(0.9, breakEven + offset));
+  const equity = round(Math.max(0.05, Math.min(0.9, breakEven + offset)), 3);
   const callEv = equity * (potBeforeCall + callCost) - callCost;
   const bestAction: ActionType = callEv >= 0 ? 'Call' : 'Fold';
   const bestEv = Math.max(0, callEv);
@@ -106,13 +106,13 @@ function bluffScenario(index: number): Scenario {
   const bet = pot * fraction;
   const breakEvenFold = bet / (pot + bet);
   const offset = ((Math.floor(index / 4) % 2 === 0 ? -1 : 1) * (0.02 + (index % 3) * 0.008));
-  const foldRate = Math.max(0.05, Math.min(0.9, breakEvenFold + offset));
+  const foldRate = round(Math.max(0.05, Math.min(0.9, breakEvenFold + offset)), 3);
   const bluffEv = foldRate * pot - (1 - foldRate) * bet;
   const betAction: ActionType = fraction <= 0.4 ? 'Bet small' : fraction <= 0.6 ? 'Bet half pot' : 'Bet big';
   const bestAction: ActionType = bluffEv >= 0 ? betAction : 'Check';
   const bestEv = Math.max(0, bluffEv);
   const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
-  const objective = `Pure-bluff EV = fold% × pot − call% × bet = ${pct(foldRate)} × ${pot.toFixed(1)} − ${pct(1 - foldRate)} × ${bet.toFixed(1)} = ${bluffEv.toFixed(3)}BB。`;
+  const objective = `Pure-bluff EV = fold% × pot − call% × bet = ${pct(foldRate)} × ${pot.toFixed(1)} − ${pct(1 - foldRate)} × ${bet.toFixed(2)} = ${bluffEv.toFixed(3)}BB。`;
   const reversal = `若 Villain fold rate 跨過 ${pct(breakEvenFold)}，這個 ${pct(fraction)} pot pure bluff 會在 Check / Bet 之間反轉。`;
   const why = bluffEv >= 0
     ? `給定 Fold rate ${pct(foldRate)} 高於 break-even ${pct(breakEvenFold)}，純詐唬有 +${bluffEv.toFixed(3)}BB 增量 EV。`
@@ -132,7 +132,7 @@ function bluffScenario(index: number): Scenario {
     userBB: 100,
     position: 'BTN',
     holeCards: BLUFF_HERO.map(card => ({ ...card })),
-    preAction: `River checked to Hero。Pot ${pot.toFixed(1)}BB；題目指定 Hero 是 pure bluff，Villain 對 ${bet.toFixed(1)}BB bet 的 fold rate = ${pct(foldRate)}。`,
+    preAction: `River checked to Hero。Pot ${pot.toFixed(1)}BB；題目指定 Hero 是 pure bluff，Villain 對 ${bet.toFixed(2)}BB bet 的 fold rate = ${pct(foldRate)}。`,
     effectiveStack: '100BB',
     tableSize: '6max',
     benchmarkRole: 'training',
@@ -141,7 +141,7 @@ function bluffScenario(index: number): Scenario {
       id: 'river-bluff',
       street: 'River',
       communityCards: BLUFF_BOARD.map(card => ({ ...card })),
-      description: `Pot ${pot.toFixed(1)}BB · Bet ${bet.toFixed(1)}BB (${pct(fraction)} pot) · Given fold rate ${pct(foldRate)}。`,
+      description: `Pot ${pot.toFixed(1)}BB · Bet ${bet.toFixed(2)}BB (${pct(fraction)} pot) · Given fold rate ${pct(foldRate)}。`,
       potSize: pot,
       options: ['Check', betAction],
       assumptions: ['Hero 被定義為 pure bluff：被 Call 時沒有 showdown win equity。', 'Villain 對此尺寸的 fold rate 為題目給定的精確輸入。', 'Check 的增量 EV 定義為 0BB。'],

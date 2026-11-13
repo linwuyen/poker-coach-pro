@@ -41,10 +41,10 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit,
   const attemptLearningAnnotations = useRef(new Map<string, AttemptLearningAnnotation>());
 
   const pool = useMemo(
-    () => buildInfiniteCandidatePool(scenarioBank, safeVariants, pokerBenchRows).filter(item => item.kind === 'scenario'
+    () => buildInfiniteCandidatePool(scenarioBank, safeVariants, pokerBenchRows, history).filter(item => item.kind === 'scenario'
       ? scenarioMatchesTrainingTrack(item.scenario, track, profile)
       : pokerBenchMatchesTrainingTrack(item.row, track, profile)),
-    [scenarioBank, safeVariants, pokerBenchRows, track, profile],
+    [scenarioBank, safeVariants, pokerBenchRows, history, track, profile],
   );
   const summary = useMemo(
     () => summarizeInfinitePool(scenarioBank, safeVariants, pokerBenchRows, pool),
@@ -205,6 +205,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit,
           key={candidate.id}
           title={targetedActive ? '針對複習 · 資料集動作練習' : '無限牌局 · 資料集動作練習'}
           rows={[candidate.row]}
+          reviewOnly={candidate.reviewOnly}
           history={history}
           autoComplete
           onRecord={record}

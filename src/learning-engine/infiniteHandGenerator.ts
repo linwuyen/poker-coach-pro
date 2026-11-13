@@ -1,10 +1,12 @@
 import { DecisionActionKind, HistoryItem, Scenario, Street, TruthTier } from '../types';
 import { isHiddenBenchmarkScenario } from './benchmark';
-import { candidateLearningSignal } from './closedLoop';
+import { createCandidateLearningSignalResolver } from './closedLoop';
+import { currentDueReviews } from './index';
+import { pokerBenchExposureIdentity } from '../domain/trainingTrack';
 import { scenarioContextFamilyId } from './contextIdentity';
 import { solverDecisionFamilyId } from './semanticPairs';
 import { solverCorpusRole } from './solverCurriculum';
-import { normalizeDecision, parsePokerDecision, pokerBenchVisibleBoard, PokerBenchRow } from '../solver-data/pokerbench';
+import { normalizeDecision, parsePokerDecision, pokerBenchVisibleBoard, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow } from '../solver-data/pokerbench';
 
 export type InfiniteHandSource = 'curated' | 'safe-variant' | 'pokerbench';
 export type InfiniteFormat = 'cash' | 'tournament' | 'solver';
@@ -24,6 +26,8 @@ interface InfiniteCandidateBase {
   format: InfiniteFormat;
   stackBand: InfiniteStackBand;
   actionClass: InfiniteActionClass;
+  /** An already-exposed assessment may be replayed only to complete a due review. */
+  reviewOnly?: boolean;
 }
 
 export interface InfiniteScenarioCandidate extends InfiniteCandidateBase {
@@ -119,6 +123,10 @@ export function isTruthBackedScenario(scenario: Scenario): boolean {
 
 export function isTruthBackedPokerBenchRow(row: PokerBenchRow): boolean {
   if (solverCorpusRole(row) !== 'training') return false;
+  return hasPokerBenchDecisionLabel(row);
+}
+
+function hasPokerBenchDecisionLabel(row: PokerBenchRow): boolean {
   if (!row.correctDecision || row.availableMoves.length < 2) return false;
   const target = normalizeDecision(row.correctDecision);
   return row.availableMoves.some(move => normalizeDecision(move) === target);
@@ -217,16 +225,31 @@ function isTrainingSafeVariant(scenario: Scenario, heldOutSources: Set<string>):
   return isTruthBackedScenario(scenario) && (!sourceId || !heldOutSources.has(sourceId));
 }
 
+function duePokerBenchExposures(history: HistoryItem[], now: number): Set<string> {
+  return new Set(currentDueReviews(history, now).map(pokerBenchExposureIdentity).filter((identity): identity is string => Boolean(identity)));
+}
+
+function rowExposureIdentity(row: PokerBenchRow): string {
+  return `solver:${POKERBENCH_SOURCE.id}:${POKERBENCH_FILES[row.split].split}:${row.id}`;
+}
+
 export function buildInfiniteCandidatePool(
   curated: Scenario[],
   safeVariants: Scenario[],
   pokerBenchRows: PokerBenchRow[],
+  history: HistoryItem[] = [],
+  now = Date.now(),
 ): InfiniteHandCandidate[] {
   const heldOutSources = holdoutSourceIds(curated);
+  const dueExposures = duePokerBenchExposures(history, now);
   const raw: InfiniteHandCandidate[] = [
     ...curated.filter(isTrainingSafeCurated).map(item => scenarioCandidate(item, 'curated')),
     ...safeVariants.filter(item => isTrainingSafeVariant(item, heldOutSources)).map(item => scenarioCandidate(item, 'safe-variant')),
     ...pokerBenchRows.filter(isTruthBackedPokerBenchRow).map(solverCandidate),
+    ...pokerBenchRows.filter(row => solverCorpusRole(row) !== 'training'
+      && hasPokerBenchDecisionLabel(row)
+      && dueExposures.has(rowExposureIdentity(row)))
+      .map(row => ({ ...solverCandidate(row), reviewOnly: true })),
   ];
   const byFingerprint = new Map<string, InfiniteHandCandidate>();
   raw.forEach(candidate => {
@@ -308,6 +331,13 @@ export function selectNextInfiniteCandidate(
   random: () => number = Math.random,
   now = Date.now(),
 ): InfiniteHandCandidate | undefined {
+  // A retained pool may outlive a schedule update. Reserved rows remain eligible
+  // only while the current history still contains their due practice review.
+  if (pool.some(candidate => candidate.reviewOnly)) {
+    const dueExposures = duePokerBenchExposures(history, now);
+    pool = pool.filter(candidate => !candidate.reviewOnly
+      || (candidate.kind === 'solver' && dueExposures.has(rowExposureIdentity(candidate.row))));
+  }
   if (!pool.length) return undefined;
   const recentIdSet = new Set(recentCandidateIds.slice(-64));
   const recentFamilySet = new Set(recentFamilyIds.slice(-6));
@@ -319,20 +349,26 @@ export function selectNextInfiniteCandidate(
   const familyFresh = eligible.filter(candidate => !recentFamilySet.has(candidate.familyId));
   if (familyFresh.length >= Math.min(8, eligible.length)) eligible = familyFresh;
 
-  const noveltyWeights = eligible.map(candidate => coverageNoveltyWeight(candidate, recentCandidates));
-  const maxNovelty = Math.max(...noveltyWeights, 1);
+  const novelty = new Map(eligible.map(candidate => [candidate, coverageNoveltyWeight(candidate, recentCandidates)]));
+  const noveltyWeights = eligible.map(candidate => novelty.get(candidate)!);
+  const maxNovelty = noveltyWeights.reduce((max, weight) => Math.max(max, weight), 1);
   const coverageFresh = eligible.filter((candidate, index) => noveltyWeights[index] >= maxNovelty * 0.72);
   if (coverageFresh.length >= Math.min(6, eligible.length)) eligible = coverageFresh;
 
   const sourceGroups = new Map<InfiniteHandSource, InfiniteHandCandidate[]>();
-  eligible.forEach(candidate => sourceGroups.set(candidate.source, [...(sourceGroups.get(candidate.source) || []), candidate]));
+  eligible.forEach(candidate => {
+    const group = sourceGroups.get(candidate.source) || [];
+    group.push(candidate);
+    sourceGroups.set(candidate.source, group);
+  });
+  const learningSignal = createCandidateLearningSignalResolver(history, now);
   const availableSources = [...sourceGroups.keys()];
   const source = weightedPick(availableSources, item => {
     const group = sourceGroups.get(item) || [];
-    const averageNovelty = group.length ? group.reduce((sum, candidate) => sum + coverageNoveltyWeight(candidate, recentCandidates), 0) / group.length : 1;
-    const averageLearning = group.length ? group.reduce((sum, candidate) => sum + candidateLearningSignal(candidate, history, now).weight, 0) / group.length : 1;
+    const averageNovelty = group.length ? group.reduce((sum, candidate) => sum + novelty.get(candidate)!, 0) / group.length : 1;
+    const averageLearning = group.length ? group.reduce((sum, candidate) => sum + learningSignal(candidate).weight, 0) / group.length : 1;
     return SOURCE_TARGET[item] * averageNovelty * averageLearning;
   }, random);
   const sourcePool = sourceGroups.get(source) || eligible;
-  return weightedPick(sourcePool, candidate => candidateLearningSignal(candidate, history, now).weight * coverageNoveltyWeight(candidate, recentCandidates), random);
+  return weightedPick(sourcePool, candidate => learningSignal(candidate).weight * novelty.get(candidate)!, random);
 }

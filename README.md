@@ -26,12 +26,23 @@ Fold / Check / Call / Bet / Raise / Jam
 
 玩家不需要填 solver JSON、range provider、HH、confidence 或工程設定。正常訓練只做 poker decision。
 
+## Cash / MTT 課程與測驗
+
+「今天」和「訓練」頁可直接選修課程；先顯示符合桌型、有效籌碼與主題偏好的課數。Cash10堂策略課涵蓋開池、3-bet、防守、翻後、薄價值、抓詐唬與短碼；MTT10堂策略課涵蓋10/15/20/30/40BB與錦標賽效用，另有12堂精確效用算術。
+
+策略課的前提在作答前顯示，屬條件式教學，不是完整solver範圍。每次MTT Hidden Exam在預設偏好下提供25道新數值題，平衡chip EV、ICM、衛星與立即PKO賞金。曝光過的題目不再算未見測驗；已曝光holdout只在到期時供複習。
+
+ICM精確計算上限為16名仍有籌碼的玩家，必須保留完整名單；不以漏列玩家或未標示近似來避開上限。
+
+概念參考：[有效深度](https://blog.gtowizard.com/how-stack-sizes-change-your-range/)、[阻擋與未阻擋牌](https://blog.gtowizard.com/blockers-unblockers-the-secret-to-picking-great-bluffs/)。新情境為自行編寫，沒有使用這些文章的solver輸出作為答案來源。
+
 ## Infinite Hand Generator
 
 Generator 統一三種來源，並保留各自的證據限制：
 
-1. **228 production scenarios**
-   - 164 decision families (including 12 bounded MTT utility exercises)
+1. **248 production scenarios**
+   - 184 declared family IDs, including 20 practical lessons and 12 bounded MTT utility exercises
+   - The64 rendered cash math lessons contain48 independent numeric inputs; declared IDs are not independent learning evidence
    - 64 suit-isomorphic retrieval instances
    - 經 scenario semantic validator 驗證
 2. **528 strategy-equivalent variants**
