@@ -9,6 +9,13 @@ import { HOST, PREVIEW_PORT, DEBUG_PORT, BASE_URL, VITE_BIN, sleep, waitHttp, br
 const tempRoot = realpathSync(tmpdir());
 const userData = mkdtempSync(join(tempRoot, 'poker-runtime-e2e-'));
 let preview, chrome, cdp;
+// Page.reload acknowledges the request before the old DOM is discarded.
+// A document-local marker prevents a ready selector in that old DOM from satisfying the wait.
+async function reloadAndWait(send, expression, description) {
+  await evaluate(send, 'window.runtimeReloadPending = true; true');
+  await send('Page.reload');
+  await waitFor(send, `window.runtimeReloadPending !== true && document.readyState === 'complete' && (${expression})`, description);
+}
 try {
   preview = spawn(process.execPath, [VITE_BIN, '--host', HOST, '--port', String(PREVIEW_PORT), '--strictPort', '--base', '/poker-coach-pro/'], { stdio: 'ignore', windowsHide: true });
   await waitHttp(BASE_URL);
@@ -61,8 +68,7 @@ try {
   assert.match(review.notes, /Previously exposed reserved-row review/);
   console.log('Verified solver context while history writes are locked; exposed review stays review-only.');
 
-  await send('Page.reload');
-  await waitFor(send, 'Boolean(document.querySelector("[data-testid=volume-first-home]"))', 'reloaded home');
+  await reloadAndWait(send, 'Boolean(document.querySelector("[data-testid=volume-first-home]"))', 'reloaded home');
   await evaluate(send, `localStorage.removeItem('poker_training_history_v6'); location.hash = '#range-reading'; true`);
   await waitFor(send, 'document.body.textContent.includes("18BB CO 直接推進")', 'range question');
   const clickText = async text => {
@@ -93,8 +99,7 @@ try {
   await clickText('下一個邊界');
   await answerCounterfactual();
   await waitFor(send, `JSON.parse(localStorage.getItem('poker_training_history_v6') || '[]').length === 14`, 'all drill commits');
-  await send('Page.reload');
-  await waitFor(send, 'document.body.textContent.includes("提交三個反事實決策")', 'reloaded drill route');
+  await reloadAndWait(send, 'document.body.textContent.includes("提交三個反事實決策")', 'reloaded drill route');
   const accounting = await evaluate(send, `(${(async () => {
     const { loadHistory } = await import('/poker-coach-pro/src/utils/history.ts');
     const { historyForTrainingTrack } = await import('/poker-coach-pro/src/domain/trainingTrack.ts');
@@ -106,6 +111,7 @@ try {
   await evaluate(send, `localStorage.setItem('poker_training_history_v6',JSON.stringify(JSON.parse(localStorage.getItem('poker_training_history_v6')).map(item=>({...item,timestamp:Date.now()-2*86400000,nextReviewAt:Date.now()-1}))));location.hash='';true`);
   await waitFor(send, 'Boolean(document.querySelector("[data-testid=volume-first-home]"))', 'due drill homepage');
   for (const [track, format] of [['cash', 'Cash'], ['tournament', 'MTT']]) {
+    await waitFor(send, `Boolean(document.querySelector('[data-testid="track-${track}"]'))`, format + ' track control');
     await evaluate(send, `document.querySelector('[data-testid="track-${track}"]').click();true`);
     await waitFor(send, `document.querySelector('[data-testid="track-${track}"]')?.getAttribute('aria-pressed')==='true'`, format + ' selected track');
     await waitFor(send, 'document.querySelectorAll("[data-testid=start-due-drill-review]").length===2', format + ' due drill entries');
@@ -122,8 +128,7 @@ try {
       await waitFor(send, '!document.querySelector("[data-testid=active-drill-review]")', 'return to due queue');
     }
     assert.equal(await evaluate(send, 'document.querySelectorAll("[data-testid=start-due-drill-review]").length'), 0);
-    await send('Page.reload');
-    await waitFor(send, 'Boolean(document.querySelector("[data-testid=volume-first-home]"))', 'reviewed homepage reload');
+    await reloadAndWait(send, 'Boolean(document.querySelector("[data-testid=volume-first-home]"))', 'reviewed homepage reload');
     assert.equal(await evaluate(send, 'document.querySelectorAll("[data-testid=start-due-drill-review]").length'), 0);
   }
   console.log('Verified Cash and MTT due drill queues: original Range/Counterfactual replay, review-only evidence, rescheduling and reload.');
