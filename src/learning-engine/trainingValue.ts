@@ -1,6 +1,6 @@
 import { HistoryItem, PlayerProfile, Scenario, UtilityUnit } from '../types';
 import { scenarioProfileScore } from '../domain/playerProfile';
-import { inferScenarioSkillIds, calculateSkillMastery, getSkillNode, inferSkillIds } from './skillGraph';
+import { inferScenarioSkillIds, calculateSkillMastery, getSkillNode, historySkillIds } from './skillGraph';
 import { improvementProbabilityFromHistory } from './errorModel';
 import { historyDecisionFamilyId, scenarioDecisionFamilyId } from './contextIdentity';
 import { matchingUtilityEvidence, scenarioUtilityMode } from './utility';
@@ -91,7 +91,7 @@ export function expectedLearningValue(
   const forgettingRisk = due ? 1 : latest ? Math.min(1, Math.max(0.1, (now - latest.timestamp) / (14 * 86400000))) : 0.45;
   const relatedSkillSeenElsewhere = skills.some(id => history.some(item => {
     if (historyDecisionFamilyId(item) === familyId) return false;
-    const itemSkills = item.skillIds?.length ? item.skillIds : inferSkillIds(item.category, item.street);
+    const itemSkills = historySkillIds(item);
     return itemSkills.includes(id);
   }));
   const transferValue = unseen && relatedSkillSeenElsewhere ? 1 : unseen ? 0.65 : 0.25;
@@ -118,7 +118,7 @@ export function expectedLearningValue(
   const utilityMode = scenarioUtilityMode(scenario, utilityEvidence) as UtilityMode;
   const expectedLossPer100Hands = regretForRanking * spotFrequencyPer100Hands;
   const skillRelatedHistory = history.filter(item => {
-    const itemSkills = item.skillIds?.length ? item.skillIds : inferSkillIds(item.category, item.street);
+    const itemSkills = historySkillIds(item);
     return skills.some(skill => itemSkills.includes(skill));
   });
   const repairProbability = improvementProbabilityFromHistory(related.length ? related : skillRelatedHistory);

@@ -1,6 +1,7 @@
 import type { ActionType, HandAction, ScenarioStep, Street } from '../types';
 
 export interface Lesson {
+  skillIds?: string[]; followup?: Lesson;
   key: string; title: string; topic: string; format: 'cash' | 'tournament'; depth: number;
   table?: '6max' | '9max'; position: string; cards: string; board?: string; street?: Street;
   pot: number; line: string; prompt: string; assumptions: string[];

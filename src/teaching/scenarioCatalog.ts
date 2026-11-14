@@ -3,6 +3,7 @@ import { ActionType, Feedback, Scenario, Suit } from '../types';
 import { exactMathSemanticScenarios } from './semanticMathScenarios';
 import { tournamentTrainingScenarios } from './tournamentMathScenarios';
 import { practicalCurriculum } from './practicalCurriculum';
+import { heldOutTurnAssessments } from './heldOutTurnAssessments';
 
 const SUIT_SYMBOL: Record<Suit, string> = {
   spades: '♠', hearts: '♥', diamonds: '♦', clubs: '♣',
@@ -122,4 +123,4 @@ export const curatedTeachingVariants: Scenario[] = coreScenarios
   .map((scenario, index) => makeSuitIsomorphicScenario(scenario, index));
 
 // Practical lessons have explicit context; cosmetic variants share their source family.
-export const scenarios: Scenario[] = [...coreScenarios, ...semanticTeachingScenarios, ...curatedTeachingVariants, ...tournamentTrainingScenarios, ...practicalCurriculum];
+export const scenarios: Scenario[] = [...coreScenarios, ...semanticTeachingScenarios, ...curatedTeachingVariants, ...tournamentTrainingScenarios, ...practicalCurriculum, ...heldOutTurnAssessments];

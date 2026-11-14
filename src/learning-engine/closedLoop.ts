@@ -1,6 +1,6 @@
 import type { HistoryItem } from '../types';
 import type { InfiniteHandCandidate } from './infiniteHandGenerator';
-import { calculateSkillMastery, getSkillNode, inferScenarioSkillIds, inferSkillIds, SKILL_GRAPH } from './skillGraph';
+import { calculateSkillMastery, getSkillNode, inferScenarioSkillIds, historySkillIds, SKILL_GRAPH } from './skillGraph';
 import { currentDueReviews } from './index';
 import { firstTransferEvidence, hasValidLearningContext } from './transferBenchmark';
 import { historyForTrainingTrack, type TrainingTrack } from '../domain/trainingTrack';
@@ -199,7 +199,7 @@ export function verifiedEvNorthStar(history: HistoryItem[], now = Date.now()): V
 }
 
 function skillIdsForItem(item: HistoryItem): string[] {
-  return item.skillIds?.length ? item.skillIds : inferSkillIds(item.category || [], item.street);
+  return historySkillIds(item);
 }
 
 export function buildKnowledgeStates(history: HistoryItem[], track?: TrainingTrack): SkillKnowledgeState[] {

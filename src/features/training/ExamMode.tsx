@@ -70,19 +70,33 @@ export function isExamCandidateExposed(candidate:ExamCandidate,history:HistoryIt
   const identity=candidate.kind==='solver'
     ? pokerBenchExposureIdentity({datasetRowId:candidate.row.id,datasetSplit:POKERBENCH_FILES[candidate.row.split].split,truthSourceId:POKERBENCH_SOURCE.id,scenarioId:''})
     : `scenario:${candidate.scenario.id}:${candidate.scenario.steps[candidate.stepIndex]?.id}`;
-  return history.some(item=>evaluationIdentity(item)===identity);
+  return history.some(item=>evaluationIdentity(item)===identity || (candidate.kind==='scenario' && Boolean(item.decisionFamilyId) && item.decisionFamilyId===(candidate.scenario.decisionFamilyId||candidate.scenario.id)));
 }
 
 export function filterFreshEvaluationItems(latest:HistoryItem[],candidates:HistoryItem[]):HistoryItem[]{
   const existingAttemptIds=new Set(latest.map(entry=>entry.attemptId).filter((id):id is string=>Boolean(id)));
   const exposedIdentities=new Set(latest.map(evaluationIdentity).filter((identity):identity is string=>Boolean(identity)));
+  const exposedTurnFamilies=new Set(latest.map(entry=>entry.decisionFamilyId).filter((id):id is string=>Boolean(id?.startsWith('heldout-turn-'))));
   return candidates.filter(entry=>{
     if(entry.attemptId&&existingAttemptIds.has(entry.attemptId))return false;
     const identity=evaluationIdentity(entry);
     if(identity&&exposedIdentities.has(identity))return false;
+    if(entry.decisionFamilyId?.startsWith('heldout-turn-')&&exposedTurnFamilies.has(entry.decisionFamilyId))return false;
     if(identity)exposedIdentities.add(identity);
     if(entry.attemptId)existingAttemptIds.add(entry.attemptId);
+    if(entry.decisionFamilyId?.startsWith('heldout-turn-'))exposedTurnFamilies.add(entry.decisionFamilyId);
     return true;
+  });
+}
+
+/** Table-size aliases of the same card/range decision are one unseen family. */
+export function uniqueExamFamilies(candidates:ExamCandidate[]):ExamCandidate[]{
+  const families=new Set<string>();
+  return candidates.filter(candidate=>{
+    if(candidate.kind!=='scenario'||!candidate.scenario.id.startsWith('heldout-turn-'))return true;
+    const family=candidate.scenario.decisionFamilyId||candidate.scenario.id;
+    if(families.has(family))return false;
+    families.add(family);return true;
   });
 }
 
@@ -114,7 +128,7 @@ export function ExamMode({onExit}:{onExit:()=>void}){
     const freshEvaluations=unseen(evaluationCandidates);
     const balancedEvaluations=track==='tournament'?balanceTournamentModels(freshEvaluations):freshEvaluations;
     const mixedScenarioCandidates=interleave(balancedEvaluations,unseen(benchmarkCandidates));
-    return interleave(mixedScenarioCandidates,unseen(solverCandidates)).slice(0,EXAM_SIZE);
+    return uniqueExamFamilies(interleave(mixedScenarioCandidates,unseen(solverCandidates))).slice(0,EXAM_SIZE);
   },[examSessionId,initialHistory,profile,solverRows,track]);
 
   const candidate=pool[index];

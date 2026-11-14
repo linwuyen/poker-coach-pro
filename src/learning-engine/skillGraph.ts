@@ -2,6 +2,7 @@ import { HistoryItem, MasteryStatus, Scenario, ScenarioStep, Street, TruthTier }
 import { effectiveEvLoss, evRegretScore } from './ev';
 import { historyContextFamilyId, inferSituationIdsFromHistory } from './contextIdentity';
 import { firstTransferEvidence, hasValidLearningContext, hasValidTransferEvidence } from './transferBenchmark';
+import { practicalCurriculum } from '../teaching/practicalCurriculum';
 
 export interface SkillNode {
   id: string;
@@ -54,9 +55,18 @@ function textFor(category: string[], street?: Street): string {
   return `${category.join(' ')} ${street || ''}`;
 }
 
-export function inferSkillIds(category: string[] = [], street?: Street): string[] {
+type SkillFormat = Scenario['type'] | HistoryItem['gameFormat'];
+
+function compatibleSkill(id: string, street?: Street, format?: SkillFormat): boolean {
+  if ((format === 'Cash Game' || format === 'Cash') && id.startsWith('tournament.')) return false;
+  if (street === 'Preflop' && id.startsWith('postflop.')) return false;
+  if (street && street !== 'Preflop' && (id.startsWith('preflop.') || id === 'tournament.push-fold')) return false;
+  return true;
+}
+
+export function inferSkillIds(category: string[] = [], street?: Street, format?: SkillFormat): string[] {
   const text = textFor(category, street);
-  const ids = SKILL_GRAPH.filter(skill => skill.patterns.some(pattern => pattern.test(text))).map(skill => skill.id);
+  const ids = SKILL_GRAPH.filter(skill => compatibleSkill(skill.id, street, format) && skill.patterns.some(pattern => pattern.test(text))).map(skill => skill.id);
   const arithmeticExercise = /Exact Math/i.test(text);
   if (!arithmeticExercise && street === 'Preflop' && !ids.some(id => id.startsWith('preflop.') || id.startsWith('tournament.'))) ids.push('preflop.rfi');
   if (!arithmeticExercise && street && street !== 'Preflop' && !ids.some(id => id.startsWith('postflop.'))) ids.push('postflop.board-texture');
@@ -64,8 +74,24 @@ export function inferSkillIds(category: string[] = [], street?: Street): string[
 }
 
 /** Attribute one attempt only to concepts visible at that exact decision step. */
-export function inferScenarioStepSkillIds(scenario: Pick<Scenario, 'category'>, step: Pick<ScenarioStep, 'conceptIds' | 'street'>): string[] {
-  return inferSkillIds([...(scenario.category || []), ...(step.conceptIds || [])], step.street);
+export function inferScenarioStepSkillIds(scenario: Pick<Scenario, 'category'> & Partial<Pick<Scenario, 'type'>>, step: Pick<ScenarioStep, 'conceptIds' | 'street' | 'skillIds'>): string[] {
+  if (step.skillIds !== undefined) {
+    return [...new Set(step.skillIds.filter(id => getSkillNode(id) && compatibleSkill(id, step.street, scenario.type)))];
+  }
+  return inferSkillIds([...(scenario.category || []), ...(step.conceptIds || [])], step.street, scenario.type);
+}
+
+/** Repair known authored-course attribution without deleting exposure or review history. */
+export function historySkillIds(item: HistoryItem): string[] {
+  const scenario = practicalCurriculum.find(course => course.id === item.scenarioId || course.id === item.decisionFamilyId);
+  if (scenario && (item.trainingType === undefined || item.trainingType === 'scenario')) {
+    const step = item.stepId ? scenario.steps.find(candidate => candidate.id === item.stepId)
+      : scenario.steps.length === 1 ? scenario.steps[0] : undefined;
+    if (step?.skillIds !== undefined) return inferScenarioStepSkillIds(scenario, step);
+  }
+  return item.skillIds?.length
+    ? [...new Set(item.skillIds.filter(id => compatibleSkill(id, item.street, item.gameFormat)))]
+    : inferSkillIds(item.category || [], item.street, item.gameFormat);
 }
 
 export function inferScenarioSkillIds(scenario: Scenario): string[] {
@@ -112,7 +138,7 @@ function evidenceSampleSize(items: HistoryItem[]): number {
 export function calculateSkillMastery(history: HistoryItem[], now = Date.now()): SkillMastery[] {
   const groups = new Map<string, HistoryItem[]>();
   history.filter(item => item.trainingType !== 'custom' && hasValidLearningContext(item)).forEach(item => {
-    const skillIds = item.skillIds?.length ? item.skillIds : inferSkillIds(item.category, item.street);
+    const skillIds = historySkillIds(item);
     skillIds.forEach(skillId => {
       const group = groups.get(skillId) || [];
       group.push(item);

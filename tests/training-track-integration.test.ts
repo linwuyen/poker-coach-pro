@@ -39,7 +39,7 @@ test('actual tournament practice survives truth gating without admitting evaluat
   assert.equal(mtt.some(item => item.kind === 'scenario' && tournamentEvaluationScenarios.some(evaluation => evaluation.id === item.scenario.id)), false);
 });
 
-test('coverage catalog follows selected track and preferences and includes all eight MTT assessments', () => {
+test('coverage catalog follows selected track and includes eight MTT utility and sixteen Turn assessments', () => {
   const getCatalog = (trackDomain as unknown as { trainingTrackCoverageCatalog?: (bank: Scenario[], assessment: Scenario[], track: 'cash' | 'tournament', profile: PlayerProfile) => Scenario[] }).trainingTrackCoverageCatalog;
   assert.equal(typeof getCatalog, 'function');
   const assessments = [...buildExactMathEvaluationScenarios(0, 5), ...tournamentEvaluationScenarios];
@@ -48,7 +48,7 @@ test('coverage catalog follows selected track and preferences and includes all e
   assert.ok(tournament.every(scenario => scenario.type === 'Tournament'));
   assert.ok(cash.every(scenario => scenario.type === 'Cash Game'));
   const mttCoverage = buildSituationCoverage(tournament, []);
-  assert.equal(mttCoverage.find(row => row.situationId === 'format.mtt')?.holdoutScenarios, 8);
+  assert.equal(mttCoverage.find(row => row.situationId === 'format.mtt')?.holdoutScenarios, 24);
   assert.equal(mttCoverage.some(row => row.situationId === 'format.cash'), false);
   assert.deepEqual(getCatalog!(scenarios, assessments, 'cash', { ...DEFAULT_PLAYER_PROFILE, tableSizes: [], stackBands: ['10-20'] }), []);
 });
