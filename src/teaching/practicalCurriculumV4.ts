@@ -16,12 +16,12 @@ export const practicalSkillIds: Record<string,string[]> = {
 };
 const common = {topic:'相同牌面與有效深度',format:'cash' as const,table:'6max' as const,position:'BTN',cards:'AhAd',board:'Kh8c3d2s',street:'Turn' as const,
  skillIds:['postflop.value','postflop.bet-sizing','math.spr'],remember:'同一牌面仍須依剩餘深度與各尺寸支付反應重新選擇。',
- assumptions:['無 ante、忽略抽水。','可靠讀牌：BB 此時的過牌範圍只有 KQ/KJ/KT；兩對以上已在翻牌加注，不在此範圍。這些 Kx 會跟 10BB 及 21BB，面對超過 21BB 的下注全部棄牌。兩個深度採相同範圍與支付規則，不提供 solver EV。'],
+ assumptions:['無 ante、忽略抽水。','可靠讀牌：BB 此時的過牌範圍只有 KQ/KJ/KT；兩對以上已在翻牌加注，不在此範圍。這些 Kx 會跟半池 9.25BB 及 21BB，面對超過 21BB 的下注全部棄牌。兩個深度採相同範圍與支付規則，不提供 solver EV。'],
  line:'BTN 開至 3BB，BB 跟，SB 棄；翻牌底池 6.5BB，BB 過牌、BTN 下注 6BB、BB 跟；轉牌 BB 過牌，底池 18.5BB。',
  actions:[{street:'Preflop' as const,seat:'BTN',action:'Raise',amountBB:3},{street:'Preflop' as const,seat:'BB',action:'Call',amountBB:2},{street:'Flop' as const,seat:'BB',action:'Check'},{street:'Flop' as const,seat:'BTN',action:'Bet',amountBB:6},{street:'Flop' as const,seat:'BB',action:'Call',amountBB:6},{street:'Turn' as const,seat:'BB',action:'Check'}]};
 export const curriculumV4Additions: Lesson[] = [
- auditedLesson({...common,key:'cash-depth-pair-short',title:'同牌面深度對照：30BB 起始',prompt:'雙方起始 30BB、現在各剩 21BB；依明示支付規則，AA 怎麼取值？',best:'All-in',answers:{'All-in':[10,'21BB 仍被較差 Kx 支付，可取完整短碼價值。'],'Bet half pot':[8,'約 9–10BB 仍從較差 Kx 取值，但留下河牌決策。'],Check:[4,'明示較差牌會支付，過牌放棄此街價值。']}},{heroStart:30,villainStart:30,heroPaid:[3,6],villainPaid:[3,6],otherPaid:[0.5]}),
- auditedLesson({...common,key:'cash-depth-pair-deep',title:'同牌面深度對照：200BB 起始',prompt:'雙方起始 200BB、現在各剩 191BB；其他支付規則相同，AA 怎麼取值？',best:'Bet half pot',answers:{'Bet half pot':[10,'約 9–10BB 留住 Kx；剩餘深度大，不需一次投入所有籌碼。'],'All-in':[3,'191BB 推讓此時全部 Kx 棄牌，無法取得題述較差牌的支付；不表示推牌已被證明負 EV。'],Check:[6,'保留攤牌，但本題仍有明示小尺寸價值。']}},{heroStart:200,villainStart:200,heroPaid:[3,6],villainPaid:[3,6],otherPaid:[0.5]}),
+ auditedLesson({...common,key:'cash-depth-pair-short',title:'同牌面深度對照：30BB 起始',prompt:'雙方起始 30BB、現在各剩 21BB；依明示支付規則，AA 怎麼取值？',best:'All-in',answers:{'All-in':[10,'21BB 仍被較差 Kx 支付，可取完整短碼價值。'],'Bet half pot':[8,'半池 9.25BB 仍從較差 Kx 取值，但留下河牌決策。'],Check:[4,'明示較差牌會支付，過牌放棄此街價值。']}},{heroStart:30,villainStart:30,heroPaid:[3,6],villainPaid:[3,6],otherPaid:[0.5]}),
+ auditedLesson({...common,key:'cash-depth-pair-deep',title:'同牌面深度對照：200BB 起始',prompt:'雙方起始 200BB、現在各剩 191BB；其他支付規則相同，AA 怎麼取值？',best:'Bet half pot',answers:{'Bet half pot':[10,'半池 9.25BB 留住 Kx；剩餘深度大，不需一次投入所有籌碼。'],'All-in':[3,'191BB 推讓此時全部 Kx 棄牌，無法取得題述較差牌的支付；不表示推牌已被證明負 EV。'],Check:[6,'保留攤牌，但本題仍有明示小尺寸價值。']}},{heroStart:200,villainStart:200,heroPaid:[3,6],villainPaid:[3,6],otherPaid:[0.5]}),
 ];
 
 export function connectPracticalLessons(lessons: Lesson[]): Lesson[] {
