@@ -89,6 +89,8 @@ export interface ScenarioStep {
   street: Street;
   communityCards: Card[];
   description: string;
+  /** Action history visible at this step; later branches must not reuse the opening line. */
+  preAction?: string;
   potSize: number;
   spr?: number;
   potOdds?: string;
@@ -98,6 +100,8 @@ export interface ScenarioStep {
   assumptions?: string[];
   strategySource?: string;
   conceptIds?: string[];
+  /** Skills tested at this decision; takes precedence over display-category inference. */
+  skillIds?: string[];
 }
 
 export interface Scenario {

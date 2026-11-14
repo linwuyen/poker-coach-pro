@@ -157,7 +157,7 @@ export function SolverDecisionSession({ rows, history, onRecord, onExit, onCompl
   }, [row, autoComplete, onComplete]);
 
   if (!row) {
-    if (autoComplete) return <div className="grid min-h-[45vh] place-items-center text-sm text-slate-500">正在切換下一手…</div>;
+    if (autoComplete) return <div className="grid min-h-[45vh] place-items-center text-sm text-slate-500">正在切換下一手…<button type="button" onClick={onExit} className="rounded-xl border border-slate-700 px-4 py-2">離開</button></div>;
     return <div className="mx-auto max-w-3xl rounded-3xl border border-emerald-500/20 bg-emerald-500/6 p-8 text-center text-slate-100"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><h2 className="mt-4 text-2xl font-bold">這批決策完成</h2><p className="mt-2 text-sm text-slate-400">完成 {rows.length} 個可驗證策略決策。</p><div className="mt-6 flex justify-center gap-3"><button onClick={onComplete} className="rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-emerald-950">繼續</button><button onClick={onExit} className="rounded-xl border border-slate-700 px-5 py-3 text-slate-300">離開</button></div></div>;
   }
 

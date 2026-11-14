@@ -10,6 +10,7 @@ import {
 import { Scenario } from '../src/types';
 import { practicalCurriculum } from '../src/teaching/practicalCurriculum';
 import { tournamentTrainingScenarios } from '../src/teaching/tournamentMathScenarios';
+import { heldOutTurnAssessments } from '../src/teaching/heldOutTurnAssessments';
 
 function definedFeedbacks(scenario: Scenario) {
   return scenario.steps.flatMap(step => Object.values(step.feedbacks).filter(Boolean));
@@ -65,7 +66,7 @@ function assertInheritedTruth(base: Scenario, variant: Scenario): void {
 assert.equal(coreScenarios.length, 88, 'Canonical reviewed family inventory changed; update the truth audit intentionally.');
 assert.equal(semanticTeachingScenarios.length, 64, 'Exact-math family inventory changed; update the truth audit intentionally.');
 assert.equal(curatedTeachingVariants.length, 64, 'Rendered suit-isomorphic inventory changed unexpectedly.');
-assert.equal(scenarios.length, 258, 'Production scenario inventory changed unexpectedly.');
+assert.equal(scenarios.length, 294, 'Production scenario inventory changed unexpectedly.');
 assert.equal(scenarios.every(isTruthBackedScenario), true, 'Every production scenario must remain internally gradeable.');
 
 semanticTeachingScenarios.forEach(assertExactMathEvidence);
@@ -95,9 +96,21 @@ for (const variant of generated) {
   assertInheritedTruth(base!, variant);
 }
 
-const declaredFamilies = new Set([...coreScenarios, ...semanticTeachingScenarios, ...tournamentTrainingScenarios, ...practicalCurriculum].map(item => item.decisionFamilyId || item.id));
+const declaredFamilies = new Set([...coreScenarios, ...semanticTeachingScenarios, ...tournamentTrainingScenarios, ...practicalCurriculum, ...heldOutTurnAssessments].map(item => item.decisionFamilyId || item.id));
 assert.equal(new Set(semanticTeachingScenarios.map(s => s.steps[0].description)).size, 48, 'Repeated numeric inputs must not inflate independent coverage.');
-assert.equal(declaredFamilies.size, 194, 'Declared family inventory must exclude cosmetic variants.');
+assert.equal(declaredFamilies.size, 206, 'Declared family inventory must exclude cosmetic variants and table aliases.');
+assert.equal(heldOutTurnAssessments.length, 32);
+assert.equal(new Set(heldOutTurnAssessments.map(item => item.decisionFamilyId)).size, 8);
+for (const scenario of heldOutTurnAssessments) {
+  assert.equal(scenario.benchmarkRole, 'holdout');
+  for (const feedback of definedFeedbacks(scenario)) {
+    const evidence = feedback!.evidence!;
+    assert.equal(evidence.sourceConfidence, 'exact-math');
+    assert.ok(Number.isFinite(evidence.actionUtility) && Number.isFinite(evidence.bestUtility));
+    assert.ok(Math.abs(evidence.bestUtility! - evidence.actionUtility! - evidence.utilityLoss!) < 1e-8);
+    if (scenario.type === 'Tournament') assert.equal(evidence.evLossBB, undefined);
+  }
+}
 
 const exactFeedbackCount = semanticTeachingScenarios.reduce((sum, scenario) => sum + definedFeedbacks(scenario).length, 0);
 console.log(JSON.stringify({

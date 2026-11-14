@@ -1,5 +1,6 @@
 import { ConfidenceLevel, HistoryItem, PlayerProfile } from '../types';
 import { getHistoryMasteryKey, isHistoryCorrect } from '../learning-engine';
+import { historySkillIds } from '../learning-engine/skillGraph';
 
 export const HISTORY_KEY = 'poker_training_history_v6';
 const HISTORY_WRITE_LOCK = `${HISTORY_KEY}:exclusive-write`;
@@ -25,6 +26,7 @@ const normalize = (item: HistoryItem, index: number): HistoryItem => {
     nextReviewAt: item.nextReviewAt ?? (!correct ? Date.now() : undefined),
   };
   normalized.masteryKey = getHistoryMasteryKey(normalized);
+  normalized.skillIds = historySkillIds(normalized);
   return normalized;
 };
 

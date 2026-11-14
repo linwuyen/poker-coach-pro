@@ -3,12 +3,12 @@ import test from 'node:test';
 import { coreScenarios, curatedTeachingVariants, scenarios, semanticTeachingScenarios } from '../src/teaching/scenarioCatalog';
 import { validateScenarios } from '../src/utils/validateScenarios';
 
-test('P6 expands the bank to 194 declared decision families plus cosmetic retrieval instances', () => {
+test('the bank has 206 declared families without counting cosmetic or table aliases twice', () => {
   assert.equal(coreScenarios.length, 88);
   assert.equal(semanticTeachingScenarios.length, 64);
   assert.equal(curatedTeachingVariants.length, 64);
-  assert.equal(scenarios.length, 258);
-  assert.equal(new Set(scenarios.map(scenario => scenario.decisionFamilyId || scenario.id)).size, 194);
+  assert.equal(scenarios.length, 294);
+  assert.equal(new Set(scenarios.map(scenario => scenario.decisionFamilyId || scenario.id)).size, 206);
   assert.deepEqual(validateScenarios(scenarios), []);
 });
 

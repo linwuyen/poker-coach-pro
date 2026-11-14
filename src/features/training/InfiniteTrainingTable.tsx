@@ -40,6 +40,8 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit,
   const [targetedReason, setTargetedReason] = useState('');
   const attemptLearningAnnotations = useRef(new Map<string, AttemptLearningAnnotation>());
 
+  const [presentation, setPresentation] = useState(0);
+
   const pool = useMemo(
     () => buildInfiniteCandidatePool(scenarioBank, safeVariants, pokerBenchRows, history).filter(item => item.kind === 'scenario'
       ? scenarioMatchesTrainingTrack(item.scenario, track, profile)
@@ -144,6 +146,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit,
     if (!candidate) return;
     const nextIds = [...recentCandidateIds, candidate.id].slice(-64);
     const nextFamilies = [...recentFamilyIds, candidate.familyId].slice(-12);
+    setPresentation(value => value + 1);
     setRecentCandidateIds(nextIds);
     setRecentFamilyIds(nextFamilies);
     if (targetedQueue.length) {
@@ -160,7 +163,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit,
   }
 
   if (!candidate) {
-    if (pool.length || (track === 'cash' && pokerBenchState === 'loading')) return <div className="grid min-h-[60vh] place-items-center text-sm text-slate-500">正在建立符合偏好的牌局池…</div>;
+    if (pool.length || (track === 'cash' && pokerBenchState === 'loading')) return <div className="grid min-h-[60vh] place-items-center text-sm text-slate-500">正在建立符合偏好的牌局池…<button type="button" onClick={onExit} className="rounded-xl border border-slate-700 px-4 py-2">離開</button></div>;
     return <div className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-amber-500/25 bg-slate-900 p-6 text-sm text-slate-300" data-testid="training-track-empty"><h2 className="text-xl font-semibold">目前沒有符合 {trainingTrackLabel(track)} 偏好的題目</h2><p>請返回設定，調整桌型、籌碼深度或學習重點。系統不會混入其他賽制；缺少桌型或籌碼資訊的題目也不會通過偏好篩選。</p><button onClick={onExit} className="rounded-xl border border-slate-700 px-4 py-2">返回並調整偏好</button></div>;
   }
 
@@ -176,7 +179,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit,
         <span className="flex items-center gap-1.5 font-semibold text-emerald-300"><InfinityIcon className="h-4 w-4" />{trainingTrackLabel(track)}</span>
         <span data-testid="infinite-source" className="rounded-full border border-slate-700 bg-slate-950/45 px-2.5 py-1">{sourceLabel}</span>
         <span className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />{candidate.truthLabel}</span>
-        <span data-testid="infinite-dimensions" className="font-mono text-[11px] text-slate-500">{candidate.street} · {candidate.position || '?'} · {candidate.actionClass} · {candidate.stackBand}</span>
+        <span data-testid="infinite-dimensions" className="font-mono text-[11px] text-slate-500">{candidate.street} · {candidate.position || '?'} · {candidate.stackBand}</span>
         {learningSignal && <span data-testid="active-learning-signal" className="rounded-full border border-cyan-500/20 bg-cyan-500/8 px-2.5 py-1 text-cyan-200">Learning priority {Math.round(learningSignal.priorityScore * 100)}% · uncertainty {Math.round(learningSignal.uncertainty * 100)}%</span>}
         {(targetedActive || targetedQueue.length > 0) && <span data-testid="targeted-review-status" className="flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/8 px-2.5 py-1 text-amber-200"><Target className="h-3.5 w-3.5" />針對複習 · 尚有 {targetedQueue.length + (targetedActive ? 1 : 0)} 題{targetedReason ? ` · ${targetedReason}` : ''}</span>}
       </div>
@@ -192,7 +195,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit,
 
     {candidate.kind === 'scenario'
       ? <TrainingSession
-          key={candidate.id}
+          key={`${candidate.id}:${presentation}`}
           title={targetedActive ? '針對複習 · 自動決策訓練' : '無限牌局 · 自動決策訓練'}
           scenarios={[candidate.scenario]}
           history={history}
@@ -202,7 +205,7 @@ export function InfiniteTrainingTable({ scenarioBank, history, onRecord, onExit,
           onComplete={advance}
         />
       : <SolverDecisionSession
-          key={candidate.id}
+          key={`${candidate.id}:${presentation}`}
           title={targetedActive ? '針對複習 · 資料集動作練習' : '無限牌局 · 資料集動作練習'}
           rows={[candidate.row]}
           reviewOnly={candidate.reviewOnly}

@@ -4,12 +4,12 @@ import { scenarios } from '../src/data';
 import { coreScenarios, curatedTeachingVariants, semanticTeachingScenarios } from '../src/teaching/scenarioCatalog';
 import { validateScenarios } from '../src/utils/validateScenarios';
 
-test('teaching catalog has 194 declared decision families including explicit MTT math plus cosmetic retrieval instances', () => {
+test('teaching catalog has 206 declared decision families including held-out Turn math and retrieval instances', () => {
   assert.equal(coreScenarios.length, 88);
   assert.equal(semanticTeachingScenarios.length, 64);
   assert.equal(curatedTeachingVariants.length, 64);
-  assert.equal(scenarios.length, 258);
-  assert.equal(new Set(scenarios.map(scenario => scenario.decisionFamilyId || scenario.id)).size, 194);
+  assert.equal(scenarios.length, 294);
+  assert.equal(new Set(scenarios.map(scenario => scenario.decisionFamilyId || scenario.id)).size, 206);
   assert.deepEqual(validateScenarios(scenarios), []);
 });
 
