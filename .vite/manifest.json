@@ -1,0 +1,293 @@
+{
+  "_icons-vendor-DMeSEhBk.js": {
+    "file": "assets/icons-vendor-DMeSEhBk.js",
+    "name": "icons-vendor",
+    "imports": [
+      "_react-vendor-sXpfDjey.js"
+    ]
+  },
+  "_index-Bi6sgmDC.js": {
+    "file": "assets/index-Bi6sgmDC.js",
+    "name": "index"
+  },
+  "_rangeEngine-D10UcSEP.js": {
+    "file": "assets/rangeEngine-D10UcSEP.js",
+    "name": "rangeEngine"
+  },
+  "_react-vendor-sXpfDjey.js": {
+    "file": "assets/react-vendor-sXpfDjey.js",
+    "name": "react-vendor"
+  },
+  "index.html": {
+    "file": "assets/index-JT2zNCyk.js",
+    "name": "index",
+    "src": "index.html",
+    "isEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "_icons-vendor-DMeSEhBk.js"
+    ],
+    "dynamicImports": [
+      "src/features/range/RangeReadingTrainer.tsx",
+      "src/features/training/CounterfactualTrainer.tsx",
+      "src/features/analysis/CalibrationDashboard.tsx",
+      "src/features/analysis/CurrentHandAnalysis.tsx",
+      "src/features/analysis/EffectivenessDashboard.tsx",
+      "src/features/analysis/ExperimentDashboard.tsx",
+      "src/features/analysis/MinimalFlipAnalysis.tsx",
+      "src/features/analysis/PostflopTruthLab.tsx",
+      "src/features/analysis/SkillGraphDashboard.tsx",
+      "src/features/analysis/TruthOpsDashboard.tsx",
+      "src/features/learning/EquityWorkbench.tsx",
+      "src/features/range/RangeReadingTrainer.tsx",
+      "src/features/strategy/SolverSurfaceLab.tsx",
+      "src/features/training/ContrastiveTrainer.tsx",
+      "src/features/training/CounterfactualTrainer.tsx",
+      "src/features/training/DecisionBoundaryMap.tsx",
+      "src/features/training/ExamMode.tsx",
+      "src/features/training/PokerBenchTrainer.tsx",
+      "src/features/training/SemanticCounterfactualTrainer.tsx",
+      "src/features/training/SizingTrainer.tsx",
+      "src/features/training/VariantTrainer.tsx",
+      "src/features/tournament/FgsWorkbench.tsx",
+      "src/features/tournament/IcmWorkbench.tsx"
+    ],
+    "css": [
+      "assets/index-CWqZgQfH.css"
+    ]
+  },
+  "src/features/analysis/CalibrationDashboard.tsx": {
+    "file": "assets/CalibrationDashboard-CTN8-0t9.js",
+    "name": "CalibrationDashboard",
+    "src": "src/features/analysis/CalibrationDashboard.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/analysis/CurrentHandAnalysis.tsx": {
+    "file": "assets/CurrentHandAnalysis-BQWRhoAa.js",
+    "name": "CurrentHandAnalysis",
+    "src": "src/features/analysis/CurrentHandAnalysis.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/analysis/EffectivenessDashboard.tsx": {
+    "file": "assets/EffectivenessDashboard-A56I9tbX.js",
+    "name": "EffectivenessDashboard",
+    "src": "src/features/analysis/EffectivenessDashboard.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/analysis/ExperimentDashboard.tsx": {
+    "file": "assets/ExperimentDashboard-D0njTLcK.js",
+    "name": "ExperimentDashboard",
+    "src": "src/features/analysis/ExperimentDashboard.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/analysis/MinimalFlipAnalysis.tsx": {
+    "file": "assets/MinimalFlipAnalysis-M_dMR-OC.js",
+    "name": "MinimalFlipAnalysis",
+    "src": "src/features/analysis/MinimalFlipAnalysis.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/analysis/PostflopTruthLab.tsx": {
+    "file": "assets/PostflopTruthLab-Umxzhkoy.js",
+    "name": "PostflopTruthLab",
+    "src": "src/features/analysis/PostflopTruthLab.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/analysis/SkillGraphDashboard.tsx": {
+    "file": "assets/SkillGraphDashboard-8q7paVkW.js",
+    "name": "SkillGraphDashboard",
+    "src": "src/features/analysis/SkillGraphDashboard.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/analysis/TruthOpsDashboard.tsx": {
+    "file": "assets/TruthOpsDashboard-C2Brp92G.js",
+    "name": "TruthOpsDashboard",
+    "src": "src/features/analysis/TruthOpsDashboard.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "_index-Bi6sgmDC.js",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/learning/EquityWorkbench.tsx": {
+    "file": "assets/EquityWorkbench-Bd5eH3D_.js",
+    "name": "EquityWorkbench",
+    "src": "src/features/learning/EquityWorkbench.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/range/RangeReadingTrainer.tsx": {
+    "file": "assets/RangeReadingTrainer-DlFDII32.js",
+    "name": "RangeReadingTrainer",
+    "src": "src/features/range/RangeReadingTrainer.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_rangeEngine-D10UcSEP.js",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/strategy/SolverSurfaceLab.tsx": {
+    "file": "assets/SolverSurfaceLab-BRDWn4G9.js",
+    "name": "SolverSurfaceLab",
+    "src": "src/features/strategy/SolverSurfaceLab.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_index-Bi6sgmDC.js",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/tournament/FgsWorkbench.tsx": {
+    "file": "assets/FgsWorkbench-xRGwu5AZ.js",
+    "name": "FgsWorkbench",
+    "src": "src/features/tournament/FgsWorkbench.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/tournament/IcmWorkbench.tsx": {
+    "file": "assets/IcmWorkbench-D35qmGGw.js",
+    "name": "IcmWorkbench",
+    "src": "src/features/tournament/IcmWorkbench.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/training/ContrastiveTrainer.tsx": {
+    "file": "assets/ContrastiveTrainer-TAY5qmjw.js",
+    "name": "ContrastiveTrainer",
+    "src": "src/features/training/ContrastiveTrainer.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/training/CounterfactualTrainer.tsx": {
+    "file": "assets/CounterfactualTrainer-Cawq4avU.js",
+    "name": "CounterfactualTrainer",
+    "src": "src/features/training/CounterfactualTrainer.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_rangeEngine-D10UcSEP.js",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/training/DecisionBoundaryMap.tsx": {
+    "file": "assets/DecisionBoundaryMap-C0FGO5LE.js",
+    "name": "DecisionBoundaryMap",
+    "src": "src/features/training/DecisionBoundaryMap.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/training/ExamMode.tsx": {
+    "file": "assets/ExamMode-CskokWfX.js",
+    "name": "ExamMode",
+    "src": "src/features/training/ExamMode.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/training/PokerBenchTrainer.tsx": {
+    "file": "assets/PokerBenchTrainer-CpKxbFqO.js",
+    "name": "PokerBenchTrainer",
+    "src": "src/features/training/PokerBenchTrainer.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/training/SemanticCounterfactualTrainer.tsx": {
+    "file": "assets/SemanticCounterfactualTrainer-B_xE_ZAj.js",
+    "name": "SemanticCounterfactualTrainer",
+    "src": "src/features/training/SemanticCounterfactualTrainer.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/training/SizingTrainer.tsx": {
+    "file": "assets/SizingTrainer-7sx_4hgF.js",
+    "name": "SizingTrainer",
+    "src": "src/features/training/SizingTrainer.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "src/features/training/PokerBenchTrainer.tsx",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  },
+  "src/features/training/VariantTrainer.tsx": {
+    "file": "assets/VariantTrainer-IrYLunHK.js",
+    "name": "VariantTrainer",
+    "src": "src/features/training/VariantTrainer.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_react-vendor-sXpfDjey.js",
+      "index.html",
+      "_icons-vendor-DMeSEhBk.js"
+    ]
+  }
+}
