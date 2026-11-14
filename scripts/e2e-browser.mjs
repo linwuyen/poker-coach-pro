@@ -1,12 +1,12 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 
 const HOST = '127.0.0.1';
 const PREVIEW_PORT = Number(process.env.POKER_E2E_PORT || 4188);
 const DEBUG_PORT = Number(process.env.POKER_E2E_DEBUG_PORT || 9248);
-const BASE_URL = `http://${HOST}:${PREVIEW_PORT}/poker-coach-pro/`;
+const BASE_URL = process.env.POKER_E2E_BASE_URL || `http://${HOST}:${PREVIEW_PORT}/poker-coach-pro/`;
 const VITE_BIN = join(process.cwd(), 'node_modules', 'vite', 'bin', 'vite.js');
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -86,6 +86,47 @@ async function verifyCourseLessons(send,format,ids){
  }
  console.log('Verified '+format+' selectable courses: '+ids.length);
 }
+async function verifyRestrictedTournamentExam(send) {
+ await navigateRoute(send,'','Closed-loop Infinite Trainer');
+ const previousProfile=await evaluate(send,`localStorage.getItem('poker_player_profile_v1')`);
+ await evaluate(send,`localStorage.setItem('poker_player_profile_v1',JSON.stringify({schemaVersion:1,formats:['tournament'],tableSizes:['6max'],stackBands:['40-100'],experience:'intermediate',focusAreas:['mixed'],dailyQuestions:12,onboardingComplete:true,updatedAt:Date.now()})); true`);
+ await navigateRoute(send,'#exam-mode','Hidden Exam');
+ await waitFor(send,`Boolean(document.querySelector('[data-testid="exam-action"]'))`,'restricted MTT exam');
+ const progress=await readExamProgress(send);
+ if(progress?.total!==25)throw new Error('Restricted 6max/40-100BB MTT exam did not fill25 questions: '+JSON.stringify(progress));
+ const before=await evaluate(send,`JSON.parse(localStorage.getItem('poker_training_history_v6')||'[]').length`);
+ await completeExam(send,'MTT',before);
+ await evaluate(send,previousProfile===null?`localStorage.removeItem('poker_player_profile_v1');true`:`localStorage.setItem('poker_player_profile_v1',${JSON.stringify(previousProfile)});true`);
+ console.log('Verified complete25-question MTT exam with6max/40-100BB preferences.');
+}
+async function verifyContrastiveContext(send) {
+ await navigateRoute(send,'#contrastive-trainer','Contrastive Trainer');
+ await waitFor(send,`document.querySelectorAll('[data-testid="contrastive-spot"]').length===2`,'contrastive pair');
+ const texts=await evaluate(send,`Array.from(document.querySelectorAll('[data-testid="contrastive-spot"]')).map(el=>el.textContent)`);
+ for(const text of texts) if(!/底池：\d/.test(text)||!text.includes('翻前：')||!text.includes('翻後：')||!text.includes('目前剩餘籌碼'))throw new Error('Contrastive decision missing visible context: '+text);
+ console.log('Verified both contrastive cards show pot, action histories and stack limits.');
+}
+async function setLabeledInput(send,label,value){
+ await evaluate(send,`(()=>{const el=Array.from(document.querySelectorAll('label')).find(l=>l.textContent.includes(${JSON.stringify(label)}))?.querySelector('input');if(!el)throw new Error('Missing input '+${JSON.stringify(label)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+}
+async function verifyNumericInputSafety(send){
+ await navigateRoute(send,'#icm-workbench','Tournament $EV Workbench');
+ await setLabeledInput(send,'完整剩餘玩家','25 -40 18 12 7');
+ await waitFor(send,`document.querySelector('[role="alert"]')?.textContent.includes('第 2 項')`,'invalid ICM roster error');
+ if(await evaluate(send,`document.querySelector('select')?.options.length`)!==5)throw new Error('Invalid ICM player silently removed/reindexed');
+ if(await evaluate(send,`document.body.textContent.includes('ICM Break-even')`))throw new Error('Invalid ICM input retained a calculated result');
+ await setLabeledInput(send,'完整剩餘玩家',' 25 40 18 12 7 ');
+ await waitFor(send,`!document.querySelector('[role="alert"]')&&document.body.textContent.includes('ICM Break-even')`,'valid ICM roster recovery');
+ if(await evaluate(send,`document.querySelector('select')?.options.length`)!==5)throw new Error('Whitespace invented an ICM player');
+ await navigateRoute(send,'#equity-workbench','Exact Equity Engine');
+ await setLabeledInput(send,'Monte Carlo iterations','Infinity');
+ await evaluate(send,`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='重新計算').click();true`);
+ await waitFor(send,`document.querySelector('[role="alert"]')?.textContent.includes('iterations')`,'nonfinite equity iteration error');
+ await setLabeledInput(send,'Monte Carlo iterations','1000');
+ await evaluate(send,`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()==='重新計算').click();true`);
+ await waitFor(send,`!document.querySelector('[role="alert"]')&&document.body.textContent.includes('Hero Equity')`,'valid equity recovery');
+ console.log('Verified invalid ICM roster/Infinity rejection, stable player indices and valid-input recovery.');
+}
 async function verifySecondTournamentExam(send){
  const before=await evaluate(send,`JSON.parse(localStorage.getItem('poker_training_history_v6')||'[]').length`);
  await navigateRoute(send,'#exam-mode','Hidden Exam');
@@ -126,7 +167,7 @@ async function terminate(child){if(!child||child.exitCode!==null)return;const wa
 
 const tempRoot=realpathSync(tmpdir());const userData=mkdtempSync(join(tempRoot,'poker-coach-e2e-'));let preview;let chrome;let cdp;let chromeStderr='';
 try{
- preview=spawn(process.execPath,[VITE_BIN,'preview','--host',HOST,'--port',String(PREVIEW_PORT),'--strictPort'],{stdio:['ignore','pipe','pipe'],windowsHide:true});await waitHttp(BASE_URL);
+ if(!process.env.POKER_E2E_BASE_URL)preview=spawn(process.execPath,[VITE_BIN,'preview','--host',HOST,'--port',String(PREVIEW_PORT),'--strictPort'],{stdio:['ignore','pipe','pipe'],windowsHide:true});await waitHttp(BASE_URL);
  const browser=browserCommand();console.log(`Browser E2E using ${browser}`);chrome=spawn(browser,['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage',`--remote-debugging-address=${HOST}`,`--remote-debugging-port=${DEBUG_PORT}`,`--user-data-dir=${userData}`,'--disable-background-networking','--disable-default-apps','--no-first-run','--no-default-browser-check',BASE_URL],{stdio:['ignore','pipe','pipe'],windowsHide:true});chrome.stderr?.on('data',chunk=>{chromeStderr+=String(chunk);});await waitForChrome(chrome,()=>chromeStderr);
  let pages=[];for(let index=0;index<40;index+=1){pages=await(await fetch(`http://${HOST}:${DEBUG_PORT}/json/list`)).json();if(pages.some(page=>page.type==='page'&&page.webSocketDebuggerUrl))break;await sleep(100);}const page=pages.find(candidate=>candidate.type==='page'&&candidate.webSocketDebuggerUrl);if(!page)throw new Error('No Chrome page target found.');cdp=await connectCdp(page.webSocketDebuggerUrl);await cdp.send('Runtime.enable');await cdp.send('Page.enable');await waitFor(cdp.send,`document.readyState === 'complete'`,'initial page load');await waitFor(cdp.send,`Boolean(document.querySelector('[data-testid="volume-first-home"]'))`,'Infinite Generator Today shell');
  const playerShellText=await evaluate(cdp.send,`document.body.textContent`);if(playerShellText.includes('Hand History')||playerShellText.includes('Truth Ops')||playerShellText.includes('Production Intelligence')||playerShellText.includes('Evidence Ops'))throw new Error('Removed/advanced workbench leaked into primary player shell.');if(playerShellText.includes('你有多確定')||playerShellText.includes('先說你有多確定'))throw new Error('Confidence form leaked into primary player shell.');
@@ -141,7 +182,7 @@ try{
  await navigateRoute(cdp.send,minimalFlipHref,'Minimal Flip Engine');await waitFor(cdp.send,`Boolean(document.querySelector('[data-testid="minimal-flip-result"]') || document.querySelector('[data-testid="minimal-flip-unknown"]'))`,'truth-gated minimal flip result or explicit Unknown');
  await navigateRoute(cdp.send,'#exam-mode','Hidden Exam');await waitFor(cdp.send,`Boolean(document.querySelector('[data-testid="exam-mode"]'))`,'Hidden Exam mode');await waitFor(cdp.send,`Boolean(document.querySelector('[data-testid="exam-action"]'))`,'Hidden Exam decision action');const examHistoryBefore=await evaluate(cdp.send,`JSON.parse(localStorage.getItem('poker_training_history_v6') || '[]').length`);const examProgressBefore=await readExamProgress(cdp.send);if(!examProgressBefore)throw new Error('Hidden Exam progress was not readable before answer.');await evaluate(cdp.send,`(()=>{const button=document.querySelector('[data-testid="exam-action"]');if(!button)return false;button.click();button.click();return true;})()`);await waitExamProgress(cdp.send,examProgressBefore.index+1,examProgressBefore.total);await sleep(300);const examProgressAfter=await readExamProgress(cdp.send);if(!examProgressAfter||examProgressAfter.index!==examProgressBefore.index+1)throw new Error(`Hidden Exam double-click advanced more than once: ${JSON.stringify({examProgressBefore,examProgressAfter})}`);const examHistoryAfter=await evaluate(cdp.send,`JSON.parse(localStorage.getItem('poker_training_history_v6') || '[]').length`);if(examHistoryAfter!==examHistoryBefore)throw new Error(`Incomplete Hidden Exam persisted ${examHistoryAfter-examHistoryBefore} evaluation records before completion.`);if(await evaluate(cdp.send,`Boolean(document.querySelector('[data-testid="decision-explanation"]') || document.querySelector('[data-testid="solver-auto-analysis"]') || document.querySelector('[data-testid="advanced-analysis-tools"]'))`))throw new Error('Hidden Exam leaked correctness/explanation/tools before exam completion.');
  await completeExam(cdp.send,'Cash',examHistoryBefore);
- await verifyCourseLessons(cdp.send,'Cash',['course-cash-rfi','course-cash-catch','course-cash-short']);
+ await verifyCourseLessons(cdp.send,'Cash',['course-cash-rfi','course-cash-catch','course-cash-short','course-cash-9max-value','course-cash-9max-multiway','course-cash-short-value','course-cash-short-draw','course-cash-deep-pot-control','course-cash-deep-nuts']);
  await navigateRoute(cdp.send,'','Closed-loop Infinite Trainer');
  await evaluate(cdp.send,`document.querySelector('[data-testid="track-tournament"]').click(); true`);
  await waitFor(cdp.send,`document.querySelector('[data-testid="track-tournament"]')?.getAttribute('aria-pressed') === 'true' && localStorage.getItem('poker_training_track_v1') === 'tournament'`,'MTT track switching and persistence');
@@ -160,13 +201,17 @@ try{
  await waitFor(cdp.send,`Boolean(document.querySelector('[data-testid="exam-action"]'))`,'MTT hidden exam');
  const mttExamBefore=await evaluate(cdp.send,`JSON.parse(localStorage.getItem('poker_training_history_v6')||'[]').length`);
  await completeExam(cdp.send,'MTT',mttExamBefore);
- await verifyCourseLessons(cdp.send,'MTT',['course-mtt-10','course-mtt-15','course-mtt-20','course-mtt-30','course-mtt-40','course-mtt-catch']);
+ await verifyCourseLessons(cdp.send,'MTT',['course-mtt-10','course-mtt-15','course-mtt-20','course-mtt-30','course-mtt-40','course-mtt-catch','course-mtt-srp','course-mtt-turn-barrel','course-mtt-turn-flush','course-mtt-turn-low-spr','course-mtt-turn-missed-draw']);
  await verifySecondTournamentExam(cdp.send);
+ await verifyRestrictedTournamentExam(cdp.send);
  await navigateRoute(cdp.send,'','Closed-loop Infinite Trainer');
  await evaluate(cdp.send,`document.querySelector('[data-testid="track-cash"]').click(); true`);
  await waitFor(cdp.send,`document.querySelector('[data-testid="track-cash"]')?.getAttribute('aria-pressed') === 'true' && localStorage.getItem('poker_training_track_v1') === 'cash'`,'return to Cash track');
  await navigateRoute(cdp.send,'#hand-history','Closed-loop Infinite Trainer');if(await evaluate(cdp.send,`Boolean(document.querySelector('[data-testid="hand-history-lab"]') || document.querySelector('[data-testid="hh-text"]'))`))throw new Error('Real-game HH route still exists.');await navigateRoute(cdp.send,'#production-intelligence','Closed-loop Infinite Trainer');if(await evaluate(cdp.send,`Boolean(document.querySelector('[data-testid="production-intelligence-dashboard"]'))`))throw new Error('Real-game production intelligence route still exists.');
  await assertHonestCorpusDiagnostic(cdp.send);
+ await verifyContrastiveContext(cdp.send);
+ await verifyNumericInputSafety(cdp.send);
  await navigateRoute(cdp.send,'#truth-ops','Truth Operations');await navigateRoute(cdp.send,'#strategy-surface','Full Strategy Surface');await navigateRoute(cdp.send,'#fgs-workbench','Finite Game Simulation');await navigateRoute(cdp.send,'#experiment','Randomized N-of-1');await evaluate(cdp.send,`document.querySelector('[data-testid="experiment-create"]').click(); true`);await waitFor(cdp.send,`Boolean(localStorage.getItem('poker_learning_experiment_v1'))`,'N-of-1 experiment persistence');await navigateRoute(cdp.send,'','Closed-loop Infinite Trainer');
  console.log(`Browser E2E PASS: Infinite Hand Generator (${source}) → information-gain telemetry → explicit explanation/Next dwell evidence → context bridge → Minimal Flip truth gate → atomic Hidden Exam buffering/double-click lock → Cash/MTT track switching and separate completed exams → street-visible board checks → legacy HH absent → advanced truth tools intact.`);
+ if(process.env.POKER_E2E_SCREENSHOT){const capture=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(process.env.POKER_E2E_SCREENSHOT,Buffer.from(capture.data,'base64'));}
 }finally{try{cdp?.socket?.close();}catch{}await terminate(chrome);await terminate(preview);const cleanupTarget=resolve(userData);if(dirname(cleanupTarget)!==resolve(tempRoot)||!basename(cleanupTarget).startsWith('poker-coach-e2e-'))throw new Error('Refusing cleanup outside the E2E temporary profile directory.');try{if(existsSync(cleanupTarget)&&dirname(realpathSync(cleanupTarget))!==tempRoot)throw new Error('E2E profile resolved outside its temporary root.');rmSync(cleanupTarget,{recursive:true,force:true,maxRetries:10,retryDelay:100});}catch(error){console.warn('Could not clean E2E profile: '+error.message);}}

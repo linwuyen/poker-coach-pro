@@ -1,8 +1,9 @@
 import { ConfidenceLevel, Feedback, FeedbackQuality, HistoryItem, MasteryStatus, Scenario } from '../types';
 import { calculateSkillMastery } from './skillGraph';
 import { canonicalDecisionFamilyId, historyContextFamilyId, historyDecisionFamilyId } from './contextIdentity';
-import { hasValidTransferEvidence, transferBenchmarkReport } from './transferBenchmark';
+import { hasValidLearningContext, hasValidTransferEvidence, transferBenchmarkReport } from './transferBenchmark';
 export { hasValidTransferEvidence } from './transferBenchmark';
+export { buildDueDrillQueue } from './drillReviews';
 
 const DAY = 86400000;
 const CONFIDENCE_PROBABILITY: Record<ConfidenceLevel, number> = { 1: 0.35, 2: 0.55, 3: 0.75, 4: 0.9 };
@@ -105,7 +106,7 @@ export function latestByScenario(history: HistoryItem[]): Map<string, HistoryIte
 
 /** One schedule per decision; old attempts never remain independently overdue. */
 export function currentDueReviews(history: HistoryItem[], now = Date.now()): HistoryItem[] {
-  const practice = history.filter(item => isLearningAttempt(item) && !item.examMode && item.trainingType !== 'benchmark' && item.trainingType !== 'solver-benchmark');
+  const practice = history.filter(item => item.trainingType !== 'custom' && !item.examMode && item.trainingType !== 'benchmark' && item.trainingType !== 'solver-benchmark');
   // Dataset rows remain the same question when a corrected context changes its
   // fingerprint/mastery key. Old corpus records implicitly used PokerBench.
   const datasetBase = (item: HistoryItem) => JSON.stringify([item.truthSourceId || 'pokerbench-aaai2025', item.datasetRowId]);
@@ -308,7 +309,7 @@ export function feedbackScoreFromEvLoss(evLossBB: number): number {
 }
 
 function isLearningAttempt(item: HistoryItem): boolean {
-  return item.trainingType !== 'custom';
+  return item.trainingType !== 'custom' && hasValidLearningContext(item);
 }
 
 function percent(items: HistoryItem[]): number {

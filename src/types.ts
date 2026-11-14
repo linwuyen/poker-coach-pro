@@ -170,7 +170,7 @@ export interface HistoryItem {
   datasetSplit?: string;
   datasetRowId?: string;
   /** v2 records use only board cards visible at the decision street. */
-  decisionContextVersion?: 2;
+  decisionContextVersion?: 2 | 3;
   strategyMode?: StrategyMode;
   spotFrequencyPer100Hands?: number;
   difficultyWeight?: number;

@@ -8,6 +8,19 @@ import { fingerprintPokerBenchRow } from '../../solver-data/contextFingerprint';
 import { loadPokerBenchSplit, parsePokerDecision, pokerBenchDecisionGrade, pokerBenchHistoryMatchesRow, pokerBenchVisibleBoard, POKERBENCH_FILES, POKERBENCH_SOURCE, PokerBenchRow, PokerBenchSplit } from '../../solver-data/pokerbench';
 import { createAttemptId, getReviewSchedule, loadHistory, saveHistory } from '../../utils/history';
 import { getDifficultyWeight, isDelayedReview, makeMasteryKey } from '../../learning-engine';
+import { humanizeSolverPreflopLine, humanizeSolverPostflopLine } from './SolverDecisionSession';
+
+export function hasContrastiveDecisionContext(row: PokerBenchRow): boolean {
+  if (!Number.isFinite(row.potSize) || row.potSize <= 0 || !row.heroPosition.trim()) return false;
+  const holding = row.holding.match(/[2-9TJQKA][shdc]/g) || [];
+  const board = pokerBenchVisibleBoard(row).match(/[2-9TJQKA][shdc]/g) || [];
+  const expected = row.split === 'preflop' ? 0 : { Preflop: 0, Flop: 3, Turn: 4, River: 5 }[row.evaluationAt];
+  if (holding.length !== 2 || board.length !== expected || new Set([...holding, ...board]).size !== holding.length + board.length) return false;
+  if (!row.availableMoves.length || !row.availableMoves.includes(row.correctDecision)) return false;
+  return row.split === 'preflop'
+    ? Number.isFinite(row.numPlayers) && row.numPlayers >= 2 && Number.isFinite(row.numBets) && row.numBets >= 0
+    : Boolean(row.preflopAction.trim() && row.postflopAction.trim());
+}
 
 const CONFIDENCE: Array<{ value: ConfidenceLevel; label: string }> = [
   { value: 1, label: '猜測' }, { value: 2, label: '不太確定' }, { value: 3, label: '大致確定' }, { value: 4, label: '非常確定' },
@@ -31,14 +44,14 @@ export function ContrastiveTrainer({ onExit }: { onExit: () => void }) {
     return () => { alive = false; };
   }, [split]);
 
-  const pairs = useMemo(() => buildContrastivePairs(rows, 40), [rows]);
+  const pairs = useMemo(() => buildContrastivePairs(rows.filter(hasContrastiveDecisionContext), 40), [rows]);
   const pair = pairs.length ? pairs[index % pairs.length] : null;
 
   const reset = () => { setLeftChoice(null); setRightChoice(null); setConfidence(null); setSubmitted(false); startedAt.current = Date.now(); };
   const next = () => { setIndex(value => (value + 1) % Math.max(1, pairs.length)); reset(); };
 
   const submit = () => {
-    if (!pair || !leftChoice || !rightChoice || !confidence) return;
+    if (!pair || !leftChoice || !rightChoice || !confidence || !hasContrastiveDecisionContext(pair.left) || !hasContrastiveDecisionContext(pair.right)) return;
     const history = loadHistory();
     const now = Date.now();
     const makeItem = (row: PokerBenchRow, choice: string, side: 'A' | 'B', offset: number): HistoryItem => {
@@ -52,7 +65,7 @@ export function ContrastiveTrainer({ onExit }: { onExit: () => void }) {
       const texture = row.split === 'postflop' ? analyzeBoardTexture(pokerBenchVisibleBoard(row)) : undefined;
       return {
         schemaVersion: 4,
-        decisionContextVersion: 2,
+        decisionContextVersion: 3,
         attemptId: createAttemptId(),
         trainingType: 'contrastive',
         scenarioId,
@@ -115,7 +128,22 @@ export function ContrastiveTrainer({ onExit }: { onExit: () => void }) {
 
 export function SpotCard({ label, row, selected, onSelect, disabled }: { label: string; row: PokerBenchRow; selected: string | null; onSelect: (value: string) => void; disabled: boolean }) {
   const board = pokerBenchVisibleBoard(row);
-  return <div className="pc-card-lift rounded-2xl border border-slate-800 bg-slate-900/55 p-5"><div className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-300">Spot {label}</div><div className="mt-2 font-mono text-2xl font-bold">{row.holding} · {row.heroPosition}</div><div className="mt-3 text-xs leading-6 text-slate-500">{row.split === 'preflop' ? row.prevLine || 'First in' : `${row.evaluationAt} · ${board} · ${row.postflopAction}`}</div><div className="mt-4 grid gap-2 sm:grid-cols-2">{row.availableMoves.map(move => <button key={move} disabled={disabled} onClick={() => onSelect(move)} className={`rounded-xl border p-3 text-left text-sm ${selected === move ? 'border-fuchsia-400/60 bg-fuchsia-500/12' : 'border-slate-700 bg-slate-950/35'}`}>{move}</button>)}</div></div>;
+  const complete = hasContrastiveDecisionContext(row);
+  const preflop = humanizeSolverPreflopLine(row.split === 'preflop' ? row.prevLine : row.preflopAction);
+  return <div data-testid="contrastive-spot" className="pc-card-lift rounded-2xl border border-slate-800 bg-slate-900/55 p-5">
+    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-300">Spot {label}</div>
+    <div className="mt-2 font-mono text-2xl font-bold">{row.holding} · {row.heroPosition}</div>
+    <p className="mt-3 text-xs leading-6 text-slate-400">{POKERBENCH_SOURCE.contextNote}</p>
+    <p className="text-xs leading-6 text-slate-400">目前剩餘籌碼與有效 SPR：來源未提供獨立欄位，不把起始 100 BB 當作目前籌碼。</p>
+    <div className="mt-3 text-sm leading-7 text-slate-300">
+      <div>底池：{Number.isFinite(row.potSize) ? row.potSize : '未知'} BB</div>
+      <div>{row.split === 'preflop' ? `Preflop · 剩餘 ${row.numPlayers} 人 · 加注層級 ${row.numBets}` : `${row.evaluationAt} · ${board}`}</div>
+      <div>翻前：{preflop}</div>
+      {row.split === 'postflop' && <div>翻後：{humanizeSolverPostflopLine(row.postflopAction)}</div>}
+    </div>
+    {!complete && <p role="alert" className="mt-3 text-sm text-amber-300">資訊不足，不能提交此題或計入能力證據。</p>}
+    <div className="mt-4 grid gap-2 sm:grid-cols-2">{row.availableMoves.map(move => <button key={move} disabled={disabled || !complete} onClick={() => onSelect(move)} className={`rounded-xl border p-3 text-left text-sm disabled:opacity-40 ${selected === move ? 'border-fuchsia-400/60 bg-fuchsia-500/12' : 'border-slate-700 bg-slate-950/35'}`}>{move}</button>)}</div>
+  </div>;
 }
 function Result({ label, selected, best }: { label: string; selected: string; best: string }) { return <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 text-sm">你：<b>{selected}</b></div><div className="mt-1 text-sm">Solver：<b>{best}</b></div></div>; }
 export function describeDifferences(left: PokerBenchRow, right: PokerBenchRow): string[] {

@@ -1,10 +1,16 @@
 import { HistoryItem, TransferLevel } from '../types';
 import { historyContextFamilyId, historyDecisionFamilyId, transferDistance } from './contextIdentity';
 
+/** Earlier contrastive screens omitted pot/preflop context; keep exposure but retire their grades. */
+export function hasValidLearningContext(item: HistoryItem): boolean {
+  return item.trainingType !== 'contrastive' || (item.decisionContextVersion ?? 0) >= 3;
+}
+
 /** Assessment evidence requires an unaided first exposure with valid decision context. */
 export function hasValidAssessmentEvidence(item: HistoryItem): boolean {
   if (item.trainingType === 'custom' || item.trainingType === 'solver-corpus') return false;
-  if (item.datasetRowId && item.decisionContextVersion !== 2) return false;
+  if (!hasValidLearningContext(item)) return false;
+  if (item.datasetRowId && (item.decisionContextVersion ?? 0) < 2) return false;
   if (item.isReview || item.isDelayedReview || item.isUnseen === false) return false;
   if (item.examMode && !item.examCompletedAt) return false;
   return true;

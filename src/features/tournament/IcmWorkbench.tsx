@@ -3,8 +3,64 @@ import { ArrowLeft, Coins, Medal, Scale, Ticket } from 'lucide-react';
 import { calculateHeadsUpIcmRisk, calculateHeadsUpPkoRisk, MAX_EXACT_ICM_PLAYERS, satellitePayouts } from '../../tournament/icm';
 
 type Mode = 'icm' | 'pko' | 'satellite';
-function parseNumbers(value: string): number[] {
-  return value.split(/[,\s]+/).map(Number).filter(number => Number.isFinite(number) && number >= 0);
+
+function numberTokens(value: string): string[] {
+  return value.split(/[,\s]+/).filter(Boolean);
+}
+
+function parseNonNegativeNumber(value: string, label: string): number {
+  const number = Number(value);
+  if (!value.trim() || !Number.isFinite(number) || number < 0) {
+    throw new Error(`${label}必須是有限且不小於 0 的數值。`);
+  }
+  return number;
+}
+
+export function parseIcmNumbers(value: string, label = '數值'): number[] {
+  return numberTokens(value).map((token, index) => parseNonNegativeNumber(token, `${label}第 ${index + 1} 項（${token}）`));
+}
+
+interface IcmWorkbenchInput {
+  mode: Mode;
+  stacks: string;
+  payouts: string;
+  heroIndex: number;
+  villainIndex: number;
+  risk: string;
+  showdown: string;
+  bounty: string;
+  satelliteSeats: string;
+}
+
+export function calculateIcmWorkbench({ mode, stacks, payouts, heroIndex, villainIndex, risk, showdown, bounty, satelliteSeats }: IcmWorkbenchInput) {
+  try {
+    const stackValues = parseIcmNumbers(stacks, '籌碼');
+    if (stackValues.length < 2) throw new Error('請提供至少兩位玩家的完整籌碼名單。');
+    let payoutValues: number[];
+    if (mode === 'satellite') {
+      const seats = parseNonNegativeNumber(satelliteSeats, '晉級席位數');
+      if (!Number.isInteger(seats) || seats < 1 || seats > stackValues.length) {
+        throw new Error(`晉級席位數必須是 1–${stackValues.length} 之間的整數。`);
+      }
+      payoutValues = satellitePayouts(seats, 1);
+    } else {
+      payoutValues = parseIcmNumbers(payouts, '獎金');
+      if (!payoutValues.length) throw new Error('請提供至少一個獎金數值。');
+    }
+    const players = stackValues.map((stack, index) => ({ id: `P${index + 1}`, stack }));
+    if (!players[heroIndex] || !players[villainIndex] || heroIndex === villainIndex) return null;
+    const baseInput = {
+      players,
+      payouts: payoutValues,
+      heroId: players[heroIndex].id,
+      villainId: players[villainIndex].id,
+      amountAtRisk: parseNonNegativeNumber(risk, '風險 R'),
+      showdownEquity: parseNonNegativeNumber(showdown, '攤牌 Equity %') / 100,
+    };
+    return mode === 'pko'
+      ? { mode, base: calculateHeadsUpPkoRisk({ ...baseInput, villainBountyValue: parseNonNegativeNumber(bounty, '即時賞金') }) }
+      : { mode, base: calculateHeadsUpIcmRisk(baseInput) };
+  } catch (error) { return { mode, base: undefined, error: error instanceof Error ? error.message : '無法計算此玩家狀態。' }; }
 }
 
 export function IcmWorkbench({ onExit }: { onExit: () => void }) {
@@ -18,28 +74,11 @@ export function IcmWorkbench({ onExit }: { onExit: () => void }) {
   const [bounty, setBounty] = useState('8');
   const [satelliteSeats, setSatelliteSeats] = useState('2');
 
-  const result = useMemo(() => {
-    try {
-      const stackValues = parseNumbers(stacks);
-      const payoutValues = mode === 'satellite' ? satellitePayouts(Number(satelliteSeats) || 1, 1) : parseNumbers(payouts);
-      if (stackValues.length < 2 || payoutValues.length < 1) return null;
-      const players = stackValues.map((stack, index) => ({ id: `P${index + 1}`, stack }));
-      if (!players[heroIndex] || !players[villainIndex] || heroIndex === villainIndex) return null;
-      const baseInput = {
-        players,
-        payouts: payoutValues,
-        heroId: players[heroIndex].id,
-        villainId: players[villainIndex].id,
-        amountAtRisk: Number(risk) || 0,
-        showdownEquity: (Number(showdown) || 0) / 100,
-      };
-      return mode === 'pko'
-        ? { mode, base: calculateHeadsUpPkoRisk({ ...baseInput, villainBountyValue: Number(bounty) || 0 }) }
-        : { mode, base: calculateHeadsUpIcmRisk(baseInput) };
-    } catch (error) { return { mode, base: undefined, error: error instanceof Error ? error.message : '無法計算此玩家狀態。' }; }
-  }, [mode, stacks, payouts, heroIndex, villainIndex, risk, showdown, bounty, satelliteSeats]);
+  const result = useMemo(() => calculateIcmWorkbench({ mode, stacks, payouts, heroIndex, villainIndex, risk, showdown, bounty, satelliteSeats }), [mode, stacks, payouts, heroIndex, villainIndex, risk, showdown, bounty, satelliteSeats]);
 
-  const playerCount = parseNumbers(stacks).length;
+  // Count positions without parsing: invalid values remain visible in place
+  // until corrected, and validation errors stay inside the calculation boundary.
+  const playerCount = numberTokens(stacks).length;
   const pko = result?.mode === 'pko' ? result.base : null;
   const base = result?.base;
   const indifferent = pko ? pko.pkoIndifferent : base?.icmIndifferent;

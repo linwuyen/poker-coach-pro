@@ -65,7 +65,7 @@ function assertInheritedTruth(base: Scenario, variant: Scenario): void {
 assert.equal(coreScenarios.length, 88, 'Canonical reviewed family inventory changed; update the truth audit intentionally.');
 assert.equal(semanticTeachingScenarios.length, 64, 'Exact-math family inventory changed; update the truth audit intentionally.');
 assert.equal(curatedTeachingVariants.length, 64, 'Rendered suit-isomorphic inventory changed unexpectedly.');
-assert.equal(scenarios.length, 248, 'Production scenario inventory changed unexpectedly.');
+assert.equal(scenarios.length, 258, 'Production scenario inventory changed unexpectedly.');
 assert.equal(scenarios.every(isTruthBackedScenario), true, 'Every production scenario must remain internally gradeable.');
 
 semanticTeachingScenarios.forEach(assertExactMathEvidence);
@@ -97,7 +97,7 @@ for (const variant of generated) {
 
 const declaredFamilies = new Set([...coreScenarios, ...semanticTeachingScenarios, ...tournamentTrainingScenarios, ...practicalCurriculum].map(item => item.decisionFamilyId || item.id));
 assert.equal(new Set(semanticTeachingScenarios.map(s => s.steps[0].description)).size, 48, 'Repeated numeric inputs must not inflate independent coverage.');
-assert.equal(declaredFamilies.size, 184, 'Declared family inventory must exclude cosmetic variants.');
+assert.equal(declaredFamilies.size, 194, 'Declared family inventory must exclude cosmetic variants.');
 
 const exactFeedbackCount = semanticTeachingScenarios.reduce((sum, scenario) => sum + definedFeedbacks(scenario).length, 0);
 console.log(JSON.stringify({

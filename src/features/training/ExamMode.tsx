@@ -37,6 +37,28 @@ export function balanceTournamentModels(candidates:ExamCandidate[]):ExamCandidat
 }
 function highestExactEvaluationSequence(history:HistoryItem[]):number{return history.reduce((highest,item)=>{const match=/^(?:eval-math-pot-odds-|mtt-eval-generated-)(\d+)$/.exec(item.scenarioId||'');return match?Math.max(highest,Number(match[1])||0):highest;},0);}
 
+/** Refill after preferences/exposure filtering; the scan budget also bounds unsupported profiles. */
+export function buildFreshEvaluationCandidates(start:number,history:HistoryItem[],track:TrainingTrack,profile:PlayerProfile,size=EXAM_SIZE,scanLimit=8192):ExamCandidate[]{
+  const fresh:ExamCandidate[]=[];
+  const exposed=new Set(history.map(evaluationIdentity).filter(Boolean));
+  const models=['tournament-chip-ev','icm','satellite','pko'];
+  const quota=Math.ceil(size/models.length);
+  const counts=new Map<string,number>();
+  for(let scanned=0;scanned<scanLimit;scanned+=100){
+    const count=Math.min(100,scanLimit-scanned);
+    const bank=track==='cash'?buildExactMathEvaluationScenarios(start+scanned,count):buildTournamentEvaluationScenarios(start+scanned,count);
+    for(const candidate of trackExamCandidates(bank,[],track,profile)){
+      if(candidate.kind!=='scenario'||exposed.has(`scenario:${candidate.scenario.id}:${candidate.scenario.steps[candidate.stepIndex].id}`))continue;
+      fresh.push(candidate);
+      const model=candidate.scenario.steps[candidate.stepIndex].feedbacks.Call?.evidence?.utilityModel;
+      if(model)counts.set(model,(counts.get(model)||0)+1);
+    }
+    if(fresh.length>=size&&(track==='cash'||models.every(model=>(counts.get(model)||0)>=quota)))break;
+  }
+  fresh.sort((a,b)=>stableHash(a.id)-stableHash(b.id));
+  return (track==='tournament'?balanceTournamentModels(fresh):fresh).slice(0,size);
+}
+
 export function evaluationIdentity(item:HistoryItem):string|undefined{
   const solverIdentity=pokerBenchExposureIdentity(item);
   if(solverIdentity)return solverIdentity;
@@ -84,7 +106,7 @@ export function ExamMode({onExit}:{onExit:()=>void}){
   const pool=useMemo<ExamCandidate[]>(()=>{
     const seededBlockStart=stableHash(`exact:${examSessionId}`)*64;
     const evaluationStartIndex=Math.max(highestExactEvaluationSequence(initialHistory),seededBlockStart);
-    const evaluationCandidates=trackExamCandidates(track==='cash'?buildExactMathEvaluationScenarios(evaluationStartIndex,EXAM_SIZE*2):buildTournamentEvaluationScenarios(evaluationStartIndex,EXAM_SIZE*4),[],track,profile);
+    const evaluationCandidates=buildFreshEvaluationCandidates(evaluationStartIndex,initialHistory,track,profile);
     const benchmarkCandidates=trackExamCandidates(getHiddenBenchmarkScenarios(scenarios),[],track,profile);
     const solverCandidates=trackExamCandidates([],solverRows,track,profile);
     const seen=(candidate:ExamCandidate)=>isExamCandidateExposed(candidate,initialHistory);
@@ -163,6 +185,6 @@ function TournamentUtilitySummary({items}:{items:HistoryItem[]}) {
   const groups=tournamentEvaluationGroups(items);
   return <div className="mt-5 space-y-3" data-testid="tournament-evaluation-utilities"><h2 className="text-sm font-semibold">分開看每種錦標賽目標的決策差距</h2>{groups.length ? groups.map(group=><div key={`${group.model}:${group.unit}`} className="rounded-xl border border-slate-800 bg-slate-950/35 p-3 text-sm"><b>{group.model}</b> · {group.samples} 題 · 平均差距 {group.averageLoss.toFixed(3)} {group.unit}</div>) : <p className="text-sm text-slate-500">尚無可計算的 utility evidence。不同目標與單位不混算。</p>}<p className="text-xs text-slate-500">ICM / PKO 的 dollar-ev 是題目給定獎金尺度；bb 是錦標賽籌碼差距，不能解讀為現金桌收益。</p></div>;
 }
-function EmptyExam({onExit}:{onExit:()=>void}){return <div className="grid min-h-screen place-items-center bg-slate-950 p-6 text-slate-100"><div className="max-w-lg rounded-2xl border border-slate-800 bg-slate-900/60 p-6 text-center"><EyeOff className="mx-auto h-8 w-8 text-slate-400"/><h1 className="mt-4 text-xl font-semibold">沒有可用的 Hidden Exam 題</h1><p className="mt-2 text-sm text-slate-500">目前賽制、桌型、籌碼深度與重點沒有尚未曝光的測驗題。PokerBench 僅知起始100BB；選定特定有效籌碼區間時會排除剩餘深度未知的資料。請返回調整偏好；系統不會混入其他賽制或重複已揭露題目。</p><button type="button" onClick={onExit} className="mt-5 rounded-xl border border-slate-700 px-4 py-2 text-sm">返回</button></div></div>;}
+function EmptyExam({onExit}:{onExit:()=>void}){return <div className="grid min-h-screen place-items-center bg-slate-950 p-6 text-slate-100"><div className="max-w-lg rounded-2xl border border-slate-800 bg-slate-900/60 p-6 text-center"><EyeOff className="mx-auto h-8 w-8 text-slate-400"/><h1 className="mt-4 text-xl font-semibold">沒有可用的 Hidden Exam 題</h1><p className="mt-2 text-sm text-slate-500">本次有上限的搜尋未找到符合賽制、桌型、籌碼深度與重點的未曝光測驗題；不代表所有可能題目均已耗盡。PokerBench 僅知起始100BB；選定特定有效籌碼區間時會排除剩餘深度未知的資料。請返回調整偏好；系統不會混入其他賽制或重複已揭露題目。</p><button type="button" onClick={onExit} className="mt-5 rounded-xl border border-slate-700 px-4 py-2 text-sm">返回</button></div></div>;}
 function Context({label,value}:{label:string;value:string}){return <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4"><div className="text-[10px] uppercase tracking-[0.16em] text-slate-600">{label}</div><div className="mt-2 text-sm leading-6 text-slate-300">{value}</div></div>;}
 function Metric({label,value}:{label:string;value:string}){return <div className="rounded-xl border border-slate-800 bg-slate-950/35 p-4"><div className="text-xs text-slate-500">{label}</div><div className="mt-2 font-mono text-xl font-bold">{value}</div></div>;}

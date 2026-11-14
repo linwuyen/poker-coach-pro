@@ -118,7 +118,7 @@ export function buildRangeHistoryItems(
 
 }
 
-export function RangeReadingTrainer({ onExit }: { onExit: () => void }) {
+export function RangeReadingTrainer({ onExit, reviewQuestion, onComplete }: { onExit: () => void; reviewQuestion?: RangeQuestion; onComplete?: () => void }) {
   const [index, setIndex] = useState(0);
   const [weights, setWeights] = useState<Record<string, RangeFrequency>>({});
   const [selectedEquity, setSelectedEquity] = useState<EquityBand | null>(null);
@@ -127,8 +127,10 @@ export function RangeReadingTrainer({ onExit }: { onExit: () => void }) {
   const [confidence, setConfidence] = useState<ConfidenceLevel | null>(null);
   const [phase, setPhase] = useState<Phase>('range');
   const [session, setSession] = useState({ score: 0, answered: 0 });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const recordedRef = useRef(false);
-  const question = RANGE_QUESTIONS[index];
+  const question = reviewQuestion || RANGE_QUESTIONS[index];
 
   const selections = useMemo<WeightedRangeSelection[]>(
     () => question.options.map(option => ({ hand: option.hand, frequency: weights[option.hand] || 0 })),
@@ -148,22 +150,21 @@ export function RangeReadingTrainer({ onExit }: { onExit: () => void }) {
     setWeights(previous => ({ ...previous, [hand]: nextFrequency(previous[hand] || 0) }));
   };
 
-  const recordLearning = () => {
-    if (!confidence || !selectedEquity || parsedPotOdds === null || !selectedAction || recordedRef.current) return;
+  const submitDecision = async () => {
+    if (!confidence || !selectedEquity || parsedPotOdds === null || !Number.isFinite(parsedPotOdds) || !selectedAction || recordedRef.current) return;
+    recordedRef.current = true;
+    setSaving(true); setSaveError(false);
     const history = loadHistory();
     const now = Date.now();
     const items = buildRangeHistoryItems(question, {
       selections, selectedEquity, potOddsEstimate: parsedPotOdds, selectedAction, confidence,
     }, history, now);
-    void persistHistoryItems(items);
-    recordedRef.current = true;
-  };
-
-  const submitDecision = () => {
-    if (!selectedEquity || parsedPotOdds === null || !selectedAction || !confidence) return;
-    recordLearning();
-    setSession(previous => ({ score: previous.score + totalScore, answered: previous.answered + 1 }));
-    setPhase('result');
+    try {
+      await persistHistoryItems(items);
+      setSession(previous => ({ score: previous.score + totalScore, answered: previous.answered + 1 }));
+      setPhase('result');
+    } catch { recordedRef.current = false; setSaveError(true); }
+    finally { setSaving(false); }
   };
 
   const resetQuestion = () => {
@@ -177,6 +178,7 @@ export function RangeReadingTrainer({ onExit }: { onExit: () => void }) {
   };
 
   const next = () => {
+    if (reviewQuestion && onComplete) { onComplete(); return; }
     setIndex(previous => (previous + 1) % RANGE_QUESTIONS.length);
     resetQuestion();
   };
@@ -196,8 +198,8 @@ export function RangeReadingTrainer({ onExit }: { onExit: () => void }) {
   return <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8">
     <div className="mx-auto max-w-6xl">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <button type="button" onClick={onExit} className="flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-900"><ArrowLeft className="h-4 w-4" />返回主訓練機</button>
-        <div className="flex flex-wrap gap-2 text-sm"><span className="rounded-xl bg-slate-900 px-4 py-2">題目 {index + 1}/{RANGE_QUESTIONS.length}</span><span className="rounded-xl bg-emerald-500/10 px-4 py-2 text-emerald-300">平均 {average} 分</span><span className="rounded-xl bg-blue-500/10 px-4 py-2 text-blue-300">{phase === 'range' ? '① 加權範圍' : phase === 'decision' ? '② 數學與決策' : '③ 學習回饋'}</span></div>
+        <button type="button" disabled={saving} onClick={onExit} className="flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300 hover:bg-slate-900"><ArrowLeft className="h-4 w-4" />返回主訓練機</button>
+        <div className="flex flex-wrap gap-2 text-sm"><span className="rounded-xl bg-slate-900 px-4 py-2">{reviewQuestion ? '原題複習' : `題目 ${index + 1}/${RANGE_QUESTIONS.length}`}</span><span className="rounded-xl bg-emerald-500/10 px-4 py-2 text-emerald-300">平均 {average} 分</span><span className="rounded-xl bg-blue-500/10 px-4 py-2 text-blue-300">{phase === 'range' ? '① 加權範圍' : phase === 'decision' ? '② 數學與決策' : '③ 學習回饋'}</span></div>
       </header>
 
       <section className="rounded-3xl border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.14),rgba(15,23,42,0.75))] p-6 md:p-8">
@@ -230,10 +232,10 @@ export function RangeReadingTrainer({ onExit }: { onExit: () => void }) {
         <div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-blue-400" /><h2 className="font-semibold">② 不看答案，先完成數學與決策</h2></div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2"><MetricInput label="目前底池（含對手下注）" value={`${question.potAfterBet}BB`} /><MetricInput label="Hero 跟注成本" value={`${question.callCost}BB`} /></div>
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <div><div className="mb-3 text-sm font-semibold">Hero 對你所建範圍的 Equity</div><div className="grid grid-cols-2 gap-2 sm:grid-cols-5 lg:grid-cols-2 xl:grid-cols-5">{EQUITY_BANDS.map(band => <button key={band.id} type="button" disabled={phase === 'result'} onClick={() => setSelectedEquity(band.id)} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${selectedEquity === band.id ? 'border-blue-500 bg-blue-500/15 text-blue-200' : 'border-slate-800 bg-slate-950/40 text-slate-400'}`}>{band.label}</button>)}</div></div>
-          <div><label className="mb-3 block text-sm font-semibold" htmlFor="pot-odds-estimate">Pot Odds 估計</label><div className="relative"><input id="pot-odds-estimate" type="number" min="0" max="100" step="0.1" disabled={phase === 'result'} value={potOddsInput} onChange={event => setPotOddsInput(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-3 pr-10 font-mono text-lg outline-none focus:border-blue-500" placeholder="例如 37.5" /><span className="absolute right-4 top-3.5 text-slate-500">%</span></div></div>
-          <div><div className="mb-3 text-sm font-semibold">最佳動作</div><div className="grid grid-cols-2 gap-2">{(['fold', 'call'] as HeroAction[]).map(action => <button key={action} type="button" disabled={phase === 'result'} onClick={() => setSelectedAction(action)} className={`rounded-xl border px-4 py-3 text-sm font-bold ${selectedAction === action ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200' : 'border-slate-800 bg-slate-950/40 text-slate-400'}`}>{ACTION_LABELS[action]}</button>)}</div></div>
-          <div><div className="mb-3 text-sm font-semibold">作答信心</div><div className="grid grid-cols-2 gap-2">{CONFIDENCE.map(item => <button key={item.value} type="button" disabled={phase === 'result'} onClick={() => setConfidence(item.value)} className={`rounded-xl border px-3 py-3 text-sm ${confidence === item.value ? 'border-amber-400 bg-amber-400/10 text-amber-200' : 'border-slate-800 bg-slate-950/40 text-slate-400'}`}>{item.label}</button>)}</div></div>
+          <div><div className="mb-3 text-sm font-semibold">Hero 對你所建範圍的 Equity</div><div className="grid grid-cols-2 gap-2 sm:grid-cols-5 lg:grid-cols-2 xl:grid-cols-5">{EQUITY_BANDS.map(band => <button key={band.id} type="button" disabled={saving || phase === 'result'} onClick={() => setSelectedEquity(band.id)} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${selectedEquity === band.id ? 'border-blue-500 bg-blue-500/15 text-blue-200' : 'border-slate-800 bg-slate-950/40 text-slate-400'}`}>{band.label}</button>)}</div></div>
+          <div><label className="mb-3 block text-sm font-semibold" htmlFor="pot-odds-estimate">Pot Odds 估計</label><div className="relative"><input id="pot-odds-estimate" type="number" min="0" max="100" step="0.1" disabled={saving || phase === 'result'} value={potOddsInput} onChange={event => setPotOddsInput(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950/50 px-4 py-3 pr-10 font-mono text-lg outline-none focus:border-blue-500" placeholder="例如 37.5" /><span className="absolute right-4 top-3.5 text-slate-500">%</span></div></div>
+          <div><div className="mb-3 text-sm font-semibold">最佳動作</div><div className="grid grid-cols-2 gap-2">{(['fold', 'call'] as HeroAction[]).map(action => <button key={action} type="button" disabled={saving || phase === 'result'} onClick={() => setSelectedAction(action)} className={`rounded-xl border px-4 py-3 text-sm font-bold ${selectedAction === action ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200' : 'border-slate-800 bg-slate-950/40 text-slate-400'}`}>{ACTION_LABELS[action]}</button>)}</div></div>
+          <div><div className="mb-3 text-sm font-semibold">作答信心</div><div className="grid grid-cols-2 gap-2">{CONFIDENCE.map(item => <button key={item.value} type="button" disabled={saving || phase === 'result'} onClick={() => setConfidence(item.value)} className={`rounded-xl border px-3 py-3 text-sm ${confidence === item.value ? 'border-amber-400 bg-amber-400/10 text-amber-200' : 'border-slate-800 bg-slate-950/40 text-slate-400'}`}>{item.label}</button>)}</div></div>
         </div>
       </section>}
 
@@ -243,10 +245,11 @@ export function RangeReadingTrainer({ onExit }: { onExit: () => void }) {
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/7 p-4 text-xs leading-6 text-amber-100/80"><div className="font-semibold">資料可信度：{question.source.trustTier}</div><div>{question.source.disclaimer}</div><div className="mt-1">假設：{question.assumptions.join('；')}</div></div>
       </section>}
 
+      {saveError && <p role="alert" className="mt-4 text-sm text-red-300">學習紀錄儲存失敗，請重試提交；複習尚未完成。</p>}
       <footer className="mt-6 flex flex-wrap justify-between gap-3">
-        <button type="button" onClick={resetSession} className="flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-3 text-sm text-slate-400"><RotateCcw className="h-4 w-4" />重置本次分數</button>
+        <button type="button" disabled={saving} onClick={resetSession} className="flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-3 text-sm text-slate-400"><RotateCcw className="h-4 w-4" />重置本次分數</button>
         {phase === 'range' && <button type="button" disabled={selectedCombos <= 0} onClick={() => setPhase('decision')} className="rounded-xl bg-emerald-500 px-6 py-3 text-sm font-bold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40">鎖定加權範圍</button>}
-        {phase === 'decision' && <button type="button" disabled={!selectedEquity || parsedPotOdds === null || !Number.isFinite(parsedPotOdds) || !selectedAction || !confidence} onClick={submitDecision} className="rounded-xl bg-emerald-500 px-6 py-3 text-sm font-bold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40">提交並寫入學習紀錄</button>}
+        {phase === 'decision' && <button type="button" disabled={saving || !selectedEquity || parsedPotOdds === null || !Number.isFinite(parsedPotOdds) || !selectedAction || !confidence} onClick={submitDecision} className="rounded-xl bg-emerald-500 px-6 py-3 text-sm font-bold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40">提交並寫入學習紀錄</button>}
         {phase === 'result' && <button type="button" onClick={next} className="rounded-xl bg-emerald-500 px-6 py-3 text-sm font-bold text-emerald-950">下一題</button>}
       </footer>
     </div>
