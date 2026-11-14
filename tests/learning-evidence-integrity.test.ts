@@ -54,7 +54,7 @@ test('all dataset assessment types reject legacy future-card evidence', () => {
   for (const trainingType of ['solver-benchmark', 'contrastive', 'counterfactual'] as const) {
     const legacy=attempt({trainingType,datasetRowId:'postflop-5',isTransferTest:true,transferLevel:'structural',isUnseen:true});
     assert.equal(transferBenchmarkReport([legacy]).structural.attempts,0,trainingType);
-    assert.equal(transferBenchmarkReport([{...legacy,decisionContextVersion:2}]).structural.attempts,1);
+    assert.equal(transferBenchmarkReport([{...legacy,decisionContextVersion:trainingType==='contrastive'?3:2}]).structural.attempts,1);
   }
 });
 

@@ -103,6 +103,30 @@ try {
   }).toString()})()`);
   assert.deepEqual(accounting, { count: 14, schema: [6], cash: 7, tournament: 7, formats: ['MTT', 'MTT', 'MTT', 'MTT', 'Cash', 'Cash', 'Cash', 'Cash', 'MTT', 'MTT', 'MTT', 'Cash', 'Cash', 'Cash'] });
   console.log('Verified Range and Counterfactual reload: 14 records, 7 Cash and 7 MTT by question format.');
+  await evaluate(send, `localStorage.setItem('poker_training_history_v6',JSON.stringify(JSON.parse(localStorage.getItem('poker_training_history_v6')).map(item=>({...item,timestamp:Date.now()-2*86400000,nextReviewAt:Date.now()-1}))));location.hash='';true`);
+  await waitFor(send, 'Boolean(document.querySelector("[data-testid=volume-first-home]"))', 'due drill homepage');
+  for (const [track, format] of [['cash', 'Cash'], ['tournament', 'MTT']]) {
+    await evaluate(send, `document.querySelector('[data-testid="track-${track}"]').click();true`);
+    await waitFor(send, `document.querySelector('[data-testid="track-${track}"]')?.getAttribute('aria-pressed')==='true'`, format + ' selected track');
+    await waitFor(send, 'document.querySelectorAll("[data-testid=start-due-drill-review]").length===2', format + ' due drill entries');
+    for (const kind of ['range', 'counterfactual']) {
+      const before = await evaluate(send, `JSON.parse(localStorage.getItem('poker_training_history_v6')).length`);
+      await evaluate(send, `Array.from(document.querySelectorAll('[data-testid="start-due-drill-review"]')).find(b=>b.dataset.reviewId.startsWith('${kind}-')).click();true`);
+      await waitFor(send, `document.body.textContent.includes('原題複習')&&Array.from(document.querySelectorAll('button')).some(b=>b.textContent.trim()===${JSON.stringify(kind === 'range' ? '鎖定加權範圍' : '提交三個反事實決策')})`, format + ' exact drill replay');
+      if (kind === 'range') await answerRange(); else await answerCounterfactual();
+      await waitFor(send, `JSON.parse(localStorage.getItem('poker_training_history_v6')).length>${before}`, 'review persistence');
+      const reviewed = await evaluate(send, `JSON.parse(localStorage.getItem('poker_training_history_v6')).slice(${before})`);
+      assert.equal(reviewed.length, kind === 'range' ? 4 : 3);
+      assert.ok(reviewed.every(item => item.gameFormat === format && item.isReview && item.isDelayedReview && !item.isUnseen && !item.isTransferTest && item.nextReviewAt > Date.now()));
+      await clickText(kind === 'range' ? '下一題' : '下一個邊界');
+      await waitFor(send, '!document.querySelector("[data-testid=active-drill-review]")', 'return to due queue');
+    }
+    assert.equal(await evaluate(send, 'document.querySelectorAll("[data-testid=start-due-drill-review]").length'), 0);
+    await send('Page.reload');
+    await waitFor(send, 'Boolean(document.querySelector("[data-testid=volume-first-home]"))', 'reviewed homepage reload');
+    assert.equal(await evaluate(send, 'document.querySelectorAll("[data-testid=start-due-drill-review]").length'), 0);
+  }
+  console.log('Verified Cash and MTT due drill queues: original Range/Counterfactual replay, review-only evidence, rescheduling and reload.');
 } finally {
   try { cdp?.socket.close(); } catch {}
   await terminate(chrome);

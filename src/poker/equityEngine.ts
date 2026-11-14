@@ -25,6 +25,17 @@ export interface EquityResult {
   estimatedStates: number;
 }
 
+export const MIN_EQUITY_ITERATIONS = 1000;
+export const MAX_EQUITY_ITERATIONS = 100000;
+export const DEFAULT_EQUITY_ITERATIONS = 25000;
+
+export function validateEquityIterations(iterations: number): number {
+  if (!Number.isFinite(iterations) || !Number.isInteger(iterations) || iterations < MIN_EQUITY_ITERATIONS || iterations > MAX_EQUITY_ITERATIONS) {
+    throw new Error(`Monte Carlo iterations must be a finite integer between ${MIN_EQUITY_ITERATIONS.toLocaleString('en-US')} and ${MAX_EQUITY_ITERATIONS.toLocaleString('en-US')}.`);
+  }
+  return iterations;
+}
+
 interface WeightedCombo {
   cards: [Card, Card];
   weight: number;
@@ -233,6 +244,7 @@ function summarize(method: EquityResult['method'], wins: number, ties: number, l
 }
 
 export function calculateEquity(request: EquityRequest): EquityResult {
+  const iterations = validateEquityIterations(request.iterations === undefined ? DEFAULT_EQUITY_ITERATIONS : request.iterations);
   const hero = request.hero || [];
   const board = request.board || [];
   if (hero.length !== 2) throw new Error('Hero must have exactly two cards.');
@@ -267,7 +279,6 @@ export function calculateEquity(request: EquityRequest): EquityResult {
     return summarize('exact', wins, ties, losses, samples, villainCombos.length, estimatedStates);
   }
 
-  const iterations = Math.max(1000, request.iterations ?? 25000);
   const rng = makeRng(request.seed ?? 20260809);
   let wins = 0;
   let ties = 0;

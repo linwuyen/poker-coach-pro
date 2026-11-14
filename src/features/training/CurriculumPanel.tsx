@@ -3,8 +3,9 @@ import type { HistoryItem, PlayerProfile, Scenario } from '../../types';
 import { scenarioMatchesTrainingTrack, type TrainingTrack } from '../../domain/trainingTrack';
 import { practicalCurriculum } from '../../teaching/practicalCurriculum';
 import { tournamentTrainingScenarios } from '../../teaching/tournamentMathScenarios';
+import { semanticTeachingScenarios } from '../../teaching/scenarioCatalog';
 
-const courses = [...practicalCurriculum, ...tournamentTrainingScenarios];
+const courses = [...practicalCurriculum, ...semanticTeachingScenarios, ...tournamentTrainingScenarios];
 export function CurriculumPanel({ track, profile, history, onStart, onPreferences }: {
   track:TrainingTrack; profile:PlayerProfile; history:HistoryItem[];
   onStart:(scenario:Scenario)=>void; onPreferences:()=>void;
@@ -22,8 +23,8 @@ export function CurriculumPanel({ track, profile, history, onStart, onPreference
     <div className="mt-4 grid gap-3 md:grid-cols-2">{[...groups].map(([name, list]) => <div key={name} className="rounded-xl border border-slate-800 p-3"><h4 className="mb-2 text-sm font-semibold text-emerald-200">{name}</h4><div className="space-y-2">{list.map(s => {
       const enabled = scenarioMatchesTrainingTrack(s, track, profile);
       const practiced = history.some(item => item.scenarioId === s.id && !item.examMode);
-      const exact = s.steps[0].feedbacks.Call?.evidence?.sourceConfidence === 'exact-math';
-      return <button key={s.id} data-testid={`course-${s.id}`} disabled={!enabled} onClick={() => onStart(s)} className="block w-full rounded-lg bg-slate-950/50 px-3 py-2 text-left hover:bg-slate-800 disabled:opacity-40"><span className="text-sm">{s.title}</span><span className="mt-1 block text-[11px] text-slate-400">{s.tableSize} · 有效 {s.effectiveStack} · {exact ? '給定 equity 的效用算術' : '條件式教學'} · {enabled ? practiced ? '已練習，可複習' : '開始練習' : '不符合目前偏好'}</span></button>;
+      const exact = s.steps[0].options.every(action => s.steps[0].feedbacks[action]?.evidence?.sourceConfidence === 'exact-math');
+      return <button key={s.id} data-testid={`course-${s.id}`} disabled={!enabled} onClick={() => onStart(s)} className="block w-full rounded-lg bg-slate-950/50 px-3 py-2 text-left hover:bg-slate-800 disabled:opacity-40"><span className="text-sm">{s.title}</span><span className="mt-1 block text-[11px] text-slate-400">{s.tableSize} · 有效 {s.effectiveStack} · {exact ? '給定條件的效用算術' : '條件式教學'} · {enabled ? practiced ? '已練習，可複習' : '開始練習' : '不符合目前偏好'}</span></button>;
     })}</div></div>)}</div>
     <p className="mt-4 text-xs leading-5 text-slate-500">策略課依題目明示對手與情境評分，未提供完整 solver range 或動作 EV。未見測驗另行評估；同題重做與花色變體不算新能力證據。</p>
   </section>;

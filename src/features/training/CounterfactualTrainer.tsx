@@ -126,7 +126,7 @@ export function buildCounterfactualHistoryItems(
       isReview: Boolean(previous),
       isDelayedReview: isDelayedReview(previous, now),
       isUnseen: !previous,
-      isTransferTest: variant.id !== (dimension === 'bet-size' ? 'size-1' : 'range-baseline'),
+      isTransferTest: !previous && variant.id !== (dimension === 'bet-size' ? 'size-1' : 'range-baseline'),
       questionLabel: `${question.title} · ${variant.label}`,
       notes: dimension === 'bet-size'
         ? `固定 baseline range/equity ${baseline.heroEquity.toFixed(1)}%，只改下注尺寸。`
@@ -136,34 +136,44 @@ export function buildCounterfactualHistoryItems(
   });
 }
 
-export function CounterfactualTrainer({ onExit }: { onExit: () => void }) {
+export function CounterfactualTrainer({ onExit, reviewQuestion, reviewDimension, onComplete }: { onExit: () => void; reviewQuestion?: RangeQuestion; reviewDimension?: Dimension; onComplete?: () => void }) {
   const [index, setIndex] = useState(0);
-  const [dimension, setDimension] = useState<Dimension>('bet-size');
+  const [dimension, setDimension] = useState<Dimension>(reviewDimension || 'bet-size');
   const [answers, setAnswers] = useState<Record<string, HeroAction>>({});
   const [confidence, setConfidence] = useState<ConfidenceLevel | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [session, setSession] = useState({ regret: 0, answered: 0 });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const submissionLock = useRef(false);
   const startedAt = useRef(Date.now());
-  const question = RANGE_QUESTIONS[index % RANGE_QUESTIONS.length];
+  const question = reviewQuestion || RANGE_QUESTIONS[index % RANGE_QUESTIONS.length];
   const baseline = useMemo(() => calculateRangeDecision(question, baselineSelections(question)), [question]);
   const variants = useMemo(() => dimension === 'bet-size' ? betSizeVariants(question) : rangeWidthVariants(question), [question, dimension]);
 
   const resetAnswers = (nextDimension?: Dimension) => {
+    if (saving || (reviewDimension && nextDimension && nextDimension !== reviewDimension)) return;
     if (nextDimension) setDimension(nextDimension);
-    setAnswers({}); setConfidence(null); setSubmitted(false); startedAt.current = Date.now();
+    setAnswers({}); setConfidence(null); setSubmitted(false); submissionLock.current = false; startedAt.current = Date.now();
   };
 
-  const submit = () => {
-    if (!confidence || variants.some(variant => !answers[variant.id])) return;
+  const submit = async () => {
+    if (!confidence || variants.some(variant => !answers[variant.id]) || submissionLock.current) return;
+    submissionLock.current = true;
+    setSaving(true); setSaveError(false);
     const history = loadHistory();
     const now = Date.now();
     const items = buildCounterfactualHistoryItems(question, dimension, answers, confidence, history, startedAt.current, now);
-    void persistHistoryItems(items);
-    setSession(previous => ({ regret: previous.regret + items.reduce((sum, item) => sum + (item.evLossBB || 0), 0), answered: previous.answered + items.length }));
-    setSubmitted(true);
+    try {
+      await persistHistoryItems(items);
+      setSession(previous => ({ regret: previous.regret + items.reduce((sum, item) => sum + (item.evLossBB || 0), 0), answered: previous.answered + items.length }));
+      setSubmitted(true);
+    } catch { submissionLock.current = false; setSaveError(true); }
+    finally { setSaving(false); }
   };
 
   const next = () => {
+    if (reviewQuestion && onComplete) { onComplete(); return; }
     setIndex(previous => (previous + 1) % RANGE_QUESTIONS.length);
     resetAnswers();
   };
@@ -172,18 +182,19 @@ export function CounterfactualTrainer({ onExit }: { onExit: () => void }) {
   return <div className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 md:px-8">
     <div className="mx-auto max-w-5xl">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <button type="button" onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4" />返回主訓練機</button>
-        <div className="flex gap-2 text-xs"><span className="rounded-lg bg-slate-900 px-3 py-2">題目 {index + 1}/{RANGE_QUESTIONS.length}</span><span className="rounded-lg bg-violet-500/10 px-3 py-2 text-violet-300">平均 EV regret {averageRegret.toFixed(3)}BB</span></div>
+        <button type="button" disabled={saving} onClick={onExit} className="pc-interactive flex items-center gap-2 rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300"><ArrowLeft className="h-4 w-4" />返回主訓練機</button>
+        <div className="flex gap-2 text-xs"><span className="rounded-lg bg-slate-900 px-3 py-2">{reviewQuestion ? '原題複習' : `題目 ${index + 1}/${RANGE_QUESTIONS.length}`}</span><span className="rounded-lg bg-violet-500/10 px-3 py-2 text-violet-300">平均 EV regret {averageRegret.toFixed(3)}BB</span></div>
       </header>
 
       <section className="pc-hero-glow rounded-3xl border border-violet-500/20 bg-[linear-gradient(135deg,rgba(139,92,246,0.13),rgba(15,23,42,0.75))] p-6 md:p-8">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-violet-300"><Brain className="h-4 w-4" />Counterfactual Decision Boundary</div>
         <h1 className="mt-3 text-3xl font-bold">{question.title}</h1>
         <p className="mt-3 text-sm leading-7 text-slate-300">一次只改一個因果變數：下注尺寸，或 Villain range composition。你要找的是答案「在哪裡反轉」，不是記住一個靜態答案。</p>
-        <div className="mt-5 flex flex-wrap gap-2"><button type="button" onClick={() => resetAnswers('bet-size')} className={`pc-interactive flex items-center gap-2 rounded-xl border px-4 py-2 text-sm ${dimension === 'bet-size' ? 'border-violet-400/50 bg-violet-500/15 text-violet-200' : 'border-slate-700 text-slate-400'}`}><Ruler className="h-4 w-4" />下注尺寸</button><button type="button" onClick={() => resetAnswers('range-width')} className={`pc-interactive flex items-center gap-2 rounded-xl border px-4 py-2 text-sm ${dimension === 'range-width' ? 'border-blue-400/50 bg-blue-500/15 text-blue-200' : 'border-slate-700 text-slate-400'}`}><Layers3 className="h-4 w-4" />對手範圍</button></div>
+        <div className="mt-5 flex flex-wrap gap-2"><button type="button" disabled={saving || Boolean(reviewDimension && reviewDimension !== 'bet-size')} onClick={() => resetAnswers('bet-size')} className={`pc-interactive flex items-center gap-2 rounded-xl border px-4 py-2 text-sm ${dimension === 'bet-size' ? 'border-violet-400/50 bg-violet-500/15 text-violet-200' : 'border-slate-700 text-slate-400'}`}><Ruler className="h-4 w-4" />下注尺寸</button><button type="button" disabled={saving || Boolean(reviewDimension && reviewDimension !== 'range-width')} onClick={() => resetAnswers('range-width')} className={`pc-interactive flex items-center gap-2 rounded-xl border px-4 py-2 text-sm ${dimension === 'range-width' ? 'border-blue-400/50 bg-blue-500/15 text-blue-200' : 'border-slate-700 text-slate-400'}`}><Layers3 className="h-4 w-4" />對手範圍</button></div>
         <div className="mt-5 grid gap-3 sm:grid-cols-3"><Metric label="Baseline Equity" value={`${baseline.heroEquity.toFixed(1)}%`} /><Metric label="原始 Pot Odds" value={`${baseline.potOdds.toFixed(1)}%`} /><Metric label="Truth" value={question.source.trustTier} /></div>
       </section>
 
+      {saveError && <p role="alert" className="mt-4 text-sm text-red-300">學習紀錄儲存失敗，請重試提交；複習尚未完成。</p>}
       <section className="mt-6 grid gap-4 lg:grid-cols-3">{variants.map(variant => {
         const answer = answers[variant.id];
         const correct = submitted && answer === variant.bestAction;
@@ -191,12 +202,12 @@ export function CounterfactualTrainer({ onExit }: { onExit: () => void }) {
         return <div key={variant.id} className={`pc-card-lift rounded-2xl border p-5 ${correct ? 'border-emerald-500/40 bg-emerald-500/7' : wrong ? 'border-red-500/35 bg-red-500/6' : 'border-slate-800 bg-slate-900/55'}`}>
           <h2 className="font-semibold">{variant.label}</h2><p className="mt-1 min-h-8 text-xs leading-5 text-slate-500">{variant.detail}</p>
           <div className="mt-4 space-y-2 text-sm text-slate-400"><Row label="Hero Equity" value={`${variant.heroEquity.toFixed(1)}%`} /><Row label="Pot Odds" value={`${variant.potOdds.toFixed(1)}%`} />{variant.sizePot !== undefined && <Row label="Facing size" value={`${variant.sizePot.toFixed(0)}% pot`} />}</div>
-          <div className="mt-5 grid grid-cols-2 gap-2">{(['fold', 'call'] as HeroAction[]).map(action => <button key={action} type="button" disabled={submitted} onClick={() => setAnswers(previous => ({ ...previous, [variant.id]: action }))} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${answer === action ? 'border-violet-400 bg-violet-500/15 text-violet-200' : 'border-slate-700 bg-slate-950/40 text-slate-300'}`}>{action === 'call' ? 'Call' : 'Fold'}</button>)}</div>
+          <div className="mt-5 grid grid-cols-2 gap-2">{(['fold', 'call'] as HeroAction[]).map(action => <button key={action} type="button" disabled={saving || submitted} onClick={() => setAnswers(previous => ({ ...previous, [variant.id]: action }))} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${answer === action ? 'border-violet-400 bg-violet-500/15 text-violet-200' : 'border-slate-700 bg-slate-950/40 text-slate-300'}`}>{action === 'call' ? 'Call' : 'Fold'}</button>)}</div>
           {submitted && <div className="mt-4 rounded-xl bg-slate-950/45 p-3 text-xs leading-6 text-slate-300"><div>最佳：<b>{variant.bestAction.toUpperCase()}</b></div><div>Call EV：{variant.callEvBB.toFixed(3)}BB</div><div>你的 EV regret：{evRegret(Math.max(0, variant.callEvBB), answer === 'call' ? variant.callEvBB : 0).toFixed(3)}BB</div></div>}
         </div>;
       })}</section>
 
-      {!submitted ? <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/55 p-5"><div className="text-sm font-semibold">你有多確定？</div><div className="mt-3 grid gap-2 sm:grid-cols-4">{CONFIDENCE.map(item => <button key={item.value} type="button" onClick={() => setConfidence(item.value)} className={`rounded-xl border px-3 py-3 text-sm ${confidence === item.value ? 'border-amber-400/60 bg-amber-400/10 text-amber-200' : 'border-slate-700 text-slate-400'}`}>{item.label}</button>)}</div><button type="button" onClick={submit} disabled={!confidence || variants.some(variant => !answers[variant.id])} className="pc-interactive pc-shimmer mt-4 w-full rounded-xl bg-violet-500 px-5 py-3 font-semibold text-white disabled:opacity-40">提交三個反事實決策</button></section>
+      {!submitted ? <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/55 p-5"><div className="text-sm font-semibold">你有多確定？</div><div className="mt-3 grid gap-2 sm:grid-cols-4">{CONFIDENCE.map(item => <button key={item.value} type="button" disabled={saving} onClick={() => setConfidence(item.value)} className={`rounded-xl border px-3 py-3 text-sm ${confidence === item.value ? 'border-amber-400/60 bg-amber-400/10 text-amber-200' : 'border-slate-700 text-slate-400'}`}>{item.label}</button>)}</div><button type="button" onClick={submit} disabled={saving || !confidence || variants.some(variant => !answers[variant.id])} className="pc-interactive pc-shimmer mt-4 w-full rounded-xl bg-violet-500 px-5 py-3 font-semibold text-white disabled:opacity-40">提交三個反事實決策</button></section>
       : <section className="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/6 p-5"><div className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-5 w-5 text-emerald-400" />決策邊界回饋</div><p className="mt-3 text-sm leading-7 text-slate-300">{dimension === 'bet-size' ? 'Bet size 改變 Pot Odds，所以同一手牌可能跨過 Call/Fold 邊界。' : 'Villain range composition 改變 Hero Equity；同樣下注尺寸下，value/bluff 密度變化也能讓答案反轉。'}</p><div className="mt-4 flex gap-3"><button type="button" onClick={next} className="rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-950">下一個邊界</button><button type="button" onClick={() => resetAnswers()} className="flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-3 text-sm"><RotateCcw className="h-4 w-4" />重做</button></div></section>}
     </div>
   </div>;

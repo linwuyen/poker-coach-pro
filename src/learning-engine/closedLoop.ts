@@ -2,7 +2,8 @@ import type { HistoryItem } from '../types';
 import type { InfiniteHandCandidate } from './infiniteHandGenerator';
 import { calculateSkillMastery, getSkillNode, inferScenarioSkillIds, inferSkillIds, SKILL_GRAPH } from './skillGraph';
 import { currentDueReviews } from './index';
-import { firstTransferEvidence } from './transferBenchmark';
+import { firstTransferEvidence, hasValidLearningContext } from './transferBenchmark';
+import { historyForTrainingTrack, type TrainingTrack } from '../domain/trainingTrack';
 
 export interface VerifiedEvNorthStar {
   samples: number;
@@ -95,6 +96,7 @@ function finiteNumber(value: unknown): value is number {
 }
 
 export function isEvaluationAttempt(item: HistoryItem): boolean {
+  if (!hasValidLearningContext(item)) return false;
   return item.examMode === true
     || item.trainingType === 'benchmark'
     || item.trainingType === 'solver-benchmark'
@@ -200,9 +202,11 @@ function skillIdsForItem(item: HistoryItem): string[] {
   return item.skillIds?.length ? item.skillIds : inferSkillIds(item.category || [], item.street);
 }
 
-export function buildKnowledgeStates(history: HistoryItem[]): SkillKnowledgeState[] {
+export function buildKnowledgeStates(history: HistoryItem[], track?: TrainingTrack): SkillKnowledgeState[] {
+  if (track) history = historyForTrainingTrack(history, track);
+  history = history.filter(hasValidLearningContext);
   const mastery = new Map(calculateSkillMastery(history).map(item => [item.skillId, item]));
-  return SKILL_GRAPH.map(node => {
+  return SKILL_GRAPH.filter(node => track !== 'cash' || node.parent !== 'tournament').map(node => {
     const items = history.filter(item => item.trainingType !== 'custom' && skillIdsForItem(item).includes(node.id));
     const recent = [...items].sort((a, b) => b.timestamp - a.timestamp).slice(0, 12);
     const delayed = items.filter(item => item.isDelayedReview);

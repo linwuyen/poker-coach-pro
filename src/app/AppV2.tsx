@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { lazy, ReactNode, Suspense, useMemo, useState } from 'react';
 import { BarChart3, Brain, CalendarClock, CheckCircle2, Clock3, Gauge, Infinity as InfinityIcon, Play, Target, TimerReset } from 'lucide-react';
 import { scenarios } from '../data';
 import { HistoryItem, PlayerProfile, Scenario } from '../types';
@@ -16,6 +16,10 @@ import { exactMathEvaluationScenarios } from '../teaching/evaluationMathScenario
 import { tournamentEvaluationScenarios } from '../teaching/tournamentMathScenarios';
 import { adaptiveCalibrationReport, buildKnowledgeStates, SkillKnowledgeState, verifiedEvNorthStar, VerifiedEvNorthStar } from '../learning-engine/closedLoop';
 import { loadHistory, persistHistoryItem, TrainingBackup, updateHistoryCoordinated, upsertHistoryItem } from '../utils/history';
+import { buildDueDrillQueue, type DueDrillReview } from '../learning-engine/drillReviews';
+
+const RangeReview = lazy(() => import('../features/range/RangeReadingTrainer').then(module => ({ default: module.RangeReadingTrainer })));
+const CounterfactualReview = lazy(() => import('../features/training/CounterfactualTrainer').then(module => ({ default: module.CounterfactualTrainer })));
 
 const TRAINING_TYPES = new Set(['scenario', 'range', 'counterfactual', 'solver-corpus', 'transfer']);
 
@@ -27,6 +31,7 @@ export default function AppV2() {
   const [starredIds] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('poker_starred_ids') || '[]'); } catch { return []; } });
   const [sessionOpen, setSessionOpen] = useState(false);
   const [lesson, setLesson] = useState<Scenario | null>(null);
+  const [drillReview, setDrillReview] = useState<DueDrillReview | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
 
@@ -36,14 +41,16 @@ export default function AppV2() {
   const metrics = useMemo(() => getLearningMetrics(trackHistory), [trackHistory]);
   const mastery = useMemo(() => calculateMastery(trackHistory), [trackHistory]);
   const northStar = useMemo(() => verifiedEvNorthStar(trackHistory), [trackHistory]);
-  const knowledge = useMemo(() => buildKnowledgeStates(trackHistory), [trackHistory]);
+  const knowledge = useMemo(() => buildKnowledgeStates(trackHistory, track), [trackHistory, track]);
   const calibration = useMemo(() => adaptiveCalibrationReport(trackHistory), [trackHistory]);
   const dueCount = useMemo(() => currentDueReviews(trackHistory).length, [trackHistory]);
+  const dueDrills = useMemo(() => buildDueDrillQueue(trackHistory, track), [trackHistory, track]);
+  const closeDrillReview = () => { setHistory(loadHistory()); setDrillReview(null); };
   const todayStart = startOfLocalDay(Date.now());
   const todayItems = trackHistory.filter(item => item.timestamp >= todayStart && TRAINING_TYPES.has(item.trainingType || ''));
   const weekItems = trackHistory.filter(item => item.timestamp >= Date.now() - 7 * 86400000 && TRAINING_TYPES.has(item.trainingType || ''));
 
-  const changePage = (next: AppPage) => { setSessionOpen(false); setLesson(null); setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const changePage = (next: AppPage) => { setHistory(loadHistory()); setDrillReview(null); setSessionOpen(false); setLesson(null); setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const startInfinite = () => { setLesson(null); setSessionOpen(true); setPage('train'); window.scrollTo({ top: 0 }); };
   const startExam = () => { window.location.hash = '#exam-mode'; };
   const recordHistory = (item: HistoryItem) => {
@@ -52,8 +59,9 @@ export default function AppV2() {
       .then(committed => setHistory(committed))
       .catch(() => setHistory(loadHistory()));
   };
-  const completeOnboarding = (next: PlayerProfile) => { setProfile(savePlayerProfile(next)); if (!next.formats.includes(track)) setTrack(saveTrainingTrack(loadTrainingTrack(next))); setSessionOpen(false); setLesson(null); setOnboardingOpen(false); };
+  const completeOnboarding = (next: PlayerProfile) => { setDrillReview(null); setProfile(savePlayerProfile(next)); if (!next.formats.includes(track)) setTrack(saveTrainingTrack(loadTrainingTrack(next))); setSessionOpen(false); setLesson(null); setOnboardingOpen(false); };
   const restoreBackup = (backup: TrainingBackup) => {
+    setDrillReview(null);
     setLesson(null);
     setSessionOpen(false);
     setHistory(backup.history);
@@ -65,16 +73,22 @@ export default function AppV2() {
   };
 
   return <AppShell page={page} onPageChange={changePage} onOpenSettings={() => setSettingsOpen(true)}>
-    <section className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4" aria-label="訓練賽制"><div><div className="text-xs text-slate-400">目前訓練與進度</div><div className="mt-1 font-semibold">{trainingTrackLabel(track)}</div></div><div className="flex flex-wrap gap-2">{(['cash', 'tournament'] as const).map(value => <button key={value} data-testid={`track-${value}`} type="button" aria-pressed={track === value} disabled={!profile.formats.includes(value)} onClick={() => { setTrack(saveTrainingTrack(value)); setSessionOpen(false); setLesson(null); }} className={`rounded-xl border px-4 py-2 text-sm disabled:opacity-35 ${track === value ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200' : 'border-slate-700 text-slate-300'}`}>{trainingTrackLabel(value)}</button>)}<button onClick={() => setOnboardingOpen(true)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-400">調整偏好</button></div><p className="w-full text-xs text-slate-500">{profile.tableSizes.join(' / ')} · {profile.stackBands.join(' / ')} BB · {profile.focusAreas.join(' / ')}。未啟用的賽制可在偏好中開啟；兩種賽制分開記錄進度。PokerBench 剩餘有效籌碼未知，只在全部籌碼區間都選取時納入。</p></section>
-    {lesson ? <TrainingSession key={lesson.id} scenarios={[lesson]} history={trackHistory} title={lesson.title} onRecord={recordHistory} onExit={() => setLesson(null)} onComplete={() => setLesson(null)} /> : sessionOpen ? <InfiniteTrainingTable key={`${track}:${profile.updatedAt}`} track={track} profile={profile} scenarioBank={scenarios} history={trackHistory} onRecord={recordHistory} onExit={() => { setSessionOpen(false); setLesson(null); setPage('today'); }} /> : <>
+    <section className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4" aria-label="訓練賽制"><div><div className="text-xs text-slate-400">目前訓練與進度</div><div className="mt-1 font-semibold">{trainingTrackLabel(track)}</div></div><div className="flex flex-wrap gap-2">{(['cash', 'tournament'] as const).map(value => <button key={value} data-testid={`track-${value}`} type="button" aria-pressed={track === value} disabled={!profile.formats.includes(value)} onClick={() => { setHistory(loadHistory()); setDrillReview(null); setTrack(saveTrainingTrack(value)); setSessionOpen(false); setLesson(null); }} className={`rounded-xl border px-4 py-2 text-sm disabled:opacity-35 ${track === value ? 'border-emerald-500 bg-emerald-500/15 text-emerald-200' : 'border-slate-700 text-slate-300'}`}>{trainingTrackLabel(value)}</button>)}<button onClick={() => setOnboardingOpen(true)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-400">調整偏好</button></div><p className="w-full text-xs text-slate-500">{profile.tableSizes.join(' / ')} · {profile.stackBands.join(' / ')} BB · {profile.focusAreas.join(' / ')}。未啟用的賽制可在偏好中開啟；兩種賽制分開記錄進度。PokerBench 剩餘有效籌碼未知，只在全部籌碼區間都選取時納入。</p></section>
+    {drillReview ? <Suspense fallback={<p className="p-6 text-sm text-slate-400">載入原題複習…</p>}><div data-testid="active-drill-review"><p className="mb-3 text-sm text-amber-200">到期複習 · 原題重做；儲存成功後按下一題返回佇列。</p>{drillReview.kind === 'range' ? <RangeReview key={drillReview.id} reviewQuestion={drillReview.question} onExit={closeDrillReview} onComplete={closeDrillReview} /> : <CounterfactualReview key={drillReview.id} reviewQuestion={drillReview.question} reviewDimension={drillReview.dimension} onExit={closeDrillReview} onComplete={closeDrillReview} />}</div></Suspense> : lesson ? <TrainingSession key={lesson.id} scenarios={[lesson]} history={trackHistory} title={lesson.title} onRecord={recordHistory} onExit={() => setLesson(null)} onComplete={() => setLesson(null)} /> : sessionOpen ? <InfiniteTrainingTable key={`${track}:${profile.updatedAt}`} track={track} profile={profile} scenarioBank={scenarios} history={trackHistory} onRecord={recordHistory} onExit={() => { setSessionOpen(false); setLesson(null); setPage('today'); }} /> : <>
       {page === 'today' && <TodayPage track={track} history={trackHistory} dailyGoal={profile.dailyQuestions} todayItems={todayItems} dueCount={dueCount} weaknesses={weaknesses} metrics={metrics} weekItems={weekItems} northStar={northStar} onStart={startInfinite} onNavigate={changePage} />}
       {page === 'train' && <TrainPage track={track} onStart={startInfinite} onExam={startExam} />}
       {(page === 'today' || page === 'train') && <div className="mt-6"><CurriculumPanel track={track} profile={profile} history={trackHistory} onStart={setLesson} onPreferences={() => setOnboardingOpen(true)} /></div>}
       {page === 'analysis' && <ProgressPage track={track} scenarioBank={coverageCatalog} history={trackHistory} metrics={metrics} weaknesses={weaknesses} mastery={mastery} dueCount={dueCount} northStar={northStar} knowledge={knowledge} calibration={calibration} onStart={startInfinite} onExam={startExam} />}
+      <DueDrillQueue reviews={dueDrills} onStart={setDrillReview} />
     </>}
     <SettingsDrawer open={settingsOpen} profile={profile} history={history} starredIds={starredIds} onClose={() => setSettingsOpen(false)} onEditProfile={() => { setSettingsOpen(false); setOnboardingOpen(true); }} onRestore={restoreBackup} />
     {onboardingOpen && <Onboarding initial={profile} onComplete={completeOnboarding} />}
   </AppShell>;
+}
+
+function DueDrillQueue({ reviews, onStart }: { reviews: DueDrillReview[]; onStart: (review: DueDrillReview) => void }) {
+  if (!reviews.length) return null;
+  return <section data-testid="due-drill-queue" className="mt-6 rounded-2xl border border-amber-500/25 bg-slate-900/60 p-5"><h3 className="font-semibold">工具題到期複習 · {reviews.length} 組</h3><p className="mt-2 text-sm text-slate-400">Range 與 Counterfactual 使用原題專用工具；不會混入一般手牌。這些複習不受目前桌型與深度偏好限制，保留原本賽制與題目。</p><div className="mt-4 space-y-3">{reviews.map(review => <button key={review.id} data-testid="start-due-drill-review" data-review-id={review.id} type="button" onClick={() => onStart(review)} className="block w-full rounded-xl border border-slate-700 p-4 text-left hover:border-amber-400"><span className="font-semibold">{review.kind === 'range' ? 'Range' : `Counterfactual · ${review.dimension === 'bet-size' ? '下注尺寸' : '對手範圍'}`}</span><span className="ml-3 text-sm text-slate-400">{review.question.title} · {review.dueItems.length} 個到期節點</span></button>)}</div></section>;
 }
 
 function TodayPage({ track, history, dailyGoal, todayItems, dueCount, weaknesses, metrics, weekItems, northStar, onStart, onNavigate }: {
@@ -89,7 +103,7 @@ function TodayPage({ track, history, dailyGoal, todayItems, dueCount, weaknesses
       <div className="grid items-center gap-8 lg:grid-cols-[1fr_340px]"><div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400"><InfinityIcon className="h-4 w-4" />Closed-loop Infinite Trainer</div><h2 className="mt-4 max-w-2xl text-3xl font-bold tracking-tight text-white md:text-4xl">{todayDecisions ? '繼續下一個學習決策' : '開始今天第一手'}</h2><p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 md:text-base">依目前賽制與偏好練習，結合弱點、待複習與情境覆蓋選下一題。用未見情境和延遲回想檢查學習；動作標籤、作者教材與精確算術分開解讀。</p><button data-testid="start-auto-table" type="button" onClick={onStart} className="mt-6 flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-3.5 text-sm font-bold text-emerald-950"><Play className="h-4 w-4 fill-current" />{todayDecisions ? '繼續打' : '開始打牌'}</button></div>
         <div className="rounded-2xl border border-slate-700/70 bg-slate-950/55 p-5"><div className="flex items-center justify-between text-xs text-slate-500"><span>今日決策</span><span className="font-mono">{todayDecisions}/{dailyGoal}</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} /></div><div className="mt-5 text-xs text-slate-500">目前優先修正</div><div className="mt-2 text-base font-semibold text-slate-100">{topWeakness?.key || '先建立你的決策樣本'}</div><p className="mt-2 text-xs leading-5 text-slate-500">教材可能是條件式作者建議、明示假設的精確算術或資料集標籤；缺少的範圍、抽水與 EV 資訊會明示。</p></div></div>
     </section>
-    <section className="grid gap-4 md:grid-cols-4"><TrackOutcome track={track} history={history} cashValue={evValue} cashDetail={northStar.recentSamples ? `最近完成測驗 · ${northStar.recentSamples} 個算術 EV 樣本` : "尚無現金桌算術評估；不代表完整實戰能力"} /><MetricCard icon={<CalendarClock className="h-5 w-5" />} label="待複習" value={`${dueCount}`} detail="會自動混入" /><MetricCard icon={<Clock3 className="h-5 w-5" />} label="延遲留存" value={metrics.delayedSamples ? `${metrics.delayedRetention}%` : "—"} detail="隔一段時間仍會" /><MetricCard icon={<Brain className="h-5 w-5" />} label="Transfer" value={metrics.transferSamples ? `${metrics.transferScore}%` : "—"} detail={`${accuracy(weekItems)}% 本週訓練正確率僅作輔助`} /></section>
+    <section className="grid gap-4 md:grid-cols-4"><TrackOutcome track={track} history={history} cashValue={evValue} cashDetail={northStar.recentSamples ? `最近完成測驗 · ${northStar.recentSamples} 個算術 EV 樣本` : "尚無現金桌算術評估；不代表完整實戰能力"} /><MetricCard icon={<CalendarClock className="h-5 w-5" />} label="待複習" value={`${dueCount}`} detail="手牌依偏好混入；工具題請開啟下方複習佇列" /><MetricCard icon={<Clock3 className="h-5 w-5" />} label="延遲留存" value={metrics.delayedSamples ? `${metrics.delayedRetention}%` : "—"} detail="隔一段時間仍會" /><MetricCard icon={<Brain className="h-5 w-5" />} label="Transfer" value={metrics.transferSamples ? `${metrics.transferScore}%` : "—"} detail={`${accuracy(weekItems)}% 本週訓練正確率僅作輔助`} /></section>
     <CurriculumGuidance track={track} /><Panel title="目前最大漏點" subtitle="active-learning selector 會提高資訊增益較大的題目權重" action="看進度" onAction={() => onNavigate('analysis')}>{topWeakness ? <div className="flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-950/35 p-4"><div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-amber-500/10 font-mono font-bold text-amber-300">{topWeakness.mastery}%</div><div><div className="font-semibold text-slate-100">{topWeakness.key}</div><div className="mt-1 text-sm text-slate-500">{topWeakness.total} 次觀測；下一題不只看錯題率，也看 uncertainty、transfer 與 EV severity。</div></div></div> : <EmptyState text="先打一些牌，系統會建立 Knowledge State。" />}</Panel>
   </div>;
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowLeft, Calculator, Dices, ShieldCheck, Sparkles } from 'lucide-react';
 import { AnalysisContextBanner } from '../analysis/AnalysisContextBanner';
 import { readAnalysisContextFromHash } from '../analysis/analysisContext';
-import { calculateEquity, EquityResult, parseCardsText, WeightedRangeHand } from '../../poker/equityEngine';
+import { calculateEquity, DEFAULT_EQUITY_ITERATIONS, EquityResult, MAX_EQUITY_ITERATIONS, MIN_EQUITY_ITERATIONS, parseCardsText, validateEquityIterations, WeightedRangeHand } from '../../poker/equityEngine';
 
 function parseRange(text: string): WeightedRangeHand[] {
   return text.split(/\n|,/).map(line => line.trim()).filter(Boolean).map(line => {
@@ -13,19 +13,20 @@ function parseRange(text: string): WeightedRangeHand[] {
   });
 }
 
-function run(hero: string, board: string, rangeText: string, iterations: string): EquityResult {
+export function calculateEquityWorkbench(hero: string, board: string, rangeText: string, iterations: string): EquityResult {
   if (!rangeText.trim()) throw new Error('缺少 Villain range。這一題沒有可驗證 range 時，工具不會自己猜一個範圍。');
+  const iterationCount = validateEquityIterations(Number(iterations));
   return calculateEquity({
     hero: parseCardsText(hero),
     board: board.trim() ? parseCardsText(board) : [],
     villainRange: parseRange(rangeText),
-    iterations: Math.max(1000, Number(iterations) || 25000),
+    iterations: iterationCount,
   });
 }
 
 function initialResult(hero: string, board: string, range: string): EquityResult | null {
   if (!range.trim()) return null;
-  try { return run(hero, board, range, '25000'); } catch { return null; }
+  try { return calculateEquityWorkbench(hero, board, range, String(DEFAULT_EQUITY_ITERATIONS)); } catch { return null; }
 }
 
 export function EquityWorkbench({ onExit }: { onExit: () => void }) {
@@ -36,13 +37,13 @@ export function EquityWorkbench({ onExit }: { onExit: () => void }) {
   const [hero, setHero] = useState(initialHero);
   const [board, setBoard] = useState(initialBoard);
   const [rangeText, setRangeText] = useState(initialRange);
-  const [iterations, setIterations] = useState('25000');
+  const [iterations, setIterations] = useState(String(DEFAULT_EQUITY_ITERATIONS));
   const [result, setResult] = useState<EquityResult | null>(() => initialResult(initialHero, initialBoard, initialRange));
   const [error, setError] = useState(context && !initialRange ? '已帶入 Hero / Board，但來源沒有可機器解析的 Villain range；先補 range 才能計算真正 equity。' : '');
 
   const recalc = () => {
     try {
-      setResult(run(hero, board, rangeText, iterations));
+      setResult(calculateEquityWorkbench(hero, board, rangeText, iterations));
       setError('');
     } catch (caught) {
       setResult(null);
@@ -66,11 +67,11 @@ export function EquityWorkbench({ onExit }: { onExit: () => void }) {
         <label className="md:col-span-2 text-xs text-slate-500">Villain range：每行 `hand weight`，weight 0–1
           <textarea data-testid="equity-villain-range" value={rangeText} onChange={event => setRangeText(event.target.value)} rows={6} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-3 font-mono text-sm text-slate-100 outline-none focus:border-blue-500" placeholder="QQ 1\nJJ 1\nAKo 0.5" />
         </label>
-        <Field label="Monte Carlo iterations" value={iterations} onChange={setIterations} placeholder="25000" />
+        <Field label={`Monte Carlo iterations（${MIN_EQUITY_ITERATIONS.toLocaleString('en-US')}–${MAX_EQUITY_ITERATIONS.toLocaleString('en-US')} 的整數）`} value={iterations} onChange={setIterations} placeholder={String(DEFAULT_EQUITY_ITERATIONS)} />
         <button type="button" onClick={recalc} className="pc-interactive pc-shimmer flex items-center justify-center gap-2 rounded-xl bg-blue-500 px-5 py-3 font-semibold text-white"><Dices className="h-4 w-4" />重新計算</button>
       </section>
 
-      {error && <div data-testid="equity-context-warning" className="mt-5 rounded-xl border border-amber-500/25 bg-amber-500/7 p-4 text-sm text-amber-100">{error}</div>}
+      {error && <div role="alert" data-testid="equity-context-warning" className="mt-5 rounded-xl border border-amber-500/25 bg-amber-500/7 p-4 text-sm text-amber-100">{error}</div>}
       {result && <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Hero Equity" value={`${result.equity.toFixed(2)}%`} accent />
         <Metric label="Win / Tie" value={`${result.winRate.toFixed(1)} / ${result.tieRate.toFixed(1)}%`} />

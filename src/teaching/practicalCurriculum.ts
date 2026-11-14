@@ -1,11 +1,6 @@
-import type { ActionType, Card, Feedback, Scenario, Street } from '../types';
-
-interface Lesson {
-  key: string; title: string; topic: string; format: 'cash' | 'tournament'; depth: number;
-  table?: '6max' | '9max'; position: string; cards: string; board?: string; street?: Street;
-  pot: number; line: string; prompt: string; assumptions: string[];
-  best: ActionType; answers: Partial<Record<ActionType, [number, string]>>; remember: string;
-}
+import type { Card, Feedback, Scenario } from '../types';
+import { PRACTICAL_ACTION_ORDER, type Lesson } from './practicalLesson';
+import { expandedPracticalLessons } from './expandedPracticalLessons';
 const suits = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' } as const;
 function cards(text = ''): Card[] { return (text.match(/[2-9TJQKA][shdc]/g) || []).map(c => ({ rank: c[0] as Card['rank'], suit: suits[c[1] as keyof typeof suits] })); }
 
@@ -41,7 +36,8 @@ const lessons: Lesson[] = [
     line:'6-max，前面棄到 CO；盲注 1.5BB、BB ante 1BB。',prompt:'後方常規玩家會用弱 Ax/Broadway 防守小開池，只用強範圍跟 30BB 全下。AQs？',assumptions:['30BB 為有效可投入深度；無顯著 ICM 壓力。','題目比較初始尺度，不指定完整開池表。'],best:'Raise',answers:{Raise:[10,'約 2.2BB 開池可被較差牌繼續，並保留對再加注的決策空間。'],'All-in':[4,'30BB 並非自動推棄區；全下會趕走許多可取得價值的弱牌。'],Fold:[0,'在題述普通後方範圍下棄 AQs 過緊。']},remember:'中短碼仍有小開池、跟注與非全下再加注的策略空間。' },
   { key:'mtt-40',title:'40BB：3-bet 尺度與後續計畫',topic:'30–40BB 翻前',format:'tournament',depth:40,position:'BTN',cards:'KsKd',pot:4.7,
     line:'HJ Open 2.2BB，盲注與 BB ante 合計 2.5BB。',prompt:'HJ 會跟小 3-bet 的範圍包含 TT/JJ/AQ，盲位尚未行動。KK？',assumptions:['目前有效 40BB，遠離 ICM 壓力。','偏好約 6–7BB 的非全下價值再加注；不是 solver 唯一尺寸。'],best:'3-bet',answers:{'3-bet':[10,'保留較差牌的跟注，同時建立能在有利牌面取得後續價值的底池。'],Call:[8,'有後方擠壓或誘導讀牌時可保留平跟；須接受多人風險。'],'All-in':[6,'能立即取池，但若只有強範圍跟注，可能失去較差牌支付。']},remember:'40BB 的強牌不必自動推；先想被跟後 SPR 與哪些翻牌要減速。' },
-  { key:'mtt-srp',title:'MTT 翻後：頂對與低 SPR',topic:'MTT 翻後',format:'tournament',depth:16.8,position:'BTN',cards:'AsQd',board:'Qh7c2s',street:'Flop',pot:5.9,
+  { key:'mtt-srp',title:'MTT 翻後：頂對與低 SPR',topic:'MTT 翻後',format:'tournament',depth:16.8,heroStack:17.8,villainStack:16.8,position:'BTN',cards:'AsQd',board:'Qh7c2s',street:'Flop',pot:5.9,
+    potAccounting:{contributionsBB:[2.2,2.2,0.5,1],callCostBB:0},actions:[{street:'Preflop',seat:'BTN',action:'Raise',amountBB:2.2},{street:'Preflop',seat:'BB',action:'Call',amountBB:1.2,label:'BB 補 1.2BB；另已支付 1BB ante'},{street:'Flop',seat:'BB',action:'Check'}],
     line:'雙方 20BB 起始（含將支付的盲注與 ante），BTN Open 2.2BB，BB Call；SB 0.5BB、BB ante 1BB；BB 過牌。',prompt:'BB 會用 QJ/QT/7x 跟小注；面對大注較緊。AQ 第一街？',assumptions:['Hero 剩餘 17.8BB，BB 付過 ante 後剩餘 16.8BB；目前有效 16.8BB；chip EV，沒有顯著 ICM 壓力。','SPR 約 2.85 仍需看對手範圍，並非頂對自動全下。'],best:'Bet small',answers:{'Bet small':[10,'約 2BB 向較弱牌取值並保留後街價值空間。'],Check:[8,'針對會亂下注的對手可過牌誘導；後續不能機械式棄牌。'],'All-in':[4,'直接超池推可能只留下強牌，題述反應不足以支持最大尺寸。']},remember:'SPR 幫助規劃投入，不替代範圍與牌面判斷。' },
   { key:'mtt-catch',title:'MTT 河牌：保留攤牌與抓詐唬',topic:'抓詐唬 bluff-catching',format:'tournament',depth:25,position:'BB',cards:'KhJd',board:'Ks8s4d2c2h',street:'River',pot:18,
     line:'River 原底池 12BB，BTN 下注 6BB。你有 25BB 有效剩餘，跟注需 6BB。',prompt:'可靠讀牌：BTN 常把所有錯失黑桃聽牌下注，價值則主要 KQ/AK；你沒有黑桃。KJ？',assumptions:['只考慮 chip EV，無顯著 ICM 壓力。','「常把所有錯失聽牌下注」是條件，不從牌面自動推定詐唬頻率。'],best:'Call',answers:{Call:[10,'題述對手保留大量錯失聽牌詐唬；沒有黑桃較少阻擋這些組合，跟注是教學基準。'],Fold:[8,'若實際下注組合不足或 ICM 風險高，棄牌可合理；要先驗證讀牌。'],Raise:[3,'抓詐唬牌通常不需要把詐唬趕走、讓較強牌繼續。']},remember:'先列組合與下注頻率，再看 blocker；ICM 場景另算效用。' },
@@ -53,7 +49,7 @@ const lessons: Lesson[] = [
     line:'SB 覆蓋你並全下，BB 尚有 15BB；SB 賞金很大，但你贏了也無法讓他出局。',prompt:'SB 全下範圍偏強，沒有其他足以支持 72o 的價格或讀牌理由。你能為了賞金跟嗎？',assumptions:['此決策只談本次立即可領賞金；不假造未來賞金模型。','Hero 未覆蓋 SB，因此本次擊敗對手無法立即領其賞金。'],best:'Fold',answers:{Fold:[10,'這次即時賞金為零，不能用對手頭上的高額賞金補貼弱牌跟注。'],Call:[1,'先確認能否淘汰，再把可立即領取部分加入 EV；賞金面額不是自動可得。']},remember:'分開主獎金 EV、立即賞金與未來賞金；覆蓋關係先於賞金金額。' },
 ];
 
-export const practicalCurriculum: Scenario[] = lessons.map(lesson => {
+export const practicalCurriculum: Scenario[] = [...lessons, ...expandedPracticalLessons].map(lesson => {
   const feedbacks = Object.fromEntries(Object.entries(lesson.answers).map(([action, [score, why]]) => [action, {
     score, judgment: score >= 10 ? '正確' : score >= 8 ? '可接受' : '錯誤', bestAction: lesson.best,
     why, conceptualError: score >= 8 ? '無；請確認明示前提在實戰是否成立。' : '忽略本題對手反應、位置、有效深度或效用前提。',
@@ -64,11 +60,16 @@ export const practicalCurriculum: Scenario[] = lessons.map(lesson => {
     id:`course-${lesson.key}`, decisionFamilyId:`course-${lesson.key}`, title:lesson.title,
     category:['實戰課程', lesson.topic], type:lesson.format === 'cash' ? 'Cash Game' : 'Tournament', difficulty:'中階',
     blinds:'BB 單位，已投入金額見題目', ante:lesson.format === 'tournament',
-    userStack:`${lesson.depth}BB`, userBB:lesson.depth, effectiveStack:`${lesson.depth}BB`, tableSize:lesson.table || (lesson.format === 'cash' ? '6max' : '9max'),
+    userStack:`${lesson.heroStack ?? lesson.depth}BB`, userBB:lesson.heroStack ?? lesson.depth, effectiveStack:`${lesson.depth}BB`, tableSize:lesson.table || (lesson.format === 'cash' ? '6max' : '9max'),
     position:lesson.position, holeCards:cards(lesson.cards), preAction:lesson.line, benchmarkRole:'training',
     situationIds:[`format.${lesson.format === 'cash' ? 'cash' : 'mtt'}`],
     steps:[{ id:'decision', street:lesson.street || 'Preflop', communityCards:cards(lesson.board), potSize:lesson.pot,
-      description:lesson.prompt, options:Object.keys(lesson.answers) as ActionType[], feedbacks,
+      description:lesson.prompt, options:PRACTICAL_ACTION_ORDER.filter(action => lesson.answers[action] !== undefined), feedbacks,
+      potAccounting:lesson.potAccounting,
+      ...(lesson.heroStack !== undefined && lesson.villainStack !== undefined ? {
+        handState:{tableSize:lesson.table || (lesson.format === 'cash' ? '6max' as const : '9max' as const),potSizeBB:lesson.pot,heroStackBB:lesson.heroStack,villainStackBB:lesson.villainStack,actions:lesson.actions || []},
+        ...(lesson.street ? {spr:Math.round(lesson.depth / lesson.pot * 100) / 100} : {}),
+      } : {}),
       assumptions:lesson.assumptions,
       strategySource:'Original conditional coaching; not a solver range. Concepts: effective depth, range response, blockers and tournament utility.',
       conceptIds:[lesson.street ? 'postflop.range-response' : 'preflop.range-response', ...(lesson.topic.includes('bluff-catching') ? ['postflop.bluff-catching'] : [])],

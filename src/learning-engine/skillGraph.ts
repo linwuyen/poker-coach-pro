@@ -1,7 +1,7 @@
 import { HistoryItem, MasteryStatus, Scenario, ScenarioStep, Street, TruthTier } from '../types';
 import { effectiveEvLoss, evRegretScore } from './ev';
 import { historyContextFamilyId, inferSituationIdsFromHistory } from './contextIdentity';
-import { firstTransferEvidence, hasValidTransferEvidence } from './transferBenchmark';
+import { firstTransferEvidence, hasValidLearningContext, hasValidTransferEvidence } from './transferBenchmark';
 
 export interface SkillNode {
   id: string;
@@ -111,7 +111,7 @@ function evidenceSampleSize(items: HistoryItem[]): number {
 
 export function calculateSkillMastery(history: HistoryItem[], now = Date.now()): SkillMastery[] {
   const groups = new Map<string, HistoryItem[]>();
-  history.filter(item => item.trainingType !== 'custom').forEach(item => {
+  history.filter(item => item.trainingType !== 'custom' && hasValidLearningContext(item)).forEach(item => {
     const skillIds = item.skillIds?.length ? item.skillIds : inferSkillIds(item.category, item.street);
     skillIds.forEach(skillId => {
       const group = groups.get(skillId) || [];
